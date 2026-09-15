@@ -1,0 +1,22 @@
+# Business documents — contain real employee PII (worksheet.xlsx) and
+# client-sensitive info; keep local-only, do not push to this public repo.
+documents/
+
+# Node / Next.js
+node_modules/
+.next/
+out/
+dist/
+build/
+
+# Env / secrets
+.env
+.env.*
+!.env.example
+
+# Prisma
+prisma/*.db
+
+# OS / editor
+.DS_Store
+Thumbs.db
