@@ -1,0 +1,32 @@
+{
+  "name": "crproject",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/uworakul/crproject.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/uworakul/crproject/issues"
+  },
+  "homepage": "https://github.com/uworakul/crproject#readme",
+  "devDependencies": {
+    "@types/node": "^26.5.1",
+    "dotenv": "^17.4.2",
+    "prisma": "7.10.0",
+    "tsx": "^4.23.13",
+    "typescript": "^7.0.2"
+  },
+  "dependencies": {
+    "@prisma/adapter-mssql": "7.10.0",
+    "@prisma/client": "7.10.0"
+  }
+}

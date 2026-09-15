@@ -16,7 +16,8 @@
 - [x] UI Mockup หน้าจอ Worksheet — `Worksheet_Design_Mockup.html`
 - [x] **Database Design ทั้ง 9 โมดูล (33 ตาราง)** — `HFC_System_Database_Design.docx` (มี Data Dictionary + ER Diagram)
 - [x] **DDL Script พร้อมรัน** — `HFC_System_Database_DDL.sql`
-- [ ] **ยังไม่เริ่มเขียนโค้ด** — รอการอนุมัติแบบ DB อย่างเป็นทางการก่อน (ตาม Workflow ที่กำหนดไว้: วิเคราะห์ → ถาม → ออกแบบ → เสนอทางเลือก → รออนุมัติ → เขียนโค้ด)
+- [x] **Prisma schema + migration เข้า DB จริงแล้ว** (2026-09-15) — `prisma/schema.prisma` (34 ตาราง), migration แรกรันผ่าน `CRPAYROLL_007` สำเร็จ (ตรวจแล้ว: 34 ตาราง+_prisma_migrations, 13 CHECK constraints, 46 FK, ROWVERSION ถูกที่), ติดตั้ง `@prisma/adapter-mssql` (Prisma 7 บังคับใช้ driver adapter)
+- [ ] **ยังไม่เริ่มเขียน Next.js app** — ต่อไปคือ scaffold โครงสร้าง App Router + Route Handlers
 
 ไฟล์ทั้งหมดข้างต้นอยู่ในโฟลเดอร์ย่อย `documents/` ภายใต้โฟลเดอร์นี้ (D:\CRPROJECT\documents) — เปิดอ่านเพื่อดูรายละเอียด Requirement/Design แบบเต็มก่อนเริ่มเขียนโค้ดทุกครั้ง
 
@@ -26,7 +27,7 @@
 
 - **Framework**: Next.js (App Router) แบบ Full-stack — ไม่มี Express แยกต่างหาก ใช้ Route Handlers (`app/api/**/route.ts`) เป็น API Layer โดยตรง
 - **ORM**: Prisma (provider `sqlserver`)
-- **Database**: Microsoft SQL Server (VPS ใหม่ — ยังไม่ได้ระบุ IP/Connection String รอผู้ใช้แจ้ง — **อย่าเดาหรือ hardcode ค่านี้**)
+- **Database**: Microsoft SQL Server — ได้รับ Connection Info แล้ว (2026-09-15), เก็บใน `.env` local เท่านั้น (**ห้าม commit ค่าจริงเข้า git — repo นี้เป็น public**), ดูรูปแบบตัวแปรที่ `.env.example`. ทดสอบ login สำเร็จแล้ว, DB ชื่อ `CRPAYROLL_007` ว่างเปล่า (ยังไม่ได้รัน DDL) — ⚠️ **เครื่องจริงเป็น SQL Server 2014 (SP3)** แต่ DDL script คอมเมนต์ไว้ว่าต้องการ 2019+ (ตรวจ syntax แล้วไม่พบฟีเจอร์เฉพาะรุ่นใหม่ น่าจะรันได้ปกติ แต่ 2014 หมด Extended Support แล้ว — ความเสี่ยงด้าน security patching ที่ควรแจ้งผู้ใช้ทราบ ไม่ใช่เรื่องที่ควรเดาแก้เอง)
 - **Frontend**: Next.js + React + TypeScript, Responsive Design (ยึดตาม `Worksheet_Design_Mockup.html` เป็นต้นแบบ UI)
 - **Authentication**: Session/Cookie-based (ยืนยันแล้วโดยผู้ใช้ 2026-09-15) — **กลไกจัดเก็บ session (DB-backed table vs. encrypted cookie) ยังไม่ได้อนุมัติ ต้องเสนอทางเลือกและรออนุมัติก่อนเพิ่มเข้า schema**
 - **Language**: TypeScript ตลอดทั้งโปรเจกต์ (Next.js + Prisma)
@@ -79,4 +80,4 @@
 ## Version
 
 - เอกสารนี้ตรงกับ HFC_System_Database_Design.docx v1.0 (15/09/2026)
-- สถานะ: Database Design อนุมัติแล้ว, Technology Stack ยืนยันเป็น Next.js Full-stack + Prisma + MSSQL (2026-09-15), รอปิดประเด็นกลไก Session storage ก่อนเริ่ม Scaffold
+- สถานะ: Database Design อนุมัติแล้ว, Technology Stack ยืนยันเป็น Next.js Full-stack + Prisma 7.10.0 (pinned, ไม่ใช้ 8.0.0-rc) + MSSQL + Session/Cookie Auth ผ่าน `sys_session` (2026-09-15). Prisma schema + migration ประยุกต์เข้า DB จริงสำเร็จแล้ว (`CRPAYROLL_007`). ขั้นถัดไป: scaffold Next.js App Router

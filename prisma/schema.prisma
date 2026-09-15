@@ -1,0 +1,627 @@
+// Prisma schema for ABC CO., LTD. HR & Payroll System
+// Mirrors the approved HFC_System_Database_DDL.sql (33 tables) + sys_session
+// (34th table, approved 2026-09-15 for session-based auth).
+//
+// Conventions:
+// - Model names are PascalCase; @@map keeps the original snake_case table name.
+// - Field names match the DDL column names exactly (no @map needed per field).
+// - PK/FK/UNIQUE/INDEX constraint names are preserved via `map:` to match the DDL 1:1.
+// - CHECK constraints from the DDL are NOT expressible in Prisma schema syntax —
+//   they are re-added by hand-editing the generated migration.sql (see migration
+//   0001_init) so the DB still enforces them exactly as approved. Valid values are
+//   documented as comments below.
+// - `RowVer` (ROWVERSION) columns use Unsupported("rowversion") — SQL Server
+//   maintains these automatically; Prisma Client cannot select/write them directly,
+//   use $queryRaw for optimistic-concurrency checks against these columns.
+
+generator client {
+  provider = "prisma-client"
+  output   = "../generated/prisma"
+}
+
+datasource db {
+  provider = "sqlserver"
+}
+
+// ============================================================
+// mst_site — referenced by many tables
+// ============================================================
+model MstSite {
+  SiteCode String  @id(map: "PK_mst_site") @db.VarChar(10)
+  SiteName String  @db.NVarChar(150)
+  IsActive Boolean @default(true)
+
+  Users               SysUser[]
+  Permissions         SysUserPermission[]
+  Employees           MstEmployee[]
+  WorksheetHeaders    TrnWorksheetHeader[]
+  PayrollTransactions TrnPayrollTransaction[]
+
+  @@map("mst_site")
+}
+
+// ============================================================
+// โมดูล 2: ตารางอ้างอิงพื้นฐาน
+// ============================================================
+model RefDepartment {
+  DeptCode String  @id(map: "PK_ref_department") @db.VarChar(10)
+  DeptName String  @db.NVarChar(100)
+  IsActive Boolean @default(true)
+
+  Employees MstEmployee[]
+
+  @@map("ref_department")
+}
+
+model RefPosition {
+  PositionCode      String  @id(map: "PK_ref_position") @db.VarChar(10)
+  PositionName      String  @db.NVarChar(100)
+  PositionAllowance Decimal @default(0) @db.Decimal(10, 2)
+  IsActive          Boolean @default(true)
+
+  Employees MstEmployee[]
+
+  @@map("ref_position")
+}
+
+model RefBank {
+  BankCode   String  @id(map: "PK_ref_bank") @db.VarChar(10)
+  BankNameTH String  @db.NVarChar(100)
+  BankNameEN String  @db.NVarChar(100)
+  IsActive   Boolean @default(true)
+
+  Employees MstEmployee[]
+
+  @@map("ref_bank")
+}
+
+model RefSsoBase {
+  SSOBaseID     Int     @id(map: "PK_ref_sso_base") @default(autoincrement())
+  EffectiveYear Int     @db.SmallInt
+  MinBase       Decimal @db.Decimal(10, 2)
+  MaxBase       Decimal @db.Decimal(10, 2)
+  EmployeeRate  Decimal @db.Decimal(5, 4)
+  EmployerRate  Decimal @db.Decimal(5, 4)
+
+  @@map("ref_sso_base")
+}
+
+model RefBlackList {
+  BlackListID Int      @id(map: "PK_ref_black_list") @default(autoincrement())
+  IDCardNo    String   @db.VarChar(20)
+  FullName    String   @db.NVarChar(150)
+  Reason      String?  @db.NVarChar(300)
+  AddedDate   DateTime @default(now()) @db.DateTime
+
+  @@map("ref_black_list")
+}
+
+model RefTaxBracket {
+  BracketID     Int     @id(map: "PK_ref_tax_bracket") @default(autoincrement())
+  EffectiveYear Int     @db.SmallInt
+  IncomeFrom    Decimal @db.Decimal(12, 2)
+  IncomeTo      Decimal @db.Decimal(12, 2)
+  TaxRate       Decimal @db.Decimal(5, 4)
+
+  @@map("ref_tax_bracket")
+}
+
+model RefDeductionRate {
+  DeductionCode String  @id(map: "PK_ref_deduction_rate") @db.VarChar(20)
+  DeductionName String  @db.NVarChar(100)
+  MaxAmount     Decimal @db.Decimal(12, 2)
+  EffectiveYear Int     @db.SmallInt
+
+  @@map("ref_deduction_rate")
+}
+
+// ============================================================
+// โมดูล 1: ผู้ใช้งานและสิทธิ์ (User & Authorization)
+// ============================================================
+model SysMenu {
+  DocumentType String  @id(map: "PK_sys_menu") @db.VarChar(20)
+  MenuNameTH   String  @db.NVarChar(100)
+  MenuNameEN   String  @db.NVarChar(100)
+  ModuleGroup  String  @db.VarChar(30)
+  IsActive     Boolean @default(true)
+
+  Permissions SysUserPermission[]
+
+  @@map("sys_menu")
+}
+
+model SysUser {
+  UserID          String    @id(map: "PK_sys_user") @db.VarChar(20)
+  PasswordHash    String    @db.VarChar(255)
+  DisplayName     String    @db.NVarChar(100)
+  Email           String?   @db.NVarChar(100)
+  Role            String    @db.VarChar(20) // CHECK: SITE_HEAD | APPROVER | ADMIN | PAYROLL | HR | STORE
+  DefaultSiteCode String?   @db.VarChar(10)
+  IsActive        Boolean   @default(true)
+  CreatedDate     DateTime  @default(now()) @db.DateTime
+  LastLoginDate   DateTime? @db.DateTime
+
+  DefaultSite MstSite? @relation(fields: [DefaultSiteCode], references: [SiteCode], map: "FK_sys_user_mst_site", onUpdate: NoAction, onDelete: NoAction)
+
+  Permissions             SysUserPermission[]
+  ProcessLogs             SysProcessLog[]
+  Sessions                SysSession[]
+  RecordedEmployeeHistory MstEmployeeHistory[]
+  CreatedRequests         TrnRequest[]             @relation("RequestCreatedBy")
+  ApprovedRequests        TrnRequest[]             @relation("RequestApprovedBy")
+  RejectedRequests        TrnRequest[]             @relation("RequestRejectedBy")
+  CreatedStockMovements   InvStockMovement[]
+  CreatedWorksheetHeaders TrnWorksheetHeader[]
+  CalculatedPayrollLogs   TrnPayrollCalculateLog[]
+  PayrollLocks            TrnPayrollLock[]
+  CreatedLeaveRequests    TrnLeaveRequest[]        @relation("LeaveCreatedBy")
+  ApprovedLeaveRequests   TrnLeaveRequest[]        @relation("LeaveApprovedBy")
+
+  @@map("sys_user")
+}
+
+model SysUserPermission {
+  PermissionID Int     @id(map: "PK_sys_user_permission") @default(autoincrement())
+  UserID       String  @db.VarChar(20)
+  DocumentType String  @db.VarChar(20)
+  SiteCode     String? @db.VarChar(10)
+  CanRead      Boolean @default(false)
+  CanSave      Boolean @default(false)
+  CanDelete    Boolean @default(false)
+  CanApprove   Boolean @default(false)
+
+  Menu SysMenu  @relation(fields: [DocumentType], references: [DocumentType], map: "FK_sys_user_permission_sys_menu", onUpdate: NoAction, onDelete: NoAction)
+  User SysUser  @relation(fields: [UserID], references: [UserID], map: "FK_sys_user_permission_sys_user", onUpdate: NoAction, onDelete: NoAction)
+  Site MstSite? @relation(fields: [SiteCode], references: [SiteCode], map: "FK_sys_user_permission_mst_site", onUpdate: NoAction, onDelete: NoAction)
+
+  @@unique([UserID, DocumentType, SiteCode], map: "UQ_sys_user_permission")
+  @@map("sys_user_permission")
+}
+
+// ============================================================
+// โมดูล 2 (ต่อ): ตารางที่ต้องมี sys_user ก่อน
+// ============================================================
+model SysPeriod {
+  PeriodID     Int      @id(map: "PK_sys_period") @default(autoincrement())
+  EmployeeType String   @db.VarChar(20)
+  PeriodYear   Int      @db.SmallInt
+  PeriodMonth  Int      @db.TinyInt
+  StartDate    DateTime @db.Date
+  EndDate      DateTime @db.Date
+  PayDate      DateTime @db.Date
+  Status       String   @default("OPEN") @db.VarChar(10) // CHECK: OPEN | CLOSED
+  CreatedDate  DateTime @default(now()) @db.DateTime
+
+  PayrollTransactions  TrnPayrollTransaction[]
+  PayrollCalculateLogs TrnPayrollCalculateLog[]
+  PayrollLocks         TrnPayrollLock[]
+
+  @@map("sys_period")
+}
+
+model SysProcessLog {
+  LogID       BigInt   @id(map: "PK_sys_process_log") @default(autoincrement())
+  UserID      String   @db.VarChar(20)
+  ActionType  String   @db.VarChar(50)
+  TargetTable String?  @db.VarChar(50)
+  TargetID    String?  @db.VarChar(50)
+  ActionDate  DateTime @default(now()) @db.DateTime
+  Detail      String?  @db.NVarChar(500)
+
+  User SysUser @relation(fields: [UserID], references: [UserID], map: "FK_sys_process_log_sys_user", onUpdate: NoAction, onDelete: NoAction)
+
+  @@index([ActionDate], map: "IX_sys_process_log_ActionDate")
+  @@map("sys_process_log")
+}
+
+// ============================================================
+// โมดูล 1 (ใหม่): Session storage สำหรับ Session/Cookie Auth
+// อนุมัติเพิ่ม 2026-09-15 — ไม่อยู่ใน HFC_System_Database_DDL.sql เดิม
+// ============================================================
+model SysSession {
+  SessionID        String   @id(map: "PK_sys_session") @db.VarChar(64)
+  UserID           String   @db.VarChar(20)
+  CreatedDate      DateTime @default(now()) @db.DateTime
+  LastActivityDate DateTime @default(now()) @db.DateTime
+  ExpiresDate      DateTime @db.DateTime
+  IPAddress        String?  @db.VarChar(45)
+  UserAgent        String?  @db.NVarChar(255)
+  IsRevoked        Boolean  @default(false)
+
+  User SysUser @relation(fields: [UserID], references: [UserID], map: "FK_sys_session_sys_user", onUpdate: NoAction, onDelete: NoAction)
+
+  @@index([UserID], map: "IX_sys_session_UserID")
+  @@index([ExpiresDate], map: "IX_sys_session_ExpiresDate")
+  @@map("sys_session")
+}
+
+// ============================================================
+// โมดูล 3: ข้อมูลหลักพนักงาน (Employee Master)
+// ============================================================
+model MstEmployee {
+  EmpCode         String    @id(map: "PK_mst_employee") @db.VarChar(15)
+  IDCardNo        String    @unique(map: "UQ_mst_employee_IDCardNo") @db.VarChar(20)
+  FullName        String    @db.NVarChar(150)
+  Address         String?   @db.NVarChar(300)
+  EmployeeStatus  String    @default("ACTIVE") @db.VarChar(10) // CHECK: ACTIVE | RESIGNED
+  StartDate       DateTime  @db.Date
+  ResignDate      DateTime? @db.Date
+  DeptCode        String?   @db.VarChar(10)
+  PositionCode    String?   @db.VarChar(10)
+  DefaultSiteCode String?   @db.VarChar(10)
+  EmployeeType    String    @db.VarChar(20)
+  BankCode        String?   @db.VarChar(10)
+  BankAccountNo   String?   @db.VarChar(20)
+  DailyRate       Decimal?  @db.Decimal(10, 2)
+  PhotoPath       String?   @db.NVarChar(255)
+  IsActive        Boolean   @default(true)
+  CreatedDate     DateTime  @default(now()) @db.DateTime
+
+  Department RefDepartment? @relation(fields: [DeptCode], references: [DeptCode], map: "FK_mst_employee_ref_department", onUpdate: NoAction, onDelete: NoAction)
+  Position   RefPosition?   @relation(fields: [PositionCode], references: [PositionCode], map: "FK_mst_employee_ref_position", onUpdate: NoAction, onDelete: NoAction)
+  Site       MstSite?       @relation(fields: [DefaultSiteCode], references: [SiteCode], map: "FK_mst_employee_mst_site", onUpdate: NoAction, onDelete: NoAction)
+  Bank       RefBank?       @relation(fields: [BankCode], references: [BankCode], map: "FK_mst_employee_ref_bank", onUpdate: NoAction, onDelete: NoAction)
+
+  Quotas              MstEmployeeQuota[]
+  History             MstEmployeeHistory[]
+  Requests            TrnRequest[]
+  StockMovements      InvStockMovement[]
+  Debts               InvEmployeeDebt[]
+  WorksheetDetails    TrnWorksheetDetail[]
+  PayrollTransactions TrnPayrollTransaction[]
+  LeaveRequests       TrnLeaveRequest[]
+  LeaveBalances       MstEmployeeLeaveBalance[]
+
+  @@index([DeptCode], map: "IX_mst_employee_DeptCode")
+  @@map("mst_employee")
+}
+
+model MstEmployeeQuota {
+  QuotaID        Int     @id(map: "PK_mst_employee_quota") @default(autoincrement())
+  EmpCode        String  @db.VarChar(15)
+  QuotaType      String  @db.VarChar(15) // CHECK: ADVANCE | LOAN | UNIFORM | SERVICE | INSURANCE
+  QuotaLimit     Decimal @default(0) @db.Decimal(12, 2)
+  QuotaUsed      Decimal @default(0) @db.Decimal(12, 2)
+  QuotaRemaining Decimal @default(0) @db.Decimal(12, 2)
+
+  Employee MstEmployee @relation(fields: [EmpCode], references: [EmpCode], map: "FK_mst_employee_quota_mst_employee", onUpdate: NoAction, onDelete: NoAction)
+
+  @@unique([EmpCode, QuotaType], map: "UQ_mst_employee_quota")
+  @@map("mst_employee_quota")
+}
+
+model MstEmployeeHistory {
+  HistoryID    BigInt   @id(map: "PK_mst_employee_history") @default(autoincrement())
+  EmpCode      String   @db.VarChar(15)
+  MemoType     String   @db.VarChar(10) // CHECK: GENERAL | ADMIN | FINANCE
+  MemoText     String   @db.NVarChar(1000)
+  RecordedBy   String   @db.VarChar(20)
+  RecordedDate DateTime @default(now()) @db.DateTime
+
+  Employee MstEmployee @relation(fields: [EmpCode], references: [EmpCode], map: "FK_mst_employee_history_mst_employee", onUpdate: NoAction, onDelete: NoAction)
+  Recorder SysUser     @relation(fields: [RecordedBy], references: [UserID], map: "FK_mst_employee_history_sys_user", onUpdate: NoAction, onDelete: NoAction)
+
+  @@map("mst_employee_history")
+}
+
+// ============================================================
+// โมดูล 4: การขออนุมัติ (Request & Approve)
+// รวม Advance / Loan / Training ไว้ในตารางเดียว แยกด้วย RequestType
+// ============================================================
+model TrnRequest {
+  RequestID       Int       @id(map: "PK_trn_request") @default(autoincrement())
+  RequestType     String    @db.VarChar(10) // CHECK: ADVANCE | LOAN | TRAINING
+  EmpCode         String    @db.VarChar(15)
+  Amount          Decimal   @db.Decimal(12, 2)
+  DeductPerPeriod Decimal   @db.Decimal(12, 2)
+  Status          String    @default("DRAFT") @db.VarChar(15) // CHECK: DRAFT | SUBMITTED | APPROVED | REJECTED
+  CreatedBy       String    @db.VarChar(20)
+  CreatedDate     DateTime  @default(now()) @db.DateTime
+  SubmittedDate   DateTime? @db.DateTime
+  ApprovedBy      String?   @db.VarChar(20)
+  ApprovedDate    DateTime? @db.DateTime
+  RejectedBy      String?   @db.VarChar(20)
+  RejectedDate    DateTime? @db.DateTime
+  RejectReason    String?   @db.NVarChar(300)
+
+  Employee MstEmployee @relation(fields: [EmpCode], references: [EmpCode], map: "FK_trn_request_mst_employee", onUpdate: NoAction, onDelete: NoAction)
+  Creator  SysUser     @relation("RequestCreatedBy", fields: [CreatedBy], references: [UserID], map: "FK_trn_request_sys_user_created", onUpdate: NoAction, onDelete: NoAction)
+  Approver SysUser?    @relation("RequestApprovedBy", fields: [ApprovedBy], references: [UserID], map: "FK_trn_request_sys_user_approved", onUpdate: NoAction, onDelete: NoAction)
+  Rejecter SysUser?    @relation("RequestRejectedBy", fields: [RejectedBy], references: [UserID], map: "FK_trn_request_sys_user_rejected", onUpdate: NoAction, onDelete: NoAction)
+
+  @@index([EmpCode], map: "IX_trn_request_EmpCode")
+  @@map("trn_request")
+}
+
+// ============================================================
+// โมดูล 5: สินค้าคงคลัง/เครื่องแบบพนักงาน (Inventory)
+// Ledger กลาง inv_stock_movement รองรับทุกประเภทการเคลื่อนไหว
+// ============================================================
+model InvSupplier {
+  SupplierCode String  @id(map: "PK_inv_supplier") @db.VarChar(15)
+  SupplierName String  @db.NVarChar(150)
+  Address      String? @db.NVarChar(300)
+  ContactPhone String? @db.VarChar(20)
+  IsActive     Boolean @default(true)
+
+  StockMovements InvStockMovement[]
+
+  @@map("inv_supplier")
+}
+
+model InvWarehouse {
+  WarehouseCode String  @id(map: "PK_inv_warehouse") @db.VarChar(10)
+  WarehouseName String  @db.NVarChar(150)
+  IsActive      Boolean @default(true)
+
+  MovementsFrom InvStockMovement[] @relation("MovementSourceWarehouse")
+  MovementsTo   InvStockMovement[] @relation("MovementTargetWarehouse")
+
+  @@map("inv_warehouse")
+}
+
+model InvProduct {
+  ProductCode String  @id(map: "PK_inv_product") @db.VarChar(15)
+  ProductName String  @db.NVarChar(150)
+  Category    String? @db.VarChar(30)
+  UnitCost    Decimal @default(0) @db.Decimal(10, 2)
+  UnitPrice   Decimal @default(0) @db.Decimal(10, 2)
+  IsActive    Boolean @default(true)
+
+  MovementDetails InvStockMovementDetail[]
+
+  @@map("inv_product")
+}
+
+model InvStockMovement {
+  MovementID          Int      @id(map: "PK_inv_stock_movement") @default(autoincrement())
+  MovementType        String   @db.VarChar(15) // CHECK: ADJUST | PURCHASE | TRANSFER | ISSUE | RETURN
+  WarehouseCode       String   @db.VarChar(10)
+  TargetWarehouseCode String?  @db.VarChar(10)
+  SupplierCode        String?  @db.VarChar(15)
+  EmpCode             String?  @db.VarChar(15)
+  MovementDate        DateTime @db.Date
+  Status              String   @default("DRAFT") @db.VarChar(10) // CHECK: DRAFT | CONFIRMED
+  CreatedBy           String   @db.VarChar(20)
+  CreatedDate         DateTime @default(now()) @db.DateTime
+
+  Warehouse       InvWarehouse  @relation("MovementSourceWarehouse", fields: [WarehouseCode], references: [WarehouseCode], map: "FK_inv_stock_movement_warehouse", onUpdate: NoAction, onDelete: NoAction)
+  TargetWarehouse InvWarehouse? @relation("MovementTargetWarehouse", fields: [TargetWarehouseCode], references: [WarehouseCode], map: "FK_inv_stock_movement_target_warehouse", onUpdate: NoAction, onDelete: NoAction)
+  Supplier        InvSupplier?  @relation(fields: [SupplierCode], references: [SupplierCode], map: "FK_inv_stock_movement_supplier", onUpdate: NoAction, onDelete: NoAction)
+  Employee        MstEmployee?  @relation(fields: [EmpCode], references: [EmpCode], map: "FK_inv_stock_movement_employee", onUpdate: NoAction, onDelete: NoAction)
+  Creator         SysUser       @relation(fields: [CreatedBy], references: [UserID], map: "FK_inv_stock_movement_sys_user", onUpdate: NoAction, onDelete: NoAction)
+
+  Details       InvStockMovementDetail[]
+  EmployeeDebts InvEmployeeDebt[]
+
+  @@map("inv_stock_movement")
+}
+
+model InvStockMovementDetail {
+  DetailID    Int     @id(map: "PK_inv_stock_movement_detail") @default(autoincrement())
+  MovementID  Int
+  ProductCode String  @db.VarChar(15)
+  Qty         Decimal @db.Decimal(10, 2)
+  UnitPrice   Decimal @db.Decimal(10, 2)
+  Amount      Decimal @db.Decimal(12, 2)
+
+  Movement InvStockMovement @relation(fields: [MovementID], references: [MovementID], map: "FK_inv_stock_movement_detail_movement", onUpdate: NoAction, onDelete: NoAction)
+  Product  InvProduct       @relation(fields: [ProductCode], references: [ProductCode], map: "FK_inv_stock_movement_detail_product", onUpdate: NoAction, onDelete: NoAction)
+
+  @@index([MovementID], map: "IX_inv_stock_movement_detail_MovementID")
+  @@map("inv_stock_movement_detail")
+}
+
+model InvEmployeeDebt {
+  DebtID          Int     @id(map: "PK_inv_employee_debt") @default(autoincrement())
+  EmpCode         String  @db.VarChar(15)
+  MovementID      Int
+  TotalAmount     Decimal @default(0) @db.Decimal(12, 2)
+  PaidAmount      Decimal @default(0) @db.Decimal(12, 2)
+  RemainingAmount Decimal @default(0) @db.Decimal(12, 2)
+  Status          String  @default("OPEN") @db.VarChar(10) // CHECK: OPEN | CLOSED
+
+  Employee MstEmployee      @relation(fields: [EmpCode], references: [EmpCode], map: "FK_inv_employee_debt_employee", onUpdate: NoAction, onDelete: NoAction)
+  Movement InvStockMovement @relation(fields: [MovementID], references: [MovementID], map: "FK_inv_employee_debt_movement", onUpdate: NoAction, onDelete: NoAction)
+
+  @@map("inv_employee_debt")
+}
+
+// ============================================================
+// โมดูล 9: ใบลงเวลาปฏิบัติงานประจำเดือน (Worksheet)
+// ตารางหลักของระบบใหม่ — Auto-post เข้า trn_payroll_transaction โดยตรง
+// ============================================================
+model MstAttendanceCode {
+  Code          String  @id(map: "PK_mst_attendance_code") @db.VarChar(3)
+  CodeNameTH    String  @db.NVarChar(50)
+  CodeNameEN    String  @db.NVarChar(50)
+  PayMultiplier Decimal @default(1.0) @db.Decimal(3, 1)
+  SortOrder     Int     @default(0) @db.TinyInt
+  IsActive      Boolean @default(true)
+
+  DailyRecords TrnWorksheetDaily[]
+
+  @@map("mst_attendance_code")
+}
+
+model TrnWorksheetHeader {
+  WorksheetID   Int                       @id(map: "PK_trn_worksheet_header") @default(autoincrement())
+  SiteCode      String                    @db.VarChar(10)
+  WorkYear      Int                       @db.SmallInt
+  WorkMonth     Int                       @db.TinyInt
+  Status        String                    @default("DRAFT") @db.VarChar(20) // CHECK: DRAFT | SUBMITTED | APPROVED | REJECTED
+  CreatedBy     String                    @db.VarChar(20)
+  CreatedDate   DateTime                  @default(now()) @db.DateTime
+  SubmittedBy   String?                   @db.VarChar(20) // ไม่มี FK ใน DDL ที่อนุมัติ (ตั้งใจ)
+  SubmittedDate DateTime?                 @db.DateTime
+  ApprovedBy    String?                   @db.VarChar(20) // ไม่มี FK ใน DDL ที่อนุมัติ (ตั้งใจ)
+  ApprovedDate  DateTime?                 @db.DateTime
+  RejectedBy    String?                   @db.VarChar(20) // ไม่มี FK ใน DDL ที่อนุมัติ (ตั้งใจ)
+  RejectedDate  DateTime?                 @db.DateTime
+  RejectReason  String?                   @db.NVarChar(300)
+  RowVer        Unsupported("rowversion")
+
+  Site    MstSite @relation(fields: [SiteCode], references: [SiteCode], map: "FK_trn_worksheet_header_site", onUpdate: NoAction, onDelete: NoAction)
+  Creator SysUser @relation(fields: [CreatedBy], references: [UserID], map: "FK_trn_worksheet_header_created_by", onUpdate: NoAction, onDelete: NoAction)
+
+  Details             TrnWorksheetDetail[]
+  PayrollTransactions TrnPayrollTransaction[]
+
+  @@unique([SiteCode, WorkYear, WorkMonth], map: "UQ_trn_worksheet_header")
+  @@map("trn_worksheet_header")
+}
+
+model TrnWorksheetDetail {
+  WorksheetDetailID Int                       @id(map: "PK_trn_worksheet_detail") @default(autoincrement())
+  WorksheetID       Int
+  EmpCode           String                    @db.VarChar(15)
+  EmpType           String                    @default("REGULAR") @db.VarChar(10) // ไม่มี CHECK ใน DDL ที่อนุมัติ (REGULAR/SPARE ตาม BRD)
+  DailyRate         Decimal                   @db.Decimal(10, 2)
+  DisplayOrder      Int                       @default(0) @db.SmallInt
+  RowVer            Unsupported("rowversion")
+
+  Header   TrnWorksheetHeader @relation(fields: [WorksheetID], references: [WorksheetID], map: "FK_trn_worksheet_detail_header", onUpdate: NoAction, onDelete: NoAction)
+  Employee MstEmployee        @relation(fields: [EmpCode], references: [EmpCode], map: "FK_trn_worksheet_detail_employee", onUpdate: NoAction, onDelete: NoAction)
+
+  DailyRecords TrnWorksheetDaily[]
+
+  @@unique([WorksheetID, EmpCode], map: "UQ_trn_worksheet_detail")
+  @@map("trn_worksheet_detail")
+}
+
+model TrnWorksheetDaily {
+  WorksheetDailyID  Int      @id(map: "PK_trn_worksheet_daily") @default(autoincrement())
+  WorksheetDetailID Int
+  WorkDate          DateTime @db.Date
+  AttendCode        String?  @db.VarChar(3)
+  Remark            String?  @db.NVarChar(200)
+  UpdatedBy         String   @db.VarChar(20) // ไม่มี FK ใน DDL ที่อนุมัติ (ตั้งใจ)
+  UpdatedDate       DateTime @default(now()) @db.DateTime
+
+  Detail         TrnWorksheetDetail @relation(fields: [WorksheetDetailID], references: [WorksheetDetailID], map: "FK_trn_worksheet_daily_detail", onUpdate: NoAction, onDelete: NoAction)
+  AttendanceCode MstAttendanceCode? @relation(fields: [AttendCode], references: [Code], map: "FK_trn_worksheet_daily_attend_code", onUpdate: NoAction, onDelete: NoAction)
+
+  @@unique([WorksheetDetailID, WorkDate], map: "UQ_trn_worksheet_daily")
+  @@index([WorksheetDetailID], map: "IX_trn_worksheet_daily_WorksheetDetailID")
+  @@map("trn_worksheet_daily")
+}
+
+// ============================================================
+// โมดูล 6: คำนวณและจ่ายเงินเดือน (Payroll)
+// ============================================================
+model TrnPayrollTransaction {
+  TransactionID     Int      @id(map: "PK_trn_payroll_transaction") @default(autoincrement())
+  EmpCode           String   @db.VarChar(15)
+  PeriodID          Int
+  SiteCode          String   @db.VarChar(10)
+  WorkDays          Decimal  @default(0) @db.Decimal(5, 2)
+  DoubleShiftDays   Decimal  @default(0) @db.Decimal(5, 2)
+  HolidayDays       Decimal  @default(0) @db.Decimal(5, 2)
+  OTHours           Decimal  @default(0) @db.Decimal(6, 2)
+  OTAmount          Decimal  @default(0) @db.Decimal(10, 2)
+  PositionAllowance Decimal  @default(0) @db.Decimal(10, 2)
+  ShiftAllowance    Decimal  @default(0) @db.Decimal(10, 2)
+  AdvanceDeduct     Decimal  @default(0) @db.Decimal(10, 2)
+  LoanDeduct        Decimal  @default(0) @db.Decimal(10, 2)
+  TrainingDeduct    Decimal  @default(0) @db.Decimal(10, 2)
+  UniformDeduct     Decimal  @default(0) @db.Decimal(10, 2)
+  GrossWage         Decimal  @default(0) @db.Decimal(12, 2)
+  TaxWithheld       Decimal  @default(0) @db.Decimal(10, 2)
+  SSOAmount         Decimal  @default(0) @db.Decimal(10, 2)
+  OtherIncome       Decimal  @default(0) @db.Decimal(10, 2)
+  OtherDeduction    Decimal  @default(0) @db.Decimal(10, 2)
+  NetPay            Decimal  @default(0) @db.Decimal(12, 2)
+  SourceWorksheetID Int?
+  CreatedDate       DateTime @default(now()) @db.DateTime
+
+  Employee        MstEmployee         @relation(fields: [EmpCode], references: [EmpCode], map: "FK_trn_payroll_transaction_employee", onUpdate: NoAction, onDelete: NoAction)
+  Period          SysPeriod           @relation(fields: [PeriodID], references: [PeriodID], map: "FK_trn_payroll_transaction_period", onUpdate: NoAction, onDelete: NoAction)
+  Site            MstSite             @relation(fields: [SiteCode], references: [SiteCode], map: "FK_trn_payroll_transaction_site", onUpdate: NoAction, onDelete: NoAction)
+  SourceWorksheet TrnWorksheetHeader? @relation(fields: [SourceWorksheetID], references: [WorksheetID], map: "FK_trn_payroll_transaction_worksheet", onUpdate: NoAction, onDelete: NoAction)
+
+  @@unique([EmpCode, PeriodID], map: "UQ_trn_payroll_transaction")
+  @@index([PeriodID, SiteCode], map: "IX_trn_payroll_transaction_Period_Site")
+  @@map("trn_payroll_transaction")
+}
+
+model TrnPayrollCalculateLog {
+  LogID          Int      @id(map: "PK_trn_payroll_calculate_log") @default(autoincrement())
+  PeriodID       Int
+  EmployeeType   String   @db.VarChar(20)
+  CalculatedBy   String   @db.VarChar(20)
+  CalculatedDate DateTime @default(now()) @db.DateTime
+  Status         String   @db.VarChar(10) // CHECK: SUCCESS | CANCELLED
+  EmployeeCount  Int      @default(0)
+  TotalAmount    Decimal  @default(0) @db.Decimal(14, 2)
+
+  Period     SysPeriod @relation(fields: [PeriodID], references: [PeriodID], map: "FK_trn_payroll_calculate_log_period", onUpdate: NoAction, onDelete: NoAction)
+  Calculator SysUser   @relation(fields: [CalculatedBy], references: [UserID], map: "FK_trn_payroll_calculate_log_user", onUpdate: NoAction, onDelete: NoAction)
+
+  @@map("trn_payroll_calculate_log")
+}
+
+model TrnPayrollLock {
+  LockID     Int       @id(map: "PK_trn_payroll_lock") @default(autoincrement())
+  PeriodID   Int
+  IsLocked   Boolean   @default(false)
+  LockedBy   String?   @db.VarChar(20)
+  LockedDate DateTime? @db.DateTime
+
+  Period SysPeriod @relation(fields: [PeriodID], references: [PeriodID], map: "FK_trn_payroll_lock_period", onUpdate: NoAction, onDelete: NoAction)
+  Locker SysUser?  @relation(fields: [LockedBy], references: [UserID], map: "FK_trn_payroll_lock_user", onUpdate: NoAction, onDelete: NoAction)
+
+  @@map("trn_payroll_lock")
+}
+
+// ============================================================
+// โมดูล 7: การลาและประวัติการลา (Leave)
+// ============================================================
+model MstLeaveType {
+  LeaveTypeCode      String  @id(map: "PK_mst_leave_type") @db.VarChar(10)
+  LeaveTypeName      String  @db.NVarChar(100)
+  MaxDaysPerYear     Int     @db.TinyInt
+  RequireMedicalCert Boolean @default(false)
+
+  LeaveRequests TrnLeaveRequest[]
+  LeaveBalances MstEmployeeLeaveBalance[]
+
+  @@map("mst_leave_type")
+}
+
+model TrnLeaveRequest {
+  LeaveID        Int       @id(map: "PK_trn_leave_request") @default(autoincrement())
+  EmpCode        String    @db.VarChar(15)
+  LeaveTypeCode  String    @db.VarChar(10)
+  StartDate      DateTime  @db.Date
+  EndDate        DateTime  @db.Date
+  TotalDays      Decimal   @db.Decimal(4, 1)
+  HasMedicalCert Boolean   @default(false)
+  Status         String    @default("DRAFT") @db.VarChar(15) // CHECK: DRAFT | SUBMITTED | APPROVED | REJECTED
+  CreatedBy      String    @db.VarChar(20)
+  CreatedDate    DateTime  @default(now()) @db.DateTime
+  ApprovedBy     String?   @db.VarChar(20)
+  ApprovedDate   DateTime? @db.DateTime
+
+  Employee  MstEmployee  @relation(fields: [EmpCode], references: [EmpCode], map: "FK_trn_leave_request_employee", onUpdate: NoAction, onDelete: NoAction)
+  LeaveType MstLeaveType @relation(fields: [LeaveTypeCode], references: [LeaveTypeCode], map: "FK_trn_leave_request_type", onUpdate: NoAction, onDelete: NoAction)
+  Creator   SysUser      @relation("LeaveCreatedBy", fields: [CreatedBy], references: [UserID], map: "FK_trn_leave_request_created_by", onUpdate: NoAction, onDelete: NoAction)
+  Approver  SysUser?     @relation("LeaveApprovedBy", fields: [ApprovedBy], references: [UserID], map: "FK_trn_leave_request_approved_by", onUpdate: NoAction, onDelete: NoAction)
+
+  @@map("trn_leave_request")
+}
+
+model MstEmployeeLeaveBalance {
+  BalanceID     Int     @id(map: "PK_mst_employee_leave_balance") @default(autoincrement())
+  EmpCode       String  @db.VarChar(15)
+  LeaveTypeCode String  @db.VarChar(10)
+  Year          Int     @db.SmallInt
+  Entitled      Decimal @default(0) @db.Decimal(4, 1)
+  Used          Decimal @default(0) @db.Decimal(4, 1)
+  Remaining     Decimal @default(0) @db.Decimal(4, 1)
+
+  Employee  MstEmployee  @relation(fields: [EmpCode], references: [EmpCode], map: "FK_mst_employee_leave_balance_employee", onUpdate: NoAction, onDelete: NoAction)
+  LeaveType MstLeaveType @relation(fields: [LeaveTypeCode], references: [LeaveTypeCode], map: "FK_mst_employee_leave_balance_type", onUpdate: NoAction, onDelete: NoAction)
+
+  @@unique([EmpCode, LeaveTypeCode, Year], map: "UQ_mst_employee_leave_balance")
+  @@map("mst_employee_leave_balance")
+}

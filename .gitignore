@@ -20,3 +20,5 @@ prisma/*.db
 # OS / editor
 .DS_Store
 Thumbs.db
+
+/generated/prisma
