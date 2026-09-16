@@ -25,8 +25,34 @@ async function seedMenus() {
   console.log(`Seeded/updated ${menuSeed.length} sys_menu rows.`);
 }
 
+// D/N/D-N/F and their pay multipliers — fixed by FSD/BRD (Design - Worksheet
+// sheet), not a business decision to invent: D=1.0, N=1.0, D-N=2.0, F=0.0.
+const attendanceCodeSeed = [
+  { Code: "D", CodeNameTH: "กะกลางวัน", CodeNameEN: "Day Shift", PayMultiplier: "1.0", SortOrder: 1 },
+  { Code: "N", CodeNameTH: "กะกลางคืน", CodeNameEN: "Night Shift", PayMultiplier: "1.0", SortOrder: 2 },
+  { Code: "D-N", CodeNameTH: "ควบ 2 กะ", CodeNameEN: "Double Shift", PayMultiplier: "2.0", SortOrder: 3 },
+  { Code: "F", CodeNameTH: "วันหยุด", CodeNameEN: "Off/Holiday", PayMultiplier: "0.0", SortOrder: 4 },
+];
+
+async function seedAttendanceCodes() {
+  for (const code of attendanceCodeSeed) {
+    await prisma.mstAttendanceCode.upsert({
+      where: { Code: code.Code },
+      update: {
+        CodeNameTH: code.CodeNameTH,
+        CodeNameEN: code.CodeNameEN,
+        PayMultiplier: code.PayMultiplier,
+        SortOrder: code.SortOrder,
+      },
+      create: code,
+    });
+  }
+  console.log(`Seeded/updated ${attendanceCodeSeed.length} mst_attendance_code rows.`);
+}
+
 async function main() {
   await seedMenus();
+  await seedAttendanceCodes();
 
   const existing = await prisma.sysUser.findUnique({ where: { UserID: "admin" } });
   if (existing) {

@@ -20,7 +20,9 @@ export default async function Home() {
       <p className="text-gray-500">
         สวัสดี {user.displayName} ({user.role})
       </p>
-      <p className="text-gray-400 text-sm">ขั้นถัดไป: โมดูล Worksheet</p>
+      <Link href="/worksheet" className="text-sm text-blue-600 hover:underline">
+        ใบลงเวลาปฏิบัติงานประจำเดือน (Worksheet)
+      </Link>
       {canViewUsers && (
         <Link href="/users" className="text-sm text-blue-600 hover:underline">
           จัดการผู้ใช้งาน
