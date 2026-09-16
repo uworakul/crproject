@@ -79,7 +79,7 @@
 
 ## Next.js 16 — จุดที่ต่างจาก training data ของ AI (สำคัญ อ่านก่อนเขียน route/auth code)
 
-Next.js เองแทรกคำเตือนอัตโนมัติไว้ท้ายไฟล์นี้ (`<!-- BEGIN:nextjs-agent-rules -->`) ว่าเวอร์ชันนี้มี breaking changes จาก training data — ตรวจสอบแล้วพบจริงดังนี้ (อ้างอิง `node_modules/next/dist/docs/`):
+Next.js เองเคยแทรกคำเตือนอัตโนมัติท้ายไฟล์นี้ตอนรัน `next dev` ว่าเวอร์ชันนี้มี breaking changes จาก training data ของ AI — ปิดฟีเจอร์นี้แล้ว (`agentRules: false` ใน `next.config.ts`) เพราะมันไปรบกวนเนื้อหาไฟล์นี้เอง (ดู "เหตุการณ์ที่ต้องระวัง" ด้านล่าง) แต่คำแนะนำยังใช้ได้ ตรวจสอบแล้วพบ breaking changes จริงดังนี้ (อ้างอิง `node_modules/next/dist/docs/`):
 
 1. **`middleware.ts` ถูกเปลี่ยนชื่อเป็น `proxy.ts`** (file convention ใหม่ ทำหน้าที่เดิม)
 2. **Dynamic APIs เป็น async ทั้งหมด**: `cookies()`, `headers()`, `params`, `searchParams` ต้อง `await` เสมอ (เช่น `const { id } = await ctx.params`) — มี `RouteContext<'/path'>` helper type ให้ใช้กับ dynamic route handlers
@@ -94,12 +94,26 @@ Next.js เองแทรกคำเตือนอัตโนมัติไ
 - `package.json` เปลี่ยนเป็น `"type": "module"` (จำเป็นสำหรับ Next.js App Router ESM)
 - **ESLint**: ไม่ได้ใช้ `eslint-config-next` ผ่าน FlatCompat ตามปกติ เพราะชนบั๊กจริง (`TypeError: Converting circular structure to JSON` — `@eslint/eslintrc`'s legacy validator เจอ self-referencing flat plugin object ของ `eslint-plugin-react`/`@next/eslint-plugin-next` แล้ว crash ตอน format error message) — แก้โดยประกอบ flat config เองตรงจาก native export ของแต่ละ plugin ใน `eslint.config.mjs` แทน (ดูคอมเมนต์ในไฟล์)
 - ตรวจแล้ว: `npm run build`, `npx eslint .`, `npm run dev` ผ่านทั้งหมด
-- ยังไม่มี: authentication (login route, session lib/DAL, proxy.ts), Worksheet API/UI
+
+## Authentication ที่ทำไปแล้ว (2026-09-16)
+
+- `src/lib/password.ts` — hash/verify ด้วย `bcryptjs` (ไม่ใช้ `bcrypt` native เพื่อเลี่ยงปัญหา build tools บน Windows)
+- `src/lib/session.ts` — DB-backed session ตาม `sys_session`: `createSession()` สร้างแถวจริง + เข้ารหัส `{sessionId, userId}` ด้วย `jose` (HS256, อายุ 7 วัน) เก็บใน httpOnly cookie ชื่อ `session`; `verifySessionRecord()` เช็คแบบ secure (hit DB, ดู IsRevoked/ExpiresDate/User.IsActive); `readOptimisticSession()` เช็คแบบ cookie-only (ไม่ hit DB) สำหรับ `proxy.ts` เท่านั้น; `deleteSession()` ตั้ง `IsRevoked=true` (เก็บ audit ไว้ ไม่ลบแถว) + ลบ cookie
+- `SESSION_SECRET` ใน `.env` — สร้างเองด้วย `crypto.randomBytes(32)` (ไม่ใช่ข้อมูลธุรกิจที่ต้องถามผู้ใช้ เป็น key เข้ารหัสทางเทคนิคล้วนๆ) — หมุนคีย์นี้จะ invalidate ทุก session ทันที
+- `src/lib/dal.ts` — `verifySession()` จุดตรวจสอบสิทธิ์กลางจุดเดียว (cached ด้วย React `cache()` ต่อ request) ทุก Route Handler/Page ที่ต้องการ auth ต้องเรียกจุดนี้ ห้ามอ่าน cookie ตรงๆ
+- `proxy.ts` (ไม่ใช่ `middleware.ts`) — optimistic redirect เท่านั้น, หน้า/route จริงยังต้องเช็ค secure ผ่าน DAL เอง (defense in depth ตามที่เอกสาร Next.js แนะนำ)
+- `POST /api/auth/login`, `POST /api/auth/logout`, `GET /api/auth/me` — ใช้ error format `{error, message}` ตาม FSD, log เข้า `sys_process_log` ทุกครั้งที่ login/logout สำเร็จ
+- `prisma/seed.ts` — seed บัญชี `admin` เริ่มต้น (รันแล้วครั้งเดียว, รหัสผ่านสุ่มแสดงตอนรันแค่ครั้งเดียวไม่เก็บที่ไหนอีก — **ต้องเปลี่ยนรหัสผ่านนี้ทันทีที่มีหน้าจอจัดการผู้ใช้**); `prisma7.config.ts` เพิ่ม `migrations.seed` ชี้มาที่ไฟล์นี้ (รันด้วย `npx prisma db seed`)
+- ยังไม่มี: หน้าจอ/endpoint เปลี่ยนรหัสผ่าน, สิทธิ์ตาม `sys_user_permission`/DocumentType (ยังเช็คแค่ authenticated หรือไม่ ไม่เช็ค authorize รายเมนู — ต้องทำตอนเริ่ม Worksheet module), Worksheet API/UI
+
+### เหตุการณ์ที่ต้องระวัง: `next dev` เคยลบเนื้อหาไฟล์นี้เอง (2026-09-16)
+
+ตอนเขียนหัวข้อ "Next.js 16" ด้านบน มีประโยคที่ quote ข้อความ marker comment ของฟีเจอร์ auto-agent-rules ของ Next.js ไว้ตรงๆ (เพื่ออธิบายว่ามันหน้าตาเป็นยังไง) — พอรัน `next dev` รอบถัดมา ตัวสร้างไฟล์อัตโนมัติของ Next.js ไปเจอ marker ที่ผมเขียนอธิบายไว้ (ไม่ใช่ block จริง) เข้าใจผิดคิดว่าเป็น block เดิม แล้วลบเนื้อหาระหว่างนั้นไปเกือบ 23 บรรทัด (หัวข้อ "Scaffold ที่ทำไปแล้ว" หายไปทั้งหมด) กู้คืนจาก git commit ล่าสุดได้ทัน — **ปิดฟีเจอร์นี้แล้ว** (`agentRules: false` ใน `next.config.ts`) และเขียนประโยคด้านบนใหม่ไม่ให้ quote marker ตรงๆ อีก
 
 ## Version
 
 - เอกสารนี้ตรงกับ HFC_System_Database_Design.docx v1.0 (15/09/2026)
-- สถานะ: Database Design อนุมัติแล้ว, Technology Stack ยืนยันเป็น Next.js Full-stack + Prisma 7.10.0 (pinned, ไม่ใช้ 8.0.0-rc) + MSSQL + Session/Cookie Auth ผ่าน `sys_session` (2026-09-15). Prisma schema + migration ประยุกต์เข้า DB จริงสำเร็จแล้ว (`CRPAYROLL_007`). Next.js scaffold เสร็จแล้ว (2026-09-16, build/lint/dev ผ่านหมด). ขั้นถัดไป: authentication (session lib + DAL + proxy.ts) แล้วต่อด้วย Worksheet module
+- สถานะ: Database Design อนุมัติแล้ว, Technology Stack ยืนยันเป็น Next.js Full-stack + Prisma 7.10.0 (pinned, ไม่ใช้ 8.0.0-rc) + MSSQL + Session/Cookie Auth ผ่าน `sys_session` (2026-09-15). Prisma schema + migration ประยุกต์เข้า DB จริงสำเร็จแล้ว (`CRPAYROLL_007`). Next.js scaffold เสร็จแล้ว (2026-09-16, build/lint/dev ผ่านหมด). Authentication (session lib/DAL/proxy.ts/login-logout API + seed admin) เสร็จแล้ว (2026-09-16, build/lint/e2e ผ่านหมด). ขั้นถัดไป: Worksheet module (สิทธิ์รายเมนูผ่าน sys_user_permission + API/UI)
 
 <!-- BEGIN:nextjs-agent-rules -->
 
