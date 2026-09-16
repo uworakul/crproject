@@ -77,7 +77,36 @@
 - `manual.pdf` อ่านไม่ได้ในเครื่องนี้ (ขาด poppler-utils) — ไม่กระทบ scope เพราะเป็นคู่มือระบบเก่าที่ไม่ migrate
 - Performance Notes เสนอเพิ่มเติมที่ยังไม่อนุมัติ: (1) นโยบาย archive `sys_process_log` เก่ากว่า N ปี — ยังไม่กำหนด N, (2) View/ตารางสรุปรายเดือนสำหรับ `trn_payroll_transaction` รองรับรายงาน 30+ ตัว, (3) Application-level cache สำหรับตาราง `ref_*`/`mst_*` — ทั้งสามข้อต้องเสนอทางเลือกและรออนุมัติก่อนทำ
 
+## Next.js 16 — จุดที่ต่างจาก training data ของ AI (สำคัญ อ่านก่อนเขียน route/auth code)
+
+Next.js เองแทรกคำเตือนอัตโนมัติไว้ท้ายไฟล์นี้ (`<!-- BEGIN:nextjs-agent-rules -->`) ว่าเวอร์ชันนี้มี breaking changes จาก training data — ตรวจสอบแล้วพบจริงดังนี้ (อ้างอิง `node_modules/next/dist/docs/`):
+
+1. **`middleware.ts` ถูกเปลี่ยนชื่อเป็น `proxy.ts`** (file convention ใหม่ ทำหน้าที่เดิม)
+2. **Dynamic APIs เป็น async ทั้งหมด**: `cookies()`, `headers()`, `params`, `searchParams` ต้อง `await` เสมอ (เช่น `const { id } = await ctx.params`) — มี `RouteContext<'/path'>` helper type ให้ใช้กับ dynamic route handlers
+3. **Cache Components เป็น opt-in feature ใหม่** (ยังไม่ได้เปิดใช้ในโปรเจกต์นี้) — ถ้าไม่เปิด, Route Handlers ทำงานแบบ request-time ตามปกติ (ไม่ cache) ซึ่งเหมาะกับ API ที่ mutate ข้อมูลอย่าง Worksheet อยู่แล้ว ไม่ต้องเปิดฟีเจอร์นี้สำหรับรอบพัฒนานี้
+4. **รูปแบบ Session ที่ Next.js แนะนำเองตรงกับ design ที่อนุมัติไว้แล้ว**: DB-backed session (ตาราง sessions) + เก็บ **session ID ที่เข้ารหัสแล้ว** (ไม่ใช่ raw ID) ใน httpOnly cookie ผ่าน `cookies()` API — ใช้ library `jose` (JWT sign/verify) หรือ `iron-session` ตามที่เอกสารแนะนำ, ทำ Data Access Layer (`verifySession()` cached ด้วย React `cache()`) เป็นจุดตรวจสอบสิทธิ์กลาง แทนที่จะเช็คกระจายทุกที่
+5. ก่อนเขียนโค้ด Next.js ส่วนใดที่ไม่มั่นใจ ให้ตรวจ `node_modules/next/dist/docs/` ก่อนเสมอ (เอกสารสดของเวอร์ชันที่ติดตั้งจริง)
+
+## Scaffold ที่ทำไปแล้ว (2026-09-16)
+
+- Next.js **16.3.5** (pinned exact, ไม่ใช้ range) + React **19.3.0** + TypeScript **6.0.3** (ไม่ใช้ 7.0.2 — `typescript-eslint` ยังไม่รองรับ TS 7) + Tailwind CSS 4
+- โครงสร้าง: `src/app/` (App Router, `layout.tsx`/`page.tsx`/`globals.css`), `src/lib/prisma.ts` (Prisma Client singleton ผ่าน `@prisma/adapter-mssql`, กันสร้าง connection pool ซ้ำตอน dev hot-reload)
+- `package.json` เปลี่ยนเป็น `"type": "module"` (จำเป็นสำหรับ Next.js App Router ESM)
+- **ESLint**: ไม่ได้ใช้ `eslint-config-next` ผ่าน FlatCompat ตามปกติ เพราะชนบั๊กจริง (`TypeError: Converting circular structure to JSON` — `@eslint/eslintrc`'s legacy validator เจอ self-referencing flat plugin object ของ `eslint-plugin-react`/`@next/eslint-plugin-next` แล้ว crash ตอน format error message) — แก้โดยประกอบ flat config เองตรงจาก native export ของแต่ละ plugin ใน `eslint.config.mjs` แทน (ดูคอมเมนต์ในไฟล์)
+- ตรวจแล้ว: `npm run build`, `npx eslint .`, `npm run dev` ผ่านทั้งหมด
+- ยังไม่มี: authentication (login route, session lib/DAL, proxy.ts), Worksheet API/UI
+
 ## Version
 
 - เอกสารนี้ตรงกับ HFC_System_Database_Design.docx v1.0 (15/09/2026)
-- สถานะ: Database Design อนุมัติแล้ว, Technology Stack ยืนยันเป็น Next.js Full-stack + Prisma 7.10.0 (pinned, ไม่ใช้ 8.0.0-rc) + MSSQL + Session/Cookie Auth ผ่าน `sys_session` (2026-09-15). Prisma schema + migration ประยุกต์เข้า DB จริงสำเร็จแล้ว (`CRPAYROLL_007`). ขั้นถัดไป: scaffold Next.js App Router
+- สถานะ: Database Design อนุมัติแล้ว, Technology Stack ยืนยันเป็น Next.js Full-stack + Prisma 7.10.0 (pinned, ไม่ใช้ 8.0.0-rc) + MSSQL + Session/Cookie Auth ผ่าน `sys_session` (2026-09-15). Prisma schema + migration ประยุกต์เข้า DB จริงสำเร็จแล้ว (`CRPAYROLL_007`). Next.js scaffold เสร็จแล้ว (2026-09-16, build/lint/dev ผ่านหมด). ขั้นถัดไป: authentication (session lib + DAL + proxy.ts) แล้วต่อด้วย Worksheet module
+
+<!-- BEGIN:nextjs-agent-rules -->
+
+# This is NOT the Next.js you know
+
+This version has breaking changes — APIs, conventions, and file structure may all differ from your training data. Read the relevant guide in `node_modules/next/dist/docs/` (resolved from this file's directory; in monorepos the `next` package may not be visible from the repo root) before writing any code. Heed deprecation notices.
+
+This block is written and re-added by `next dev` — verify at `node_modules/next/dist/server/lib/generate-agent-files.js`. Removing it from a diff only re-creates the uncommitted change; committing it with your work keeps the tree clean.
+
+<!-- END:nextjs-agent-rules -->
