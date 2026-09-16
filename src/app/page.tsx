@@ -1,5 +1,7 @@
 import { redirect } from "next/navigation";
+import Link from "next/link";
 import { verifySession } from "@/lib/dal";
+import { hasPermission } from "@/lib/authorize";
 import LogoutButton from "./logout-button";
 
 export default async function Home() {
@@ -10,6 +12,8 @@ export default async function Home() {
     redirect("/login");
   }
 
+  const canViewUsers = await hasPermission(user, "USER", "read");
+
   return (
     <main className="flex min-h-screen flex-col items-center justify-center gap-4 p-8">
       <h1 className="text-2xl font-semibold">ABC CO., LTD. — HR &amp; Payroll</h1>
@@ -17,6 +21,11 @@ export default async function Home() {
         สวัสดี {user.displayName} ({user.role})
       </p>
       <p className="text-gray-400 text-sm">ขั้นถัดไป: โมดูล Worksheet</p>
+      {canViewUsers && (
+        <Link href="/users" className="text-sm text-blue-600 hover:underline">
+          จัดการผู้ใช้งาน
+        </Link>
+      )}
       <LogoutButton />
     </main>
   );

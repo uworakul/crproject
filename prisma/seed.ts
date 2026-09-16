@@ -3,6 +3,7 @@ import { randomBytes } from "crypto";
 import bcrypt from "bcryptjs";
 import { PrismaMssql } from "@prisma/adapter-mssql";
 import { PrismaClient } from "../generated/prisma/client";
+import { menuSeed } from "./seed-menus";
 
 // Not importing src/lib/password.ts here: it's guarded with `server-only`,
 // which throws when run outside the Next.js bundler (e.g. via `tsx` here).
@@ -13,10 +14,23 @@ function hashPassword(plain: string) {
 const adapter = new PrismaMssql(process.env.DATABASE_URL!);
 const prisma = new PrismaClient({ adapter });
 
+async function seedMenus() {
+  for (const menu of menuSeed) {
+    await prisma.sysMenu.upsert({
+      where: { DocumentType: menu.DocumentType },
+      update: { MenuNameTH: menu.MenuNameTH, MenuNameEN: menu.MenuNameEN, ModuleGroup: menu.ModuleGroup },
+      create: menu,
+    });
+  }
+  console.log(`Seeded/updated ${menuSeed.length} sys_menu rows.`);
+}
+
 async function main() {
+  await seedMenus();
+
   const existing = await prisma.sysUser.findUnique({ where: { UserID: "admin" } });
   if (existing) {
-    console.log("Seed skipped: sys_user 'admin' already exists.");
+    console.log("Admin user seed skipped: sys_user 'admin' already exists.");
     return;
   }
 

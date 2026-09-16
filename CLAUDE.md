@@ -104,7 +104,18 @@ Next.js เองเคยแทรกคำเตือนอัตโนมั
 - `proxy.ts` (ไม่ใช่ `middleware.ts`) — optimistic redirect เท่านั้น, หน้า/route จริงยังต้องเช็ค secure ผ่าน DAL เอง (defense in depth ตามที่เอกสาร Next.js แนะนำ)
 - `POST /api/auth/login`, `POST /api/auth/logout`, `GET /api/auth/me` — ใช้ error format `{error, message}` ตาม FSD, log เข้า `sys_process_log` ทุกครั้งที่ login/logout สำเร็จ
 - `prisma/seed.ts` — seed บัญชี `admin` เริ่มต้น (รันแล้วครั้งเดียว, รหัสผ่านสุ่มแสดงตอนรันแค่ครั้งเดียวไม่เก็บที่ไหนอีก — **ต้องเปลี่ยนรหัสผ่านนี้ทันทีที่มีหน้าจอจัดการผู้ใช้**); `prisma7.config.ts` เพิ่ม `migrations.seed` ชี้มาที่ไฟล์นี้ (รันด้วย `npx prisma db seed`)
-- ยังไม่มี: หน้าจอ/endpoint เปลี่ยนรหัสผ่าน, สิทธิ์ตาม `sys_user_permission`/DocumentType (ยังเช็คแค่ authenticated หรือไม่ ไม่เช็ค authorize รายเมนู — ต้องทำตอนเริ่ม Worksheet module), Worksheet API/UI
+## User Setup / Authorization module ที่ทำไปแล้ว (2026-09-16)
+
+ครอบคลุม BR-001–004 (โมดูล 1 ในทุกไฟล์: BRD/Site Map/DDL)
+
+- **sys_menu seed ที่ระดับเมนูย่อย (33 DocumentType, ยืนยันแล้วโดยผู้ใช้)** — `prisma/seed-menus.ts` map 1:1 กับทุก leaf ใน `CRPAYROLL_Site_Map.html` ยกเว้นโมดูล 8 (legacy infra, ไม่เกี่ยวกับระบบใหม่) **ข้อยกเว้นเดียว**: โมดูล 9 (Worksheet) มี 5 leaves ใน site map แต่ BR-045 ล็อก DocumentType เดียวคือ `WORKSHEET` ไว้แล้ว จึงไม่แยกย่อยตาม — รันซ้ำได้ปลอดภัย (`upsert`)
+- `src/lib/authorize.ts` — `hasPermission()`/`requirePermission()`: ADMIN role bypass ทุกอย่าง (BR-003), ผู้ใช้อื่น query `sys_user_permission` ตาม (UserID, DocumentType, SiteCode) — แถวที่ SiteCode=NULL ใช้ได้ทุกหน่วยงาน (ตรงกับ design ที่บันทึกไว้ใน Database summary ด้านบน)
+- **Users API** (`src/app/api/users/**`): CRUD ผู้ใช้ (`GET/POST /api/users`, `GET/PUT/DELETE /api/users/[userId]`), เปลี่ยนรหัสผ่าน (`PUT .../password` — self-service ไม่ต้องมีสิทธิ์พิเศษ, เปลี่ยนของคนอื่นต้องมี SAVE บน USER), สิทธิ์รายเมนู (`GET/PUT .../permissions` — PUT แทนที่ทั้งชุดทุกครั้ง ไม่ diff ทีละ checkbox), คัดลอกสิทธิ์ (`POST .../copy-permissions`, ตรง BR-004) — ทุก endpoint เช็คสิทธิ์ผ่าน `requirePermission(user, "USER", action)` ก่อนเสมอ, log เข้า `sys_process_log` ทุกจุดที่ mutate
+- **DELETE = soft delete เท่านั้น** (`IsActive=false`) — sys_user ถูกอ้างอิงแทบทุกตารางด้วย FK แบบ NO ACTION (ตรงกับ DDL ที่อนุมัติ) ลบจริงจะพังทันทีที่มีประวัติ; ห้าม deactivate ตัวเอง (กันล็อกตัวเองออกจากระบบ)
+- **UI**: `/users` (รายการ), `/users/new` (สร้าง), `/users/[userId]` (แก้ไขข้อมูล + เปลี่ยนรหัสผ่าน + ตารางสิทธิ์ 33 แถว × 4 คอลัมน์ + คัดลอกสิทธิ์) — ทุกหน้าเช็คสิทธิ์ฝั่ง Server Component ก่อน render (redirect ถ้าไม่มีสิทธิ์ READ)
+- **ข้อจำกัดที่ตั้งใจไว้ (บันทึกไว้ ไม่ใช่ลืมทำ)**: หน้าตารางสิทธิ์บันทึกได้เฉพาะแบบ "ทุกหน่วยงาน" (SiteCode=NULL) ต่อ DocumentType เท่านั้น — สิทธิ์แยกรายหน่วยงาน (เช่น SITE_HEAD ที่ควรเห็นแค่ site ตัวเอง) API รองรับอยู่แล้ว (`hasPermission`/PUT permissions รับ siteCode ได้) แต่ UI ยังไม่มีช่องให้เลือก site ต่อแถว — ต้องทำเพิ่มถ้าต้องใช้งานจริง
+- ทดสอบ end-to-end กับ DB จริงครบ: create user → ไม่มีสิทธิ์ → 403 → grant READ → 200 → ยังไม่มี SAVE → 403 → self password change → deactivate self ถูกกัน → deactivate คนอื่น → login ถูกปฏิเสธด้วย ACCOUNT_DISABLED (ลบข้อมูลทดสอบออกจาก DB แล้ว)
+- ยังไม่มี: Worksheet API/UI (โมดูล 9), Site CRUD จริง (โมดูล 6 — ตอนนี้ mst_site ว่างเปล่า มีแค่ GET /api/sites สำหรับ dropdown)
 
 ### เหตุการณ์ที่ต้องระวัง: `next dev` เคยลบเนื้อหาไฟล์นี้เอง (2026-09-16)
 
@@ -113,7 +124,7 @@ Next.js เองเคยแทรกคำเตือนอัตโนมั
 ## Version
 
 - เอกสารนี้ตรงกับ HFC_System_Database_Design.docx v1.0 (15/09/2026)
-- สถานะ: Database Design อนุมัติแล้ว, Technology Stack ยืนยันเป็น Next.js Full-stack + Prisma 7.10.0 (pinned, ไม่ใช้ 8.0.0-rc) + MSSQL + Session/Cookie Auth ผ่าน `sys_session` (2026-09-15). Prisma schema + migration ประยุกต์เข้า DB จริงสำเร็จแล้ว (`CRPAYROLL_007`). Next.js scaffold เสร็จแล้ว (2026-09-16, build/lint/dev ผ่านหมด). Authentication (session lib/DAL/proxy.ts/login-logout API + seed admin) เสร็จแล้ว (2026-09-16, build/lint/e2e ผ่านหมด). ขั้นถัดไป: Worksheet module (สิทธิ์รายเมนูผ่าน sys_user_permission + API/UI)
+- สถานะ: Database Design อนุมัติแล้ว, Technology Stack ยืนยันเป็น Next.js Full-stack + Prisma 7.10.0 (pinned, ไม่ใช้ 8.0.0-rc) + MSSQL + Session/Cookie Auth ผ่าน `sys_session` (2026-09-15). Prisma schema + migration ประยุกต์เข้า DB จริงสำเร็จแล้ว (`CRPAYROLL_007`). Next.js scaffold เสร็จแล้ว (2026-09-16, build/lint/dev ผ่านหมด). Authentication เสร็จแล้ว (2026-09-16). **User Setup/Authorization module (โมดูล 1, BR-001–004) เสร็จแล้ว** (2026-09-16, sys_menu seed 33 รายการ + Users CRUD/permissions/copy API + UI, ทดสอบ e2e ผ่านหมด). ขั้นถัดไป: Worksheet module (โมดูล 9)
 
 <!-- BEGIN:nextjs-agent-rules -->
 
