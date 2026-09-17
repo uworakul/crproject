@@ -27,6 +27,8 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     canViewReturn,
     canViewSite,
     canViewPayrollWorkspace,
+    canViewLeaveRequest,
+    canViewLeaveReport,
   ] = await Promise.all([
     hasPermission(user, "USER", "read"),
     hasPermission(user, "REFERENCE", "read"),
@@ -50,6 +52,8 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       hasPermission(user, "PAYROLL_LOCK", "read"),
       hasPermission(user, "PAYROLL_REPORT", "read"),
     ]).then((r) => r.some(Boolean)),
+    hasPermission(user, "LEAVE_REQUEST", "read"),
+    hasPermission(user, "LEAVE_REPORT", "read"),
   ]);
   const canViewInventoryMaster = canViewSupplier || canViewWarehouse || canViewProduct;
 
@@ -64,6 +68,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         ...(canViewPeriod ? [{ href: "/periods", label: "งวดจ่ายเงินเดือน" }] : []),
         ...(canViewReference ? [{ href: "/reference", label: "รหัสอ้างอิง" }] : []),
         ...(canViewTax ? [{ href: "/reference/tax", label: "อัตราภาษี/ลดหย่อน" }] : []),
+        ...(canViewReference ? [{ href: "/leave/types", label: "ประเภทการลา" }] : []),
       ],
     },
     {
@@ -97,6 +102,14 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       items: [
         ...(canViewSite ? [{ href: "/payroll/sites", label: "หน่วยงาน (Site)" }] : []),
         ...(canViewPayrollWorkspace ? [{ href: "/payroll/period", label: "ประมวลผลเงินเดือน" }] : []),
+      ],
+    },
+    {
+      label: "การลา",
+      items: [
+        ...(canViewLeaveRequest ? [{ href: "/leave", label: "ใบลา" }] : []),
+        ...(canViewLeaveRequest ? [{ href: "/leave/balances", label: "สิทธิวันลาพนักงาน" }] : []),
+        ...(canViewLeaveReport ? [{ href: "/leave/report", label: "รายงานประวัติการลา" }] : []),
       ],
     },
   ].filter((g) => g.items.length > 0);
