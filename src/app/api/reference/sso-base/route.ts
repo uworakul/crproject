@@ -59,7 +59,15 @@ export async function POST(request: NextRequest) {
   }
 
   const created = await prisma.refSsoBase.create({
-    data: { EffectiveYear: effectiveYear, EffectiveDate: effectiveDate, MinBase: minBase, MaxBase: maxBase, EmployeeRate: employeeRate, EmployerRate: employerRate },
+    data: {
+      EffectiveYear: effectiveYear,
+      EffectiveDate: effectiveDate,
+      MinBase: minBase,
+      MaxBase: maxBase,
+      EmployeeRate: employeeRate,
+      EmployerRate: employerRate,
+      CreatedBy: user.userId,
+    },
   });
   await logAction(user.userId, "CREATE_SSO_BASE", { targetTable: "ref_sso_base", targetId: String(created.SSOBaseID) });
   return apiSuccess(created, 201);

@@ -38,7 +38,13 @@ export async function POST(request: NextRequest) {
   if (existing) return apiError(409, "LEAVE_TYPE_ALREADY_EXISTS", undefined, { leaveTypeCode });
 
   const created = await prisma.mstLeaveType.create({
-    data: { LeaveTypeCode: leaveTypeCode, LeaveTypeName: leaveTypeName, MaxDaysPerYear: maxDaysPerYear, RequireMedicalCert: body.requireMedicalCert === true },
+    data: {
+      LeaveTypeCode: leaveTypeCode,
+      LeaveTypeName: leaveTypeName,
+      MaxDaysPerYear: maxDaysPerYear,
+      RequireMedicalCert: body.requireMedicalCert === true,
+      CreatedBy: user.userId,
+    },
   });
 
   await logAction(user.userId, "CREATE_LEAVE_TYPE", { targetTable: "mst_leave_type", targetId: leaveTypeCode });

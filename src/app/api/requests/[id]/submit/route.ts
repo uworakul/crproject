@@ -25,7 +25,7 @@ export async function POST(_req: Request, ctx: RouteContext<"/api/requests/[id]/
 
   const updated = await prisma.trnRequest.update({
     where: { RequestID: requestId },
-    data: { Status: "SUBMITTED", SubmittedDate: new Date() },
+    data: { Status: "SUBMITTED", SubmittedDate: new Date(), UpdatedBy: user.userId, UpdatedDate: new Date() },
   });
 
   await logAction(user.userId, "SUBMIT_REQUEST", { targetTable: "trn_request", targetId: id });

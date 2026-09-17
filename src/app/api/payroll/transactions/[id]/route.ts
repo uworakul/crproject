@@ -67,7 +67,7 @@ export async function PUT(request: NextRequest, ctx: RouteContext<"/api/payroll/
 
   const updated = await prisma.trnPayrollTransaction.update({
     where: { TransactionID: transactionId },
-    data: { ...data, NetPay: netPay },
+    data: { ...data, NetPay: netPay, UpdatedBy: user.userId, UpdatedDate: new Date() },
   });
 
   await logAction(user.userId, "UPDATE_PAYROLL_TRANSACTION", { targetTable: "trn_payroll_transaction", targetId: String(transactionId) });

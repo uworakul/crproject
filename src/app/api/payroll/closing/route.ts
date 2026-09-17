@@ -40,8 +40,11 @@ export async function POST(request: NextRequest) {
   if (!lock || !lock.IsLocked) return apiError(409, "PERIOD_NOT_LOCKED", "Lock the period before closing it");
 
   await prisma.$transaction([
-    prisma.sysPeriod.update({ where: { PeriodID: periodId }, data: { Status: "CLOSED" } }),
-    prisma.trnPayrollLock.update({ where: { LockID: lock.LockID }, data: { IsLocked: true, LockedBy: user.userId, LockedDate: new Date() } }),
+    prisma.sysPeriod.update({ where: { PeriodID: periodId }, data: { Status: "CLOSED", UpdatedBy: user.userId, UpdatedDate: new Date() } }),
+    prisma.trnPayrollLock.update({
+      where: { LockID: lock.LockID },
+      data: { IsLocked: true, LockedBy: user.userId, LockedDate: new Date(), UpdatedBy: user.userId, UpdatedDate: new Date() },
+    }),
   ]);
 
   await logAction(user.userId, "PAYROLL_CLOSING", { targetTable: "sys_period", targetId: String(periodId) });

@@ -27,6 +27,8 @@ export async function PUT(request: NextRequest, ctx: RouteContext<"/api/referenc
     data: {
       DeptName: typeof body.deptName === "string" ? body.deptName.trim() : undefined,
       IsActive: typeof body.isActive === "boolean" ? body.isActive : undefined,
+      UpdatedBy: user.userId,
+      UpdatedDate: new Date(),
     },
   });
 
@@ -44,7 +46,7 @@ export async function DELETE(_req: Request, ctx: RouteContext<"/api/reference/de
   const existing = await prisma.refDepartment.findUnique({ where: { DeptCode: code } });
   if (!existing) return apiError(404, "DEPARTMENT_NOT_FOUND");
 
-  await prisma.refDepartment.update({ where: { DeptCode: code }, data: { IsActive: false } });
+  await prisma.refDepartment.update({ where: { DeptCode: code }, data: { IsActive: false, UpdatedBy: user.userId, UpdatedDate: new Date() } });
   await logAction(user.userId, "DEACTIVATE_DEPARTMENT", { targetTable: "ref_department", targetId: code });
   return apiSuccess({ ok: true });
 }

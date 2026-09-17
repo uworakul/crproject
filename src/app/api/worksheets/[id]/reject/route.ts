@@ -42,6 +42,8 @@ export async function POST(request: NextRequest, ctx: RouteContext<"/api/workshe
       RejectedBy: user.userId,
       RejectedDate: new Date(),
       RejectReason: reason,
+      UpdatedBy: user.userId,
+      UpdatedDate: new Date(),
     },
   });
 

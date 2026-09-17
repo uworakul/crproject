@@ -32,6 +32,8 @@ export async function PUT(request: NextRequest, ctx: RouteContext<"/api/referenc
     data: {
       IDCardNo: typeof body.idCardNo === "string" && body.idCardNo.trim() ? body.idCardNo.trim() : undefined,
       FullName: typeof body.fullName === "string" && body.fullName.trim() ? body.fullName.trim() : undefined,
+      UpdatedBy: user.userId,
+      UpdatedDate: new Date(),
     },
   });
 

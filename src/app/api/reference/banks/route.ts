@@ -42,7 +42,9 @@ export async function POST(request: NextRequest) {
   const existing = await prisma.refBank.findUnique({ where: { BankCode: bankCode } });
   if (existing) return apiError(409, "BANK_ALREADY_EXISTS", undefined, { bankCode });
 
-  const created = await prisma.refBank.create({ data: { BankCode: bankCode, BankNameTH: bankNameTH, BankNameEN: bankNameEN } });
+  const created = await prisma.refBank.create({
+    data: { BankCode: bankCode, BankNameTH: bankNameTH, BankNameEN: bankNameEN, CreatedBy: user.userId },
+  });
   await logAction(user.userId, "CREATE_BANK", { targetTable: "ref_bank", targetId: bankCode });
   return apiSuccess(created, 201);
 }

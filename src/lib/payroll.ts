@@ -118,7 +118,7 @@ export async function runPayrollCalculate(periodId: number, calculatedBy: string
     updates.push(
       prisma.trnPayrollTransaction.update({
         where: { TransactionID: tx.TransactionID },
-        data: { TaxWithheld: taxWithheld, SSOAmount: ssoAmount, NetPay: netPay },
+        data: { TaxWithheld: taxWithheld, SSOAmount: ssoAmount, NetPay: netPay, UpdatedBy: calculatedBy, UpdatedDate: new Date() },
       }),
     );
   }
@@ -126,7 +126,15 @@ export async function runPayrollCalculate(periodId: number, calculatedBy: string
   await prisma.$transaction([
     ...updates,
     prisma.trnPayrollCalculateLog.create({
-      data: { PeriodID: periodId, EmployeeType: period.EmployeeType, CalculatedBy: calculatedBy, Status: "SUCCESS", EmployeeCount: transactions.length, TotalAmount: totalAmount },
+      data: {
+        PeriodID: periodId,
+        EmployeeType: period.EmployeeType,
+        CalculatedBy: calculatedBy,
+        Status: "SUCCESS",
+        EmployeeCount: transactions.length,
+        TotalAmount: totalAmount,
+        CreatedBy: calculatedBy,
+      },
     }),
   ]);
 
@@ -151,14 +159,22 @@ export async function cancelPayrollCalculate(periodId: number, calculatedBy: str
     totalAmount = totalAmount.add(netPay);
     return prisma.trnPayrollTransaction.update({
       where: { TransactionID: tx.TransactionID },
-      data: { TaxWithheld: 0, SSOAmount: 0, NetPay: netPay },
+      data: { TaxWithheld: 0, SSOAmount: 0, NetPay: netPay, UpdatedBy: calculatedBy, UpdatedDate: new Date() },
     });
   });
 
   await prisma.$transaction([
     ...updates,
     prisma.trnPayrollCalculateLog.create({
-      data: { PeriodID: periodId, EmployeeType: period.EmployeeType, CalculatedBy: calculatedBy, Status: "CANCELLED", EmployeeCount: transactions.length, TotalAmount: totalAmount },
+      data: {
+        PeriodID: periodId,
+        EmployeeType: period.EmployeeType,
+        CalculatedBy: calculatedBy,
+        Status: "CANCELLED",
+        EmployeeCount: transactions.length,
+        TotalAmount: totalAmount,
+        CreatedBy: calculatedBy,
+      },
     }),
   ]);
 

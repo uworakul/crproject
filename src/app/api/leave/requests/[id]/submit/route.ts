@@ -26,7 +26,10 @@ export async function POST(_req: Request, ctx: RouteContext<"/api/leave/requests
     return apiError(422, "MEDICAL_CERT_REQUIRED", `${existing.LeaveType.LeaveTypeName} requires a medical certificate before it can be submitted`);
   }
 
-  const updated = await prisma.trnLeaveRequest.update({ where: { LeaveID: leaveId }, data: { Status: "SUBMITTED" } });
+  const updated = await prisma.trnLeaveRequest.update({
+    where: { LeaveID: leaveId },
+    data: { Status: "SUBMITTED", UpdatedBy: user.userId, UpdatedDate: new Date() },
+  });
   await logAction(user.userId, "SUBMIT_LEAVE_REQUEST", { targetTable: "trn_leave_request", targetId: id });
   return apiSuccess(updated);
 }

@@ -89,6 +89,8 @@ export async function PUT(request: NextRequest, ctx: RouteContext<"/api/users/[u
       Role: isValidRole(body.role) ? body.role : undefined,
       DefaultSiteCode: defaultSiteCode,
       IsActive: typeof body.isActive === "boolean" ? body.isActive : undefined,
+      UpdatedBy: user.userId,
+      UpdatedDate: new Date(),
     },
     select: {
       UserID: true,
@@ -124,7 +126,10 @@ export async function DELETE(_req: NextRequest, ctx: RouteContext<"/api/users/[u
   const existing = await prisma.sysUser.findUnique({ where: { UserID: userId } });
   if (!existing) return apiError(404, "USER_NOT_FOUND");
 
-  await prisma.sysUser.update({ where: { UserID: userId }, data: { IsActive: false } });
+  await prisma.sysUser.update({
+    where: { UserID: userId },
+    data: { IsActive: false, UpdatedBy: user.userId, UpdatedDate: new Date() },
+  });
 
   await logAction(user.userId, "DEACTIVATE_USER", { targetTable: "sys_user", targetId: userId });
 

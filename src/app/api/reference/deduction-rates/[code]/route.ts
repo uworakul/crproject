@@ -28,6 +28,8 @@ export async function PUT(request: NextRequest, ctx: RouteContext<"/api/referenc
       DeductionName: typeof body.deductionName === "string" ? body.deductionName.trim() : undefined,
       MaxAmount: body.maxAmount !== undefined ? Number(body.maxAmount) : undefined,
       EffectiveYear: body.effectiveYear !== undefined ? Number(body.effectiveYear) : undefined,
+      UpdatedBy: user.userId,
+      UpdatedDate: new Date(),
     },
   });
 

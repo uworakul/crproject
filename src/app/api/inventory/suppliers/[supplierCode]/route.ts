@@ -44,6 +44,8 @@ export async function PUT(request: NextRequest, ctx: RouteContext<"/api/inventor
       Address: typeof body.address === "string" && body.address.trim() ? body.address.trim() : null,
       ContactPhone: typeof body.contactPhone === "string" && body.contactPhone.trim() ? body.contactPhone.trim() : null,
       IsActive: typeof body.isActive === "boolean" ? body.isActive : existing.IsActive,
+      UpdatedBy: user.userId,
+      UpdatedDate: new Date(),
     },
   });
 
@@ -61,7 +63,10 @@ export async function DELETE(_req: NextRequest, ctx: RouteContext<"/api/inventor
   const existing = await prisma.invSupplier.findUnique({ where: { SupplierCode: supplierCode } });
   if (!existing) return apiError(404, "SUPPLIER_NOT_FOUND");
 
-  const updated = await prisma.invSupplier.update({ where: { SupplierCode: supplierCode }, data: { IsActive: false } });
+  const updated = await prisma.invSupplier.update({
+    where: { SupplierCode: supplierCode },
+    data: { IsActive: false, UpdatedBy: user.userId, UpdatedDate: new Date() },
+  });
   await logAction(user.userId, "DEACTIVATE_SUPPLIER", { targetTable: "inv_supplier", targetId: supplierCode });
   return apiSuccess(updated);
 }

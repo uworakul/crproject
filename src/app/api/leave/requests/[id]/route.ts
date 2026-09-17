@@ -64,6 +64,8 @@ export async function PUT(request: NextRequest, ctx: RouteContext<"/api/leave/re
       EndDate: endDate,
       TotalDays: totalDays,
       HasMedicalCert: typeof body.hasMedicalCert === "boolean" ? body.hasMedicalCert : existing.HasMedicalCert,
+      UpdatedBy: user.userId,
+      UpdatedDate: new Date(),
     },
   });
 

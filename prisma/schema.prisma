@@ -13,6 +13,23 @@
 // - `RowVer` (ROWVERSION) columns use Unsupported("rowversion") — SQL Server
 //   maintains these automatically; Prisma Client cannot select/write them directly,
 //   use $queryRaw for optimistic-concurrency checks against these columns.
+// - CreatedDate/CreatedBy/UpdatedDate/UpdatedBy (added 2026-09-17 at the user's
+//   request, to every table): standard audit columns, nullable (existing seeded
+//   rows and tables predating this migration have no real acting user for them).
+//   CreatedBy/UpdatedBy are plain VARCHAR(20), no FK to sys_user — matching the
+//   precedent already set by SubmittedBy/ApprovedBy/RejectedBy on
+//   trn_worksheet_header and UpdatedBy on trn_worksheet_daily ("ไม่มี FK ใน DDL
+//   ที่อนุมัติ (ตั้งใจ)") — adding ~34 more named relations onto sys_user for
+//   this alone would make that model unwieldy for little real benefit. Skipped
+//   wherever a table already has an identically-named field (e.g. trn_request's
+//   own CreatedBy/CreatedDate) — those are left untouched, only the missing half
+//   of the pair is added. Tables that already carry an equivalent field under a
+//   different name (ref_black_list.AddedDate, mst_employee_history.RecordedBy/
+//   RecordedDate, trn_payroll_calculate_log.CalculatedBy/CalculatedDate,
+//   trn_payroll_lock.LockedBy/LockedDate) still get the new standard columns
+//   alongside for uniform querying, even though it's some redundancy — a
+//   deliberate tradeoff for "the same 4 columns work the same way on every
+//   table" over trying to reuse fields with different semantics.
 
 generator client {
   provider = "prisma-client"
@@ -27,9 +44,13 @@ datasource db {
 // mst_site — referenced by many tables
 // ============================================================
 model MstSite {
-  SiteCode String  @id(map: "PK_mst_site") @db.VarChar(10)
-  SiteName String  @db.NVarChar(150)
-  IsActive Boolean @default(true)
+  SiteCode    String    @id(map: "PK_mst_site") @db.VarChar(10)
+  SiteName    String    @db.NVarChar(150)
+  IsActive    Boolean   @default(true)
+  CreatedDate DateTime? @default(now()) @db.DateTime
+  CreatedBy   String?   @db.VarChar(20)
+  UpdatedDate DateTime? @db.DateTime
+  UpdatedBy   String?   @db.VarChar(20)
 
   Users               SysUser[]
   Permissions         SysUserPermission[]
@@ -44,9 +65,13 @@ model MstSite {
 // โมดูล 2: ตารางอ้างอิงพื้นฐาน
 // ============================================================
 model RefDepartment {
-  DeptCode String  @id(map: "PK_ref_department") @db.VarChar(10)
-  DeptName String  @db.NVarChar(100)
-  IsActive Boolean @default(true)
+  DeptCode    String    @id(map: "PK_ref_department") @db.VarChar(10)
+  DeptName    String    @db.NVarChar(100)
+  IsActive    Boolean   @default(true)
+  CreatedDate DateTime? @default(now()) @db.DateTime
+  CreatedBy   String?   @db.VarChar(20)
+  UpdatedDate DateTime? @db.DateTime
+  UpdatedBy   String?   @db.VarChar(20)
 
   Employees MstEmployee[]
 
@@ -54,10 +79,14 @@ model RefDepartment {
 }
 
 model RefPosition {
-  PositionCode      String  @id(map: "PK_ref_position") @db.VarChar(10)
-  PositionName      String  @db.NVarChar(100)
-  PositionAllowance Decimal @default(0) @db.Decimal(10, 2)
-  IsActive          Boolean @default(true)
+  PositionCode      String    @id(map: "PK_ref_position") @db.VarChar(10)
+  PositionName      String    @db.NVarChar(100)
+  PositionAllowance Decimal   @default(0) @db.Decimal(10, 2)
+  IsActive          Boolean   @default(true)
+  CreatedDate       DateTime? @default(now()) @db.DateTime
+  CreatedBy         String?   @db.VarChar(20)
+  UpdatedDate       DateTime? @db.DateTime
+  UpdatedBy         String?   @db.VarChar(20)
 
   Employees MstEmployee[]
 
@@ -65,10 +94,14 @@ model RefPosition {
 }
 
 model RefBank {
-  BankCode   String  @id(map: "PK_ref_bank") @db.VarChar(10)
-  BankNameTH String  @db.NVarChar(100)
-  BankNameEN String  @db.NVarChar(100)
-  IsActive   Boolean @default(true)
+  BankCode    String    @id(map: "PK_ref_bank") @db.VarChar(10)
+  BankNameTH  String    @db.NVarChar(100)
+  BankNameEN  String    @db.NVarChar(100)
+  IsActive    Boolean   @default(true)
+  CreatedDate DateTime? @default(now()) @db.DateTime
+  CreatedBy   String?   @db.VarChar(20)
+  UpdatedDate DateTime? @db.DateTime
+  UpdatedBy   String?   @db.VarChar(20)
 
   Employees MstEmployee[]
 
@@ -83,6 +116,10 @@ model RefSsoBase {
   MaxBase       Decimal   @db.Decimal(10, 2)
   EmployeeRate  Decimal   @db.Decimal(5, 4)
   EmployerRate  Decimal   @db.Decimal(5, 4)
+  CreatedDate   DateTime? @default(now()) @db.DateTime
+  CreatedBy     String?   @db.VarChar(20)
+  UpdatedDate   DateTime? @db.DateTime
+  UpdatedBy     String?   @db.VarChar(20)
 
   @@map("ref_sso_base")
 }
@@ -92,41 +129,57 @@ model RefSsoBase {
 // > Tax & Rate, but no table for it existed in the originally approved
 // 33-table DDL. Standalone reference data, no FK from any other table.
 model RefCompany {
-  CompanyCode  String  @id(map: "PK_ref_company") @db.VarChar(10)
-  CompanyName  String  @db.NVarChar(150)
-  Address      String? @db.NVarChar(300)
-  TaxID        String? @db.VarChar(20)
-  SSORegistNo  String? @db.VarChar(20)
-  ContactPhone String? @db.VarChar(20)
+  CompanyCode  String    @id(map: "PK_ref_company") @db.VarChar(10)
+  CompanyName  String    @db.NVarChar(150)
+  Address      String?   @db.NVarChar(300)
+  TaxID        String?   @db.VarChar(20)
+  SSORegistNo  String?   @db.VarChar(20)
+  ContactPhone String?   @db.VarChar(20)
+  CreatedDate  DateTime? @default(now()) @db.DateTime
+  CreatedBy    String?   @db.VarChar(20)
+  UpdatedDate  DateTime? @db.DateTime
+  UpdatedBy    String?   @db.VarChar(20)
 
   @@map("ref_company")
 }
 
 model RefBlackList {
-  BlackListID Int      @id(map: "PK_ref_black_list") @default(autoincrement())
-  IDCardNo    String   @db.VarChar(20)
-  FullName    String   @db.NVarChar(150)
-  Reason      String?  @db.NVarChar(300)
-  AddedDate   DateTime @default(now()) @db.DateTime
+  BlackListID Int       @id(map: "PK_ref_black_list") @default(autoincrement())
+  IDCardNo    String    @db.VarChar(20)
+  FullName    String    @db.NVarChar(150)
+  Reason      String?   @db.NVarChar(300)
+  AddedDate   DateTime  @default(now()) @db.DateTime
+  CreatedDate DateTime? @default(now()) @db.DateTime
+  CreatedBy   String?   @db.VarChar(20)
+  UpdatedDate DateTime? @db.DateTime
+  UpdatedBy   String?   @db.VarChar(20)
 
   @@map("ref_black_list")
 }
 
 model RefTaxBracket {
-  BracketID     Int     @id(map: "PK_ref_tax_bracket") @default(autoincrement())
-  EffectiveYear Int     @db.SmallInt
-  IncomeFrom    Decimal @db.Decimal(12, 2)
-  IncomeTo      Decimal @db.Decimal(12, 2)
-  TaxRate       Decimal @db.Decimal(5, 4)
+  BracketID     Int       @id(map: "PK_ref_tax_bracket") @default(autoincrement())
+  EffectiveYear Int       @db.SmallInt
+  IncomeFrom    Decimal   @db.Decimal(12, 2)
+  IncomeTo      Decimal   @db.Decimal(12, 2)
+  TaxRate       Decimal   @db.Decimal(5, 4)
+  CreatedDate   DateTime? @default(now()) @db.DateTime
+  CreatedBy     String?   @db.VarChar(20)
+  UpdatedDate   DateTime? @db.DateTime
+  UpdatedBy     String?   @db.VarChar(20)
 
   @@map("ref_tax_bracket")
 }
 
 model RefDeductionRate {
-  DeductionCode String  @id(map: "PK_ref_deduction_rate") @db.VarChar(20)
-  DeductionName String  @db.NVarChar(100)
-  MaxAmount     Decimal @db.Decimal(12, 2)
-  EffectiveYear Int     @db.SmallInt
+  DeductionCode String    @id(map: "PK_ref_deduction_rate") @db.VarChar(20)
+  DeductionName String    @db.NVarChar(100)
+  MaxAmount     Decimal   @db.Decimal(12, 2)
+  EffectiveYear Int       @db.SmallInt
+  CreatedDate   DateTime? @default(now()) @db.DateTime
+  CreatedBy     String?   @db.VarChar(20)
+  UpdatedDate   DateTime? @db.DateTime
+  UpdatedBy     String?   @db.VarChar(20)
 
   @@map("ref_deduction_rate")
 }
@@ -135,11 +188,15 @@ model RefDeductionRate {
 // โมดูล 1: ผู้ใช้งานและสิทธิ์ (User & Authorization)
 // ============================================================
 model SysMenu {
-  DocumentType String  @id(map: "PK_sys_menu") @db.VarChar(20)
-  MenuNameTH   String  @db.NVarChar(100)
-  MenuNameEN   String  @db.NVarChar(100)
-  ModuleGroup  String  @db.VarChar(30)
-  IsActive     Boolean @default(true)
+  DocumentType String    @id(map: "PK_sys_menu") @db.VarChar(20)
+  MenuNameTH   String    @db.NVarChar(100)
+  MenuNameEN   String    @db.NVarChar(100)
+  ModuleGroup  String    @db.VarChar(30)
+  IsActive     Boolean   @default(true)
+  CreatedDate  DateTime? @default(now()) @db.DateTime
+  CreatedBy    String?   @db.VarChar(20)
+  UpdatedDate  DateTime? @db.DateTime
+  UpdatedBy    String?   @db.VarChar(20)
 
   Permissions SysUserPermission[]
 
@@ -156,6 +213,9 @@ model SysUser {
   IsActive        Boolean   @default(true)
   CreatedDate     DateTime  @default(now()) @db.DateTime
   LastLoginDate   DateTime? @db.DateTime
+  CreatedBy       String?   @db.VarChar(20)
+  UpdatedDate     DateTime? @db.DateTime
+  UpdatedBy       String?   @db.VarChar(20)
 
   DefaultSite MstSite? @relation(fields: [DefaultSiteCode], references: [SiteCode], map: "FK_sys_user_mst_site", onUpdate: NoAction, onDelete: NoAction)
 
@@ -177,14 +237,18 @@ model SysUser {
 }
 
 model SysUserPermission {
-  PermissionID Int     @id(map: "PK_sys_user_permission") @default(autoincrement())
-  UserID       String  @db.VarChar(20)
-  DocumentType String  @db.VarChar(20)
-  SiteCode     String? @db.VarChar(10)
-  CanRead      Boolean @default(false)
-  CanSave      Boolean @default(false)
-  CanDelete    Boolean @default(false)
-  CanApprove   Boolean @default(false)
+  PermissionID Int       @id(map: "PK_sys_user_permission") @default(autoincrement())
+  UserID       String    @db.VarChar(20)
+  DocumentType String    @db.VarChar(20)
+  SiteCode     String?   @db.VarChar(10)
+  CanRead      Boolean   @default(false)
+  CanSave      Boolean   @default(false)
+  CanDelete    Boolean   @default(false)
+  CanApprove   Boolean   @default(false)
+  CreatedDate  DateTime? @default(now()) @db.DateTime
+  CreatedBy    String?   @db.VarChar(20)
+  UpdatedDate  DateTime? @db.DateTime
+  UpdatedBy    String?   @db.VarChar(20)
 
   Menu SysMenu  @relation(fields: [DocumentType], references: [DocumentType], map: "FK_sys_user_permission_sys_menu", onUpdate: NoAction, onDelete: NoAction)
   User SysUser  @relation(fields: [UserID], references: [UserID], map: "FK_sys_user_permission_sys_user", onUpdate: NoAction, onDelete: NoAction)
@@ -198,15 +262,18 @@ model SysUserPermission {
 // โมดูล 2 (ต่อ): ตารางที่ต้องมี sys_user ก่อน
 // ============================================================
 model SysPeriod {
-  PeriodID     Int      @id(map: "PK_sys_period") @default(autoincrement())
-  EmployeeType String   @db.VarChar(20)
-  PeriodYear   Int      @db.SmallInt
-  PeriodMonth  Int      @db.TinyInt
-  StartDate    DateTime @db.Date
-  EndDate      DateTime @db.Date
-  PayDate      DateTime @db.Date
-  Status       String   @default("OPEN") @db.VarChar(10) // CHECK: OPEN | CLOSED
-  CreatedDate  DateTime @default(now()) @db.DateTime
+  PeriodID     Int       @id(map: "PK_sys_period") @default(autoincrement())
+  EmployeeType String    @db.VarChar(20)
+  PeriodYear   Int       @db.SmallInt
+  PeriodMonth  Int       @db.TinyInt
+  StartDate    DateTime  @db.Date
+  EndDate      DateTime  @db.Date
+  PayDate      DateTime  @db.Date
+  Status       String    @default("OPEN") @db.VarChar(10) // CHECK: OPEN | CLOSED
+  CreatedDate  DateTime  @default(now()) @db.DateTime
+  CreatedBy    String?   @db.VarChar(20)
+  UpdatedDate  DateTime? @db.DateTime
+  UpdatedBy    String?   @db.VarChar(20)
 
   PayrollTransactions  TrnPayrollTransaction[]
   PayrollCalculateLogs TrnPayrollCalculateLog[]
@@ -216,13 +283,17 @@ model SysPeriod {
 }
 
 model SysProcessLog {
-  LogID       BigInt   @id(map: "PK_sys_process_log") @default(autoincrement())
-  UserID      String   @db.VarChar(20)
-  ActionType  String   @db.VarChar(50)
-  TargetTable String?  @db.VarChar(50)
-  TargetID    String?  @db.VarChar(50)
-  ActionDate  DateTime @default(now()) @db.DateTime
-  Detail      String?  @db.NVarChar(500)
+  LogID       BigInt    @id(map: "PK_sys_process_log") @default(autoincrement())
+  UserID      String    @db.VarChar(20)
+  ActionType  String    @db.VarChar(50)
+  TargetTable String?   @db.VarChar(50)
+  TargetID    String?   @db.VarChar(50)
+  ActionDate  DateTime  @default(now()) @db.DateTime
+  Detail      String?   @db.NVarChar(500)
+  CreatedDate DateTime? @default(now()) @db.DateTime
+  CreatedBy   String?   @db.VarChar(20)
+  UpdatedDate DateTime? @db.DateTime
+  UpdatedBy   String?   @db.VarChar(20)
 
   User SysUser @relation(fields: [UserID], references: [UserID], map: "FK_sys_process_log_sys_user", onUpdate: NoAction, onDelete: NoAction)
 
@@ -235,14 +306,17 @@ model SysProcessLog {
 // อนุมัติเพิ่ม 2026-09-15 — ไม่อยู่ใน HFC_System_Database_DDL.sql เดิม
 // ============================================================
 model SysSession {
-  SessionID        String   @id(map: "PK_sys_session") @db.VarChar(64)
-  UserID           String   @db.VarChar(20)
-  CreatedDate      DateTime @default(now()) @db.DateTime
-  LastActivityDate DateTime @default(now()) @db.DateTime
-  ExpiresDate      DateTime @db.DateTime
-  IPAddress        String?  @db.VarChar(45)
-  UserAgent        String?  @db.NVarChar(255)
-  IsRevoked        Boolean  @default(false)
+  SessionID        String    @id(map: "PK_sys_session") @db.VarChar(64)
+  UserID           String    @db.VarChar(20)
+  CreatedDate      DateTime  @default(now()) @db.DateTime
+  LastActivityDate DateTime  @default(now()) @db.DateTime
+  ExpiresDate      DateTime  @db.DateTime
+  IPAddress        String?   @db.VarChar(45)
+  UserAgent        String?   @db.NVarChar(255)
+  IsRevoked        Boolean   @default(false)
+  CreatedBy        String?   @db.VarChar(20)
+  UpdatedDate      DateTime? @db.DateTime
+  UpdatedBy        String?   @db.VarChar(20)
 
   User SysUser @relation(fields: [UserID], references: [UserID], map: "FK_sys_session_sys_user", onUpdate: NoAction, onDelete: NoAction)
 
@@ -272,6 +346,9 @@ model MstEmployee {
   PhotoPath       String?   @db.NVarChar(255)
   IsActive        Boolean   @default(true)
   CreatedDate     DateTime  @default(now()) @db.DateTime
+  CreatedBy       String?   @db.VarChar(20)
+  UpdatedDate     DateTime? @db.DateTime
+  UpdatedBy       String?   @db.VarChar(20)
 
   Department RefDepartment? @relation(fields: [DeptCode], references: [DeptCode], map: "FK_mst_employee_ref_department", onUpdate: NoAction, onDelete: NoAction)
   Position   RefPosition?   @relation(fields: [PositionCode], references: [PositionCode], map: "FK_mst_employee_ref_position", onUpdate: NoAction, onDelete: NoAction)
@@ -293,12 +370,16 @@ model MstEmployee {
 }
 
 model MstEmployeeQuota {
-  QuotaID        Int     @id(map: "PK_mst_employee_quota") @default(autoincrement())
-  EmpCode        String  @db.VarChar(15)
-  QuotaType      String  @db.VarChar(15) // CHECK: ADVANCE | LOAN | UNIFORM | SERVICE | INSURANCE
-  QuotaLimit     Decimal @default(0) @db.Decimal(12, 2)
-  QuotaUsed      Decimal @default(0) @db.Decimal(12, 2)
-  QuotaRemaining Decimal @default(0) @db.Decimal(12, 2)
+  QuotaID        Int       @id(map: "PK_mst_employee_quota") @default(autoincrement())
+  EmpCode        String    @db.VarChar(15)
+  QuotaType      String    @db.VarChar(15) // CHECK: ADVANCE | LOAN | UNIFORM | SERVICE | INSURANCE
+  QuotaLimit     Decimal   @default(0) @db.Decimal(12, 2)
+  QuotaUsed      Decimal   @default(0) @db.Decimal(12, 2)
+  QuotaRemaining Decimal   @default(0) @db.Decimal(12, 2)
+  CreatedDate    DateTime? @default(now()) @db.DateTime
+  CreatedBy      String?   @db.VarChar(20)
+  UpdatedDate    DateTime? @db.DateTime
+  UpdatedBy      String?   @db.VarChar(20)
 
   Employee MstEmployee @relation(fields: [EmpCode], references: [EmpCode], map: "FK_mst_employee_quota_mst_employee", onUpdate: NoAction, onDelete: NoAction)
 
@@ -307,12 +388,16 @@ model MstEmployeeQuota {
 }
 
 model MstEmployeeHistory {
-  HistoryID    BigInt   @id(map: "PK_mst_employee_history") @default(autoincrement())
-  EmpCode      String   @db.VarChar(15)
-  MemoType     String   @db.VarChar(10) // CHECK: GENERAL | ADMIN | FINANCE
-  MemoText     String   @db.NVarChar(1000)
-  RecordedBy   String   @db.VarChar(20)
-  RecordedDate DateTime @default(now()) @db.DateTime
+  HistoryID    BigInt    @id(map: "PK_mst_employee_history") @default(autoincrement())
+  EmpCode      String    @db.VarChar(15)
+  MemoType     String    @db.VarChar(10) // CHECK: GENERAL | ADMIN | FINANCE
+  MemoText     String    @db.NVarChar(1000)
+  RecordedBy   String    @db.VarChar(20)
+  RecordedDate DateTime  @default(now()) @db.DateTime
+  CreatedDate  DateTime? @default(now()) @db.DateTime
+  CreatedBy    String?   @db.VarChar(20)
+  UpdatedDate  DateTime? @db.DateTime
+  UpdatedBy    String?   @db.VarChar(20)
 
   Employee MstEmployee @relation(fields: [EmpCode], references: [EmpCode], map: "FK_mst_employee_history_mst_employee", onUpdate: NoAction, onDelete: NoAction)
   Recorder SysUser     @relation(fields: [RecordedBy], references: [UserID], map: "FK_mst_employee_history_sys_user", onUpdate: NoAction, onDelete: NoAction)
@@ -339,6 +424,8 @@ model TrnRequest {
   RejectedBy      String?   @db.VarChar(20)
   RejectedDate    DateTime? @db.DateTime
   RejectReason    String?   @db.NVarChar(300)
+  UpdatedDate     DateTime? @db.DateTime
+  UpdatedBy       String?   @db.VarChar(20)
 
   Employee MstEmployee @relation(fields: [EmpCode], references: [EmpCode], map: "FK_trn_request_mst_employee", onUpdate: NoAction, onDelete: NoAction)
   Creator  SysUser     @relation("RequestCreatedBy", fields: [CreatedBy], references: [UserID], map: "FK_trn_request_sys_user_created", onUpdate: NoAction, onDelete: NoAction)
@@ -354,11 +441,15 @@ model TrnRequest {
 // Ledger กลาง inv_stock_movement รองรับทุกประเภทการเคลื่อนไหว
 // ============================================================
 model InvSupplier {
-  SupplierCode String  @id(map: "PK_inv_supplier") @db.VarChar(15)
-  SupplierName String  @db.NVarChar(150)
-  Address      String? @db.NVarChar(300)
-  ContactPhone String? @db.VarChar(20)
-  IsActive     Boolean @default(true)
+  SupplierCode String    @id(map: "PK_inv_supplier") @db.VarChar(15)
+  SupplierName String    @db.NVarChar(150)
+  Address      String?   @db.NVarChar(300)
+  ContactPhone String?   @db.VarChar(20)
+  IsActive     Boolean   @default(true)
+  CreatedDate  DateTime? @default(now()) @db.DateTime
+  CreatedBy    String?   @db.VarChar(20)
+  UpdatedDate  DateTime? @db.DateTime
+  UpdatedBy    String?   @db.VarChar(20)
 
   StockMovements InvStockMovement[]
 
@@ -366,9 +457,13 @@ model InvSupplier {
 }
 
 model InvWarehouse {
-  WarehouseCode String  @id(map: "PK_inv_warehouse") @db.VarChar(10)
-  WarehouseName String  @db.NVarChar(150)
-  IsActive      Boolean @default(true)
+  WarehouseCode String    @id(map: "PK_inv_warehouse") @db.VarChar(10)
+  WarehouseName String    @db.NVarChar(150)
+  IsActive      Boolean   @default(true)
+  CreatedDate   DateTime? @default(now()) @db.DateTime
+  CreatedBy     String?   @db.VarChar(20)
+  UpdatedDate   DateTime? @db.DateTime
+  UpdatedBy     String?   @db.VarChar(20)
 
   MovementsFrom InvStockMovement[] @relation("MovementSourceWarehouse")
   MovementsTo   InvStockMovement[] @relation("MovementTargetWarehouse")
@@ -377,12 +472,16 @@ model InvWarehouse {
 }
 
 model InvProduct {
-  ProductCode String  @id(map: "PK_inv_product") @db.VarChar(15)
-  ProductName String  @db.NVarChar(150)
-  Category    String? @db.VarChar(30)
-  UnitCost    Decimal @default(0) @db.Decimal(10, 2)
-  UnitPrice   Decimal @default(0) @db.Decimal(10, 2)
-  IsActive    Boolean @default(true)
+  ProductCode String    @id(map: "PK_inv_product") @db.VarChar(15)
+  ProductName String    @db.NVarChar(150)
+  Category    String?   @db.VarChar(30)
+  UnitCost    Decimal   @default(0) @db.Decimal(10, 2)
+  UnitPrice   Decimal   @default(0) @db.Decimal(10, 2)
+  IsActive    Boolean   @default(true)
+  CreatedDate DateTime? @default(now()) @db.DateTime
+  CreatedBy   String?   @db.VarChar(20)
+  UpdatedDate DateTime? @db.DateTime
+  UpdatedBy   String?   @db.VarChar(20)
 
   MovementDetails InvStockMovementDetail[]
 
@@ -390,16 +489,18 @@ model InvProduct {
 }
 
 model InvStockMovement {
-  MovementID          Int      @id(map: "PK_inv_stock_movement") @default(autoincrement())
-  MovementType        String   @db.VarChar(15) // CHECK: ADJUST | PURCHASE | TRANSFER | ISSUE | RETURN
-  WarehouseCode       String   @db.VarChar(10)
-  TargetWarehouseCode String?  @db.VarChar(10)
-  SupplierCode        String?  @db.VarChar(15)
-  EmpCode             String?  @db.VarChar(15)
-  MovementDate        DateTime @db.Date
-  Status              String   @default("DRAFT") @db.VarChar(10) // CHECK: DRAFT | CONFIRMED
-  CreatedBy           String   @db.VarChar(20)
-  CreatedDate         DateTime @default(now()) @db.DateTime
+  MovementID          Int       @id(map: "PK_inv_stock_movement") @default(autoincrement())
+  MovementType        String    @db.VarChar(15) // CHECK: ADJUST | PURCHASE | TRANSFER | ISSUE | RETURN
+  WarehouseCode       String    @db.VarChar(10)
+  TargetWarehouseCode String?   @db.VarChar(10)
+  SupplierCode        String?   @db.VarChar(15)
+  EmpCode             String?   @db.VarChar(15)
+  MovementDate        DateTime  @db.Date
+  Status              String    @default("DRAFT") @db.VarChar(10) // CHECK: DRAFT | CONFIRMED
+  CreatedBy           String    @db.VarChar(20)
+  CreatedDate         DateTime  @default(now()) @db.DateTime
+  UpdatedDate         DateTime? @db.DateTime
+  UpdatedBy           String?   @db.VarChar(20)
 
   Warehouse       InvWarehouse  @relation("MovementSourceWarehouse", fields: [WarehouseCode], references: [WarehouseCode], map: "FK_inv_stock_movement_warehouse", onUpdate: NoAction, onDelete: NoAction)
   TargetWarehouse InvWarehouse? @relation("MovementTargetWarehouse", fields: [TargetWarehouseCode], references: [WarehouseCode], map: "FK_inv_stock_movement_target_warehouse", onUpdate: NoAction, onDelete: NoAction)
@@ -414,12 +515,16 @@ model InvStockMovement {
 }
 
 model InvStockMovementDetail {
-  DetailID    Int     @id(map: "PK_inv_stock_movement_detail") @default(autoincrement())
+  DetailID    Int       @id(map: "PK_inv_stock_movement_detail") @default(autoincrement())
   MovementID  Int
-  ProductCode String  @db.VarChar(15)
-  Qty         Decimal @db.Decimal(10, 2)
-  UnitPrice   Decimal @db.Decimal(10, 2)
-  Amount      Decimal @db.Decimal(12, 2)
+  ProductCode String    @db.VarChar(15)
+  Qty         Decimal   @db.Decimal(10, 2)
+  UnitPrice   Decimal   @db.Decimal(10, 2)
+  Amount      Decimal   @db.Decimal(12, 2)
+  CreatedDate DateTime? @default(now()) @db.DateTime
+  CreatedBy   String?   @db.VarChar(20)
+  UpdatedDate DateTime? @db.DateTime
+  UpdatedBy   String?   @db.VarChar(20)
 
   Movement InvStockMovement @relation(fields: [MovementID], references: [MovementID], map: "FK_inv_stock_movement_detail_movement", onUpdate: NoAction, onDelete: NoAction)
   Product  InvProduct       @relation(fields: [ProductCode], references: [ProductCode], map: "FK_inv_stock_movement_detail_product", onUpdate: NoAction, onDelete: NoAction)
@@ -429,13 +534,17 @@ model InvStockMovementDetail {
 }
 
 model InvEmployeeDebt {
-  DebtID          Int     @id(map: "PK_inv_employee_debt") @default(autoincrement())
-  EmpCode         String  @db.VarChar(15)
+  DebtID          Int       @id(map: "PK_inv_employee_debt") @default(autoincrement())
+  EmpCode         String    @db.VarChar(15)
   MovementID      Int
-  TotalAmount     Decimal @default(0) @db.Decimal(12, 2)
-  PaidAmount      Decimal @default(0) @db.Decimal(12, 2)
-  RemainingAmount Decimal @default(0) @db.Decimal(12, 2)
-  Status          String  @default("OPEN") @db.VarChar(10) // CHECK: OPEN | CLOSED
+  TotalAmount     Decimal   @default(0) @db.Decimal(12, 2)
+  PaidAmount      Decimal   @default(0) @db.Decimal(12, 2)
+  RemainingAmount Decimal   @default(0) @db.Decimal(12, 2)
+  Status          String    @default("OPEN") @db.VarChar(10) // CHECK: OPEN | CLOSED
+  CreatedDate     DateTime? @default(now()) @db.DateTime
+  CreatedBy       String?   @db.VarChar(20)
+  UpdatedDate     DateTime? @db.DateTime
+  UpdatedBy       String?   @db.VarChar(20)
 
   Employee MstEmployee      @relation(fields: [EmpCode], references: [EmpCode], map: "FK_inv_employee_debt_employee", onUpdate: NoAction, onDelete: NoAction)
   Movement InvStockMovement @relation(fields: [MovementID], references: [MovementID], map: "FK_inv_employee_debt_movement", onUpdate: NoAction, onDelete: NoAction)
@@ -448,12 +557,16 @@ model InvEmployeeDebt {
 // ตารางหลักของระบบใหม่ — Auto-post เข้า trn_payroll_transaction โดยตรง
 // ============================================================
 model MstAttendanceCode {
-  Code          String  @id(map: "PK_mst_attendance_code") @db.VarChar(3)
-  CodeNameTH    String  @db.NVarChar(50)
-  CodeNameEN    String  @db.NVarChar(50)
-  PayMultiplier Decimal @default(1.0) @db.Decimal(3, 1)
-  SortOrder     Int     @default(0) @db.TinyInt
-  IsActive      Boolean @default(true)
+  Code          String    @id(map: "PK_mst_attendance_code") @db.VarChar(3)
+  CodeNameTH    String    @db.NVarChar(50)
+  CodeNameEN    String    @db.NVarChar(50)
+  PayMultiplier Decimal   @default(1.0) @db.Decimal(3, 1)
+  SortOrder     Int       @default(0) @db.TinyInt
+  IsActive      Boolean   @default(true)
+  CreatedDate   DateTime? @default(now()) @db.DateTime
+  CreatedBy     String?   @db.VarChar(20)
+  UpdatedDate   DateTime? @db.DateTime
+  UpdatedBy     String?   @db.VarChar(20)
 
   DailyRecords TrnWorksheetDaily[]
 
@@ -475,6 +588,8 @@ model TrnWorksheetHeader {
   RejectedBy    String?                   @db.VarChar(20) // ไม่มี FK ใน DDL ที่อนุมัติ (ตั้งใจ)
   RejectedDate  DateTime?                 @db.DateTime
   RejectReason  String?                   @db.NVarChar(300)
+  UpdatedDate   DateTime?                 @db.DateTime
+  UpdatedBy     String?                   @db.VarChar(20)
   RowVer        Unsupported("rowversion")
 
   Site    MstSite @relation(fields: [SiteCode], references: [SiteCode], map: "FK_trn_worksheet_header_site", onUpdate: NoAction, onDelete: NoAction)
@@ -494,6 +609,10 @@ model TrnWorksheetDetail {
   EmpType           String                    @default("REGULAR") @db.VarChar(10) // ไม่มี CHECK ใน DDL ที่อนุมัติ (REGULAR/SPARE ตาม BRD)
   DailyRate         Decimal                   @db.Decimal(10, 2)
   DisplayOrder      Int                       @default(0) @db.SmallInt
+  CreatedDate       DateTime?                 @default(now()) @db.DateTime
+  CreatedBy         String?                   @db.VarChar(20)
+  UpdatedDate       DateTime?                 @db.DateTime
+  UpdatedBy         String?                   @db.VarChar(20)
   RowVer            Unsupported("rowversion")
 
   Header   TrnWorksheetHeader @relation(fields: [WorksheetID], references: [WorksheetID], map: "FK_trn_worksheet_detail_header", onUpdate: NoAction, onDelete: NoAction)
@@ -506,13 +625,15 @@ model TrnWorksheetDetail {
 }
 
 model TrnWorksheetDaily {
-  WorksheetDailyID  Int      @id(map: "PK_trn_worksheet_daily") @default(autoincrement())
+  WorksheetDailyID  Int       @id(map: "PK_trn_worksheet_daily") @default(autoincrement())
   WorksheetDetailID Int
-  WorkDate          DateTime @db.Date
-  AttendCode        String?  @db.VarChar(3)
-  Remark            String?  @db.NVarChar(200)
-  UpdatedBy         String   @db.VarChar(20) // ไม่มี FK ใน DDL ที่อนุมัติ (ตั้งใจ)
-  UpdatedDate       DateTime @default(now()) @db.DateTime
+  WorkDate          DateTime  @db.Date
+  AttendCode        String?   @db.VarChar(3)
+  Remark            String?   @db.NVarChar(200)
+  UpdatedBy         String    @db.VarChar(20) // ไม่มี FK ใน DDL ที่อนุมัติ (ตั้งใจ)
+  UpdatedDate       DateTime  @default(now()) @db.DateTime
+  CreatedDate       DateTime? @default(now()) @db.DateTime
+  CreatedBy         String?   @db.VarChar(20)
 
   Detail         TrnWorksheetDetail @relation(fields: [WorksheetDetailID], references: [WorksheetDetailID], map: "FK_trn_worksheet_daily_detail", onUpdate: NoAction, onDelete: NoAction)
   AttendanceCode MstAttendanceCode? @relation(fields: [AttendCode], references: [Code], map: "FK_trn_worksheet_daily_attend_code", onUpdate: NoAction, onDelete: NoAction)
@@ -526,29 +647,32 @@ model TrnWorksheetDaily {
 // โมดูล 6: คำนวณและจ่ายเงินเดือน (Payroll)
 // ============================================================
 model TrnPayrollTransaction {
-  TransactionID     Int      @id(map: "PK_trn_payroll_transaction") @default(autoincrement())
-  EmpCode           String   @db.VarChar(15)
+  TransactionID     Int       @id(map: "PK_trn_payroll_transaction") @default(autoincrement())
+  EmpCode           String    @db.VarChar(15)
   PeriodID          Int
-  SiteCode          String   @db.VarChar(10)
-  WorkDays          Decimal  @default(0) @db.Decimal(5, 2)
-  DoubleShiftDays   Decimal  @default(0) @db.Decimal(5, 2)
-  HolidayDays       Decimal  @default(0) @db.Decimal(5, 2)
-  OTHours           Decimal  @default(0) @db.Decimal(6, 2)
-  OTAmount          Decimal  @default(0) @db.Decimal(10, 2)
-  PositionAllowance Decimal  @default(0) @db.Decimal(10, 2)
-  ShiftAllowance    Decimal  @default(0) @db.Decimal(10, 2)
-  AdvanceDeduct     Decimal  @default(0) @db.Decimal(10, 2)
-  LoanDeduct        Decimal  @default(0) @db.Decimal(10, 2)
-  TrainingDeduct    Decimal  @default(0) @db.Decimal(10, 2)
-  UniformDeduct     Decimal  @default(0) @db.Decimal(10, 2)
-  GrossWage         Decimal  @default(0) @db.Decimal(12, 2)
-  TaxWithheld       Decimal  @default(0) @db.Decimal(10, 2)
-  SSOAmount         Decimal  @default(0) @db.Decimal(10, 2)
-  OtherIncome       Decimal  @default(0) @db.Decimal(10, 2)
-  OtherDeduction    Decimal  @default(0) @db.Decimal(10, 2)
-  NetPay            Decimal  @default(0) @db.Decimal(12, 2)
+  SiteCode          String    @db.VarChar(10)
+  WorkDays          Decimal   @default(0) @db.Decimal(5, 2)
+  DoubleShiftDays   Decimal   @default(0) @db.Decimal(5, 2)
+  HolidayDays       Decimal   @default(0) @db.Decimal(5, 2)
+  OTHours           Decimal   @default(0) @db.Decimal(6, 2)
+  OTAmount          Decimal   @default(0) @db.Decimal(10, 2)
+  PositionAllowance Decimal   @default(0) @db.Decimal(10, 2)
+  ShiftAllowance    Decimal   @default(0) @db.Decimal(10, 2)
+  AdvanceDeduct     Decimal   @default(0) @db.Decimal(10, 2)
+  LoanDeduct        Decimal   @default(0) @db.Decimal(10, 2)
+  TrainingDeduct    Decimal   @default(0) @db.Decimal(10, 2)
+  UniformDeduct     Decimal   @default(0) @db.Decimal(10, 2)
+  GrossWage         Decimal   @default(0) @db.Decimal(12, 2)
+  TaxWithheld       Decimal   @default(0) @db.Decimal(10, 2)
+  SSOAmount         Decimal   @default(0) @db.Decimal(10, 2)
+  OtherIncome       Decimal   @default(0) @db.Decimal(10, 2)
+  OtherDeduction    Decimal   @default(0) @db.Decimal(10, 2)
+  NetPay            Decimal   @default(0) @db.Decimal(12, 2)
   SourceWorksheetID Int?
-  CreatedDate       DateTime @default(now()) @db.DateTime
+  CreatedDate       DateTime  @default(now()) @db.DateTime
+  CreatedBy         String?   @db.VarChar(20)
+  UpdatedDate       DateTime? @db.DateTime
+  UpdatedBy         String?   @db.VarChar(20)
 
   Employee        MstEmployee         @relation(fields: [EmpCode], references: [EmpCode], map: "FK_trn_payroll_transaction_employee", onUpdate: NoAction, onDelete: NoAction)
   Period          SysPeriod           @relation(fields: [PeriodID], references: [PeriodID], map: "FK_trn_payroll_transaction_period", onUpdate: NoAction, onDelete: NoAction)
@@ -561,14 +685,18 @@ model TrnPayrollTransaction {
 }
 
 model TrnPayrollCalculateLog {
-  LogID          Int      @id(map: "PK_trn_payroll_calculate_log") @default(autoincrement())
+  LogID          Int       @id(map: "PK_trn_payroll_calculate_log") @default(autoincrement())
   PeriodID       Int
-  EmployeeType   String   @db.VarChar(20)
-  CalculatedBy   String   @db.VarChar(20)
-  CalculatedDate DateTime @default(now()) @db.DateTime
-  Status         String   @db.VarChar(10) // CHECK: SUCCESS | CANCELLED
-  EmployeeCount  Int      @default(0)
-  TotalAmount    Decimal  @default(0) @db.Decimal(14, 2)
+  EmployeeType   String    @db.VarChar(20)
+  CalculatedBy   String    @db.VarChar(20)
+  CalculatedDate DateTime  @default(now()) @db.DateTime
+  Status         String    @db.VarChar(10) // CHECK: SUCCESS | CANCELLED
+  EmployeeCount  Int       @default(0)
+  TotalAmount    Decimal   @default(0) @db.Decimal(14, 2)
+  CreatedDate    DateTime? @default(now()) @db.DateTime
+  CreatedBy      String?   @db.VarChar(20)
+  UpdatedDate    DateTime? @db.DateTime
+  UpdatedBy      String?   @db.VarChar(20)
 
   Period     SysPeriod @relation(fields: [PeriodID], references: [PeriodID], map: "FK_trn_payroll_calculate_log_period", onUpdate: NoAction, onDelete: NoAction)
   Calculator SysUser   @relation(fields: [CalculatedBy], references: [UserID], map: "FK_trn_payroll_calculate_log_user", onUpdate: NoAction, onDelete: NoAction)
@@ -577,11 +705,15 @@ model TrnPayrollCalculateLog {
 }
 
 model TrnPayrollLock {
-  LockID     Int       @id(map: "PK_trn_payroll_lock") @default(autoincrement())
-  PeriodID   Int
-  IsLocked   Boolean   @default(false)
-  LockedBy   String?   @db.VarChar(20)
-  LockedDate DateTime? @db.DateTime
+  LockID      Int       @id(map: "PK_trn_payroll_lock") @default(autoincrement())
+  PeriodID    Int
+  IsLocked    Boolean   @default(false)
+  LockedBy    String?   @db.VarChar(20)
+  LockedDate  DateTime? @db.DateTime
+  CreatedDate DateTime? @default(now()) @db.DateTime
+  CreatedBy   String?   @db.VarChar(20)
+  UpdatedDate DateTime? @db.DateTime
+  UpdatedBy   String?   @db.VarChar(20)
 
   Period SysPeriod @relation(fields: [PeriodID], references: [PeriodID], map: "FK_trn_payroll_lock_period", onUpdate: NoAction, onDelete: NoAction)
   Locker SysUser?  @relation(fields: [LockedBy], references: [UserID], map: "FK_trn_payroll_lock_user", onUpdate: NoAction, onDelete: NoAction)
@@ -593,10 +725,14 @@ model TrnPayrollLock {
 // โมดูล 7: การลาและประวัติการลา (Leave)
 // ============================================================
 model MstLeaveType {
-  LeaveTypeCode      String  @id(map: "PK_mst_leave_type") @db.VarChar(10)
-  LeaveTypeName      String  @db.NVarChar(100)
-  MaxDaysPerYear     Int     @db.TinyInt
-  RequireMedicalCert Boolean @default(false)
+  LeaveTypeCode      String    @id(map: "PK_mst_leave_type") @db.VarChar(10)
+  LeaveTypeName      String    @db.NVarChar(100)
+  MaxDaysPerYear     Int       @db.TinyInt
+  RequireMedicalCert Boolean   @default(false)
+  CreatedDate        DateTime? @default(now()) @db.DateTime
+  CreatedBy          String?   @db.VarChar(20)
+  UpdatedDate        DateTime? @db.DateTime
+  UpdatedBy          String?   @db.VarChar(20)
 
   LeaveRequests TrnLeaveRequest[]
   LeaveBalances MstEmployeeLeaveBalance[]
@@ -617,6 +753,8 @@ model TrnLeaveRequest {
   CreatedDate    DateTime  @default(now()) @db.DateTime
   ApprovedBy     String?   @db.VarChar(20)
   ApprovedDate   DateTime? @db.DateTime
+  UpdatedDate    DateTime? @db.DateTime
+  UpdatedBy      String?   @db.VarChar(20)
 
   Employee  MstEmployee  @relation(fields: [EmpCode], references: [EmpCode], map: "FK_trn_leave_request_employee", onUpdate: NoAction, onDelete: NoAction)
   LeaveType MstLeaveType @relation(fields: [LeaveTypeCode], references: [LeaveTypeCode], map: "FK_trn_leave_request_type", onUpdate: NoAction, onDelete: NoAction)
@@ -627,13 +765,17 @@ model TrnLeaveRequest {
 }
 
 model MstEmployeeLeaveBalance {
-  BalanceID     Int     @id(map: "PK_mst_employee_leave_balance") @default(autoincrement())
-  EmpCode       String  @db.VarChar(15)
-  LeaveTypeCode String  @db.VarChar(10)
-  Year          Int     @db.SmallInt
-  Entitled      Decimal @default(0) @db.Decimal(4, 1)
-  Used          Decimal @default(0) @db.Decimal(4, 1)
-  Remaining     Decimal @default(0) @db.Decimal(4, 1)
+  BalanceID     Int       @id(map: "PK_mst_employee_leave_balance") @default(autoincrement())
+  EmpCode       String    @db.VarChar(15)
+  LeaveTypeCode String    @db.VarChar(10)
+  Year          Int       @db.SmallInt
+  Entitled      Decimal   @default(0) @db.Decimal(4, 1)
+  Used          Decimal   @default(0) @db.Decimal(4, 1)
+  Remaining     Decimal   @default(0) @db.Decimal(4, 1)
+  CreatedDate   DateTime? @default(now()) @db.DateTime
+  CreatedBy     String?   @db.VarChar(20)
+  UpdatedDate   DateTime? @db.DateTime
+  UpdatedBy     String?   @db.VarChar(20)
 
   Employee  MstEmployee  @relation(fields: [EmpCode], references: [EmpCode], map: "FK_mst_employee_leave_balance_employee", onUpdate: NoAction, onDelete: NoAction)
   LeaveType MstLeaveType @relation(fields: [LeaveTypeCode], references: [LeaveTypeCode], map: "FK_mst_employee_leave_balance_type", onUpdate: NoAction, onDelete: NoAction)

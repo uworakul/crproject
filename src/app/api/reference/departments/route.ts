@@ -35,7 +35,7 @@ export async function POST(request: NextRequest) {
   const existing = await prisma.refDepartment.findUnique({ where: { DeptCode: deptCode } });
   if (existing) return apiError(409, "DEPARTMENT_ALREADY_EXISTS", undefined, { deptCode });
 
-  const created = await prisma.refDepartment.create({ data: { DeptCode: deptCode, DeptName: deptName } });
+  const created = await prisma.refDepartment.create({ data: { DeptCode: deptCode, DeptName: deptName, CreatedBy: user.userId } });
   await logAction(user.userId, "CREATE_DEPARTMENT", { targetTable: "ref_department", targetId: deptCode });
   return apiSuccess(created, 201);
 }

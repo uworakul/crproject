@@ -29,7 +29,13 @@ export async function PUT(request: NextRequest, ctx: RouteContext<"/api/leave/ty
 
   const updated = await prisma.mstLeaveType.update({
     where: { LeaveTypeCode: code },
-    data: { LeaveTypeName: leaveTypeName, MaxDaysPerYear: maxDaysPerYear, RequireMedicalCert: body.requireMedicalCert === true },
+    data: {
+      LeaveTypeName: leaveTypeName,
+      MaxDaysPerYear: maxDaysPerYear,
+      RequireMedicalCert: body.requireMedicalCert === true,
+      UpdatedBy: user.userId,
+      UpdatedDate: new Date(),
+    },
   });
 
   await logAction(user.userId, "UPDATE_LEAVE_TYPE", { targetTable: "mst_leave_type", targetId: code });

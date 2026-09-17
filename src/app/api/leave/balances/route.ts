@@ -83,8 +83,8 @@ export async function POST(request: NextRequest) {
       const entitled = Number(e.entitled);
       return prisma.mstEmployeeLeaveBalance.upsert({
         where: { EmpCode_LeaveTypeCode_Year: { EmpCode: empCode, LeaveTypeCode: leaveTypeCode, Year: year } },
-        update: { Entitled: entitled },
-        create: { EmpCode: empCode, LeaveTypeCode: leaveTypeCode, Year: year, Entitled: entitled, Used: 0, Remaining: entitled },
+        update: { Entitled: entitled, UpdatedBy: user.userId, UpdatedDate: new Date() },
+        create: { EmpCode: empCode, LeaveTypeCode: leaveTypeCode, Year: year, Entitled: entitled, Used: 0, Remaining: entitled, CreatedBy: user.userId },
       });
     }),
   );

@@ -33,6 +33,8 @@ export async function PUT(request: NextRequest, ctx: RouteContext<"/api/referenc
       PositionName: typeof body.positionName === "string" ? body.positionName.trim() : undefined,
       PositionAllowance: body.positionAllowance !== undefined ? Number(body.positionAllowance) : undefined,
       IsActive: typeof body.isActive === "boolean" ? body.isActive : undefined,
+      UpdatedBy: user.userId,
+      UpdatedDate: new Date(),
     },
   });
 
@@ -50,7 +52,7 @@ export async function DELETE(_req: Request, ctx: RouteContext<"/api/reference/po
   const existing = await prisma.refPosition.findUnique({ where: { PositionCode: code } });
   if (!existing) return apiError(404, "POSITION_NOT_FOUND");
 
-  await prisma.refPosition.update({ where: { PositionCode: code }, data: { IsActive: false } });
+  await prisma.refPosition.update({ where: { PositionCode: code }, data: { IsActive: false, UpdatedBy: user.userId, UpdatedDate: new Date() } });
   await logAction(user.userId, "DEACTIVATE_POSITION", { targetTable: "ref_position", targetId: code });
   return apiSuccess({ ok: true });
 }

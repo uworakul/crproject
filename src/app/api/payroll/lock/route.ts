@@ -59,8 +59,13 @@ export async function POST(request: NextRequest) {
 
   const existing = await prisma.trnPayrollLock.findFirst({ where: { PeriodID: periodId }, orderBy: { LockID: "desc" } });
   const updated = existing
-    ? await prisma.trnPayrollLock.update({ where: { LockID: existing.LockID }, data: { IsLocked: true, LockedBy: user.userId, LockedDate: new Date() } })
-    : await prisma.trnPayrollLock.create({ data: { PeriodID: periodId, IsLocked: true, LockedBy: user.userId, LockedDate: new Date() } });
+    ? await prisma.trnPayrollLock.update({
+        where: { LockID: existing.LockID },
+        data: { IsLocked: true, LockedBy: user.userId, LockedDate: new Date(), UpdatedBy: user.userId, UpdatedDate: new Date() },
+      })
+    : await prisma.trnPayrollLock.create({
+        data: { PeriodID: periodId, IsLocked: true, LockedBy: user.userId, LockedDate: new Date(), CreatedBy: user.userId },
+      });
 
   await logAction(user.userId, "PAYROLL_LOCK", { targetTable: "trn_payroll_lock", targetId: String(periodId) });
   return apiSuccess(updated);
@@ -83,7 +88,10 @@ export async function DELETE(request: NextRequest) {
   const existing = await prisma.trnPayrollLock.findFirst({ where: { PeriodID: periodId }, orderBy: { LockID: "desc" } });
   if (!existing || !existing.IsLocked) return apiError(409, "NOT_LOCKED", "This period is not currently locked");
 
-  const updated = await prisma.trnPayrollLock.update({ where: { LockID: existing.LockID }, data: { IsLocked: false, LockedBy: null, LockedDate: null } });
+  const updated = await prisma.trnPayrollLock.update({
+    where: { LockID: existing.LockID },
+    data: { IsLocked: false, LockedBy: null, LockedDate: null, UpdatedBy: user.userId, UpdatedDate: new Date() },
+  });
 
   await logAction(user.userId, "PAYROLL_UNLOCK", { targetTable: "trn_payroll_lock", targetId: String(periodId) });
   return apiSuccess(updated);

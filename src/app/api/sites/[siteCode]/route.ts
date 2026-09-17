@@ -37,7 +37,12 @@ export async function PUT(request: NextRequest, ctx: RouteContext<"/api/sites/[s
 
   const updated = await prisma.mstSite.update({
     where: { SiteCode: siteCode },
-    data: { SiteName: siteName, IsActive: typeof body.isActive === "boolean" ? body.isActive : existing.IsActive },
+    data: {
+      SiteName: siteName,
+      IsActive: typeof body.isActive === "boolean" ? body.isActive : existing.IsActive,
+      UpdatedBy: user.userId,
+      UpdatedDate: new Date(),
+    },
   });
 
   await logAction(user.userId, "UPDATE_SITE", { targetTable: "mst_site", targetId: siteCode });
@@ -54,7 +59,10 @@ export async function DELETE(_req: NextRequest, ctx: RouteContext<"/api/sites/[s
   const existing = await prisma.mstSite.findUnique({ where: { SiteCode: siteCode } });
   if (!existing) return apiError(404, "SITE_NOT_FOUND");
 
-  const updated = await prisma.mstSite.update({ where: { SiteCode: siteCode }, data: { IsActive: false } });
+  const updated = await prisma.mstSite.update({
+    where: { SiteCode: siteCode },
+    data: { IsActive: false, UpdatedBy: user.userId, UpdatedDate: new Date() },
+  });
   await logAction(user.userId, "DEACTIVATE_SITE", { targetTable: "mst_site", targetId: siteCode });
   return apiSuccess(updated);
 }

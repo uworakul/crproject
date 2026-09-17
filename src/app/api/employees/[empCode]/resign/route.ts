@@ -28,7 +28,7 @@ export async function POST(request: NextRequest, ctx: RouteContext<"/api/employe
 
   const updated = await prisma.mstEmployee.update({
     where: { EmpCode: empCode },
-    data: { EmployeeStatus: "RESIGNED", ResignDate: resignDate },
+    data: { EmployeeStatus: "RESIGNED", ResignDate: resignDate, UpdatedBy: user.userId, UpdatedDate: new Date() },
   });
 
   await logAction(user.userId, "RESIGN_EMPLOYEE", { targetTable: "mst_employee", targetId: empCode });

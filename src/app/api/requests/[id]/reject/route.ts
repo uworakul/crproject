@@ -38,7 +38,7 @@ export async function POST(request: NextRequest, ctx: RouteContext<"/api/request
 
   const updated = await prisma.trnRequest.update({
     where: { RequestID: requestId },
-    data: { Status: "DRAFT", RejectedBy: user.userId, RejectedDate: new Date(), RejectReason: reason },
+    data: { Status: "DRAFT", RejectedBy: user.userId, RejectedDate: new Date(), RejectReason: reason, UpdatedBy: user.userId, UpdatedDate: new Date() },
   });
 
   await logAction(user.userId, "REJECT_REQUEST", { targetTable: "trn_request", targetId: id, detail: reason });

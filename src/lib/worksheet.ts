@@ -42,8 +42,8 @@ export async function getOrCreateDraftWorksheet(siteCode: string, year: number, 
     for (let i = 0; i < regulars.length; i++) {
       const e = regulars[i];
       await tx.$executeRaw`
-        INSERT INTO trn_worksheet_detail (WorksheetID, EmpCode, EmpType, DailyRate, DisplayOrder)
-        VALUES (${id}, ${e.EmpCode}, 'REGULAR', ${e.DailyRate}, ${i})
+        INSERT INTO trn_worksheet_detail (WorksheetID, EmpCode, EmpType, DailyRate, DisplayOrder, CreatedBy)
+        VALUES (${id}, ${e.EmpCode}, 'REGULAR', ${e.DailyRate}, ${i}, ${userId})
       `;
     }
 
@@ -253,6 +253,8 @@ export async function approveWorksheet(
           SSOAmount: 0,
           NetPay: netPay,
           SourceWorksheetID: header.WorksheetID,
+          UpdatedBy: approvedBy,
+          UpdatedDate: new Date(),
         },
         create: {
           EmpCode: p.empCode,
@@ -264,13 +266,14 @@ export async function approveWorksheet(
           GrossWage: p.grossWage,
           NetPay: p.grossWage,
           SourceWorksheetID: header.WorksheetID,
+          CreatedBy: approvedBy,
         },
       });
     }
 
     await tx.trnWorksheetHeader.update({
       where: { WorksheetID: worksheetId },
-      data: { Status: "APPROVED", ApprovedBy: approvedBy, ApprovedDate: new Date() },
+      data: { Status: "APPROVED", ApprovedBy: approvedBy, ApprovedDate: new Date(), UpdatedBy: approvedBy, UpdatedDate: new Date() },
     });
   });
 

@@ -46,7 +46,7 @@ export async function POST(request: NextRequest) {
     return apiError(409, "SITE_ALREADY_EXISTS", undefined, { siteCode });
   }
 
-  const created = await prisma.mstSite.create({ data: { SiteCode: siteCode, SiteName: siteName } });
+  const created = await prisma.mstSite.create({ data: { SiteCode: siteCode, SiteName: siteName, CreatedBy: user.userId } });
 
   await logAction(user.userId, "CREATE_SITE", { targetTable: "mst_site", targetId: siteCode });
 

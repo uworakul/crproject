@@ -78,6 +78,7 @@ export async function PUT(request: NextRequest, ctx: RouteContext<"/api/workshee
           WorkDate: workDate,
           AttendCode: entry.attendCode,
           UpdatedBy: user.userId,
+          CreatedBy: user.userId,
         },
       });
     }),

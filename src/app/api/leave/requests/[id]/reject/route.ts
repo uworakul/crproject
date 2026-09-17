@@ -25,7 +25,10 @@ export async function POST(_req: Request, ctx: RouteContext<"/api/leave/requests
     return apiError(409, "INVALID_STATUS_TRANSITION", "Only a SUBMITTED leave request can be rejected", { currentStatus: existing.Status });
   }
 
-  const updated = await prisma.trnLeaveRequest.update({ where: { LeaveID: leaveId }, data: { Status: "REJECTED" } });
+  const updated = await prisma.trnLeaveRequest.update({
+    where: { LeaveID: leaveId },
+    data: { Status: "REJECTED", UpdatedBy: user.userId, UpdatedDate: new Date() },
+  });
   await logAction(user.userId, "REJECT_LEAVE_REQUEST", { targetTable: "trn_leave_request", targetId: id });
   return apiSuccess(updated);
 }

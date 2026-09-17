@@ -35,7 +35,9 @@ export async function POST(request: NextRequest) {
   const existing = await prisma.invWarehouse.findUnique({ where: { WarehouseCode: warehouseCode } });
   if (existing) return apiError(409, "WAREHOUSE_ALREADY_EXISTS", undefined, { warehouseCode });
 
-  const created = await prisma.invWarehouse.create({ data: { WarehouseCode: warehouseCode, WarehouseName: warehouseName } });
+  const created = await prisma.invWarehouse.create({
+    data: { WarehouseCode: warehouseCode, WarehouseName: warehouseName, CreatedBy: user.userId },
+  });
   await logAction(user.userId, "CREATE_WAREHOUSE", { targetTable: "inv_warehouse", targetId: warehouseCode });
   return apiSuccess(created, 201);
 }

@@ -65,6 +65,8 @@ export async function PUT(request: NextRequest, ctx: RouteContext<"/api/requests
     data: {
       Amount: body.amount !== undefined ? Number(body.amount) : undefined,
       DeductPerPeriod: body.deductPerPeriod !== undefined ? Number(body.deductPerPeriod) : undefined,
+      UpdatedBy: user.userId,
+      UpdatedDate: new Date(),
     },
   });
 

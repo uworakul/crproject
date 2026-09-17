@@ -42,6 +42,8 @@ export async function PUT(request: NextRequest, ctx: RouteContext<"/api/referenc
       MaxBase: body.maxBase !== undefined ? Number(body.maxBase) : undefined,
       EmployeeRate: body.employeeRate !== undefined ? Number(body.employeeRate) : undefined,
       EmployerRate: body.employerRate !== undefined ? Number(body.employerRate) : undefined,
+      UpdatedBy: user.userId,
+      UpdatedDate: new Date(),
     },
   });
 

@@ -45,7 +45,7 @@ export async function POST(_req: Request, ctx: RouteContext<"/api/requests/[id]/
   const [updated] = await prisma.$transaction([
     prisma.trnRequest.update({
       where: { RequestID: requestId },
-      data: { Status: "APPROVED", ApprovedBy: user.userId, ApprovedDate: new Date() },
+      data: { Status: "APPROVED", ApprovedBy: user.userId, ApprovedDate: new Date(), UpdatedBy: user.userId, UpdatedDate: new Date() },
     }),
     ...(quotaType && quota
       ? [
@@ -54,6 +54,8 @@ export async function POST(_req: Request, ctx: RouteContext<"/api/requests/[id]/
             data: {
               QuotaUsed: quota.QuotaUsed.add(existing.Amount),
               QuotaRemaining: quota.QuotaRemaining.sub(existing.Amount),
+              UpdatedBy: user.userId,
+              UpdatedDate: new Date(),
             },
           }),
         ]

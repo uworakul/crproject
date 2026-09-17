@@ -47,6 +47,7 @@ export async function POST(request: NextRequest) {
       Category: typeof body.category === "string" && body.category.trim() ? body.category.trim() : null,
       UnitCost: unitCost,
       UnitPrice: unitPrice,
+      CreatedBy: user.userId,
     },
   });
 

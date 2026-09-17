@@ -35,7 +35,10 @@ export async function PUT(request: NextRequest, ctx: RouteContext<"/api/users/[u
   if (!existing) return apiError(404, "USER_NOT_FOUND");
 
   const passwordHash = await hashPassword(newPassword);
-  await prisma.sysUser.update({ where: { UserID: userId }, data: { PasswordHash: passwordHash } });
+  await prisma.sysUser.update({
+    where: { UserID: userId },
+    data: { PasswordHash: passwordHash, UpdatedBy: user.userId, UpdatedDate: new Date() },
+  });
 
   await logAction(user.userId, "CHANGE_PASSWORD", { targetTable: "sys_user", targetId: userId });
 

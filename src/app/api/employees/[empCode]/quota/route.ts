@@ -58,8 +58,8 @@ export async function PUT(request: NextRequest, ctx: RouteContext<"/api/employee
       const quotaType = e.quotaType as string;
       return prisma.mstEmployeeQuota.upsert({
         where: { EmpCode_QuotaType: { EmpCode: empCode, QuotaType: quotaType } },
-        update: { QuotaLimit: limit },
-        create: { EmpCode: empCode, QuotaType: quotaType, QuotaLimit: limit },
+        update: { QuotaLimit: limit, UpdatedBy: user.userId, UpdatedDate: new Date() },
+        create: { EmpCode: empCode, QuotaType: quotaType, QuotaLimit: limit, CreatedBy: user.userId },
       });
     }),
   );

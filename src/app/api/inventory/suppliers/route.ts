@@ -41,6 +41,7 @@ export async function POST(request: NextRequest) {
       SupplierName: supplierName,
       Address: typeof body.address === "string" && body.address.trim() ? body.address.trim() : null,
       ContactPhone: typeof body.contactPhone === "string" && body.contactPhone.trim() ? body.contactPhone.trim() : null,
+      CreatedBy: user.userId,
     },
   });
 

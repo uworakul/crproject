@@ -43,6 +43,8 @@ export async function PUT(request: NextRequest, ctx: RouteContext<"/api/periods/
       StartDate: typeof body.startDate === "string" && body.startDate ? new Date(body.startDate) : undefined,
       EndDate: typeof body.endDate === "string" && body.endDate ? new Date(body.endDate) : undefined,
       PayDate: typeof body.payDate === "string" && body.payDate ? new Date(body.payDate) : undefined,
+      UpdatedBy: user.userId,
+      UpdatedDate: new Date(),
     },
   });
 

@@ -59,10 +59,21 @@ export async function POST(request: NextRequest, ctx: RouteContext<"/api/invento
     const remainingAmount = totalAmount.sub(paidAmount);
 
     const [, debt] = await prisma.$transaction([
-      prisma.invStockMovement.update({ where: { MovementID: movementId }, data: { Status: "CONFIRMED" } }),
+      prisma.invStockMovement.update({
+        where: { MovementID: movementId },
+        data: { Status: "CONFIRMED", UpdatedBy: user.userId, UpdatedDate: new Date() },
+      }),
       remainingAmount.gt(0)
         ? prisma.invEmployeeDebt.create({
-            data: { EmpCode: movement.EmpCode!, MovementID: movementId, TotalAmount: totalAmount, PaidAmount: paidAmount, RemainingAmount: remainingAmount, Status: "OPEN" },
+            data: {
+              EmpCode: movement.EmpCode!,
+              MovementID: movementId,
+              TotalAmount: totalAmount,
+              PaidAmount: paidAmount,
+              RemainingAmount: remainingAmount,
+              Status: "OPEN",
+              CreatedBy: user.userId,
+            },
           })
         : prisma.invStockMovement.findUnique({ where: { MovementID: movementId } }),
     ]);
@@ -82,18 +93,33 @@ export async function POST(request: NextRequest, ctx: RouteContext<"/api/invento
       const newPaid = debt.PaidAmount.add(applied);
 
       const [, updatedDebt] = await prisma.$transaction([
-        prisma.invStockMovement.update({ where: { MovementID: movementId }, data: { Status: "CONFIRMED" } }),
+        prisma.invStockMovement.update({
+          where: { MovementID: movementId },
+          data: { Status: "CONFIRMED", UpdatedBy: user.userId, UpdatedDate: new Date() },
+        }),
         prisma.invEmployeeDebt.update({
           where: { DebtID: debtId },
-          data: { RemainingAmount: newRemaining, PaidAmount: newPaid, Status: newRemaining.lte(0) ? "CLOSED" : "OPEN" },
+          data: {
+            RemainingAmount: newRemaining,
+            PaidAmount: newPaid,
+            Status: newRemaining.lte(0) ? "CLOSED" : "OPEN",
+            UpdatedBy: user.userId,
+            UpdatedDate: new Date(),
+          },
         }),
       ]);
       debtUpdated = updatedDebt;
     } else {
-      await prisma.invStockMovement.update({ where: { MovementID: movementId }, data: { Status: "CONFIRMED" } });
+      await prisma.invStockMovement.update({
+        where: { MovementID: movementId },
+        data: { Status: "CONFIRMED", UpdatedBy: user.userId, UpdatedDate: new Date() },
+      });
     }
   } else {
-    await prisma.invStockMovement.update({ where: { MovementID: movementId }, data: { Status: "CONFIRMED" } });
+    await prisma.invStockMovement.update({
+      where: { MovementID: movementId },
+      data: { Status: "CONFIRMED", UpdatedBy: user.userId, UpdatedDate: new Date() },
+    });
   }
 
   await logAction(user.userId, `CONFIRM_${type}_MOVEMENT`, { targetTable: "inv_stock_movement", targetId: String(movementId) });

@@ -33,7 +33,7 @@ export async function POST(request: NextRequest) {
   const reason = typeof body.reason === "string" && body.reason.trim() ? body.reason.trim() : null;
   if (!idCardNo || !fullName) return apiError(400, "INVALID_PARAMS", "idCardNo and fullName are required");
 
-  const created = await prisma.refBlackList.create({ data: { IDCardNo: idCardNo, FullName: fullName, Reason: reason } });
+  const created = await prisma.refBlackList.create({ data: { IDCardNo: idCardNo, FullName: fullName, Reason: reason, CreatedBy: user.userId } });
   await logAction(user.userId, "CREATE_BLACKLIST", { targetTable: "ref_black_list", targetId: String(created.BlackListID) });
   return apiSuccess(created, 201);
 }

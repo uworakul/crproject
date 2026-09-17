@@ -40,7 +40,7 @@ export async function POST(request: NextRequest) {
   if (existing) return apiError(409, "POSITION_ALREADY_EXISTS", undefined, { positionCode });
 
   const created = await prisma.refPosition.create({
-    data: { PositionCode: positionCode, PositionName: positionName, PositionAllowance: positionAllowance },
+    data: { PositionCode: positionCode, PositionName: positionName, PositionAllowance: positionAllowance, CreatedBy: user.userId },
   });
   await logAction(user.userId, "CREATE_POSITION", { targetTable: "ref_position", targetId: positionCode });
   return apiSuccess(created, 201);

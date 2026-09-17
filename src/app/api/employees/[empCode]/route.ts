@@ -75,6 +75,8 @@ export async function PUT(request: NextRequest, ctx: RouteContext<"/api/employee
         body.bankAccountNo === null ? null : typeof body.bankAccountNo === "string" ? body.bankAccountNo.trim() || null : undefined,
       DailyRate: body.dailyRate === null ? null : body.dailyRate !== undefined && body.dailyRate !== "" ? Number(body.dailyRate) : undefined,
       IsActive: typeof body.isActive === "boolean" ? body.isActive : undefined,
+      UpdatedBy: user.userId,
+      UpdatedDate: new Date(),
     },
   });
 
@@ -95,7 +97,10 @@ export async function DELETE(_req: NextRequest, ctx: RouteContext<"/api/employee
   const existing = await prisma.mstEmployee.findUnique({ where: { EmpCode: empCode } });
   if (!existing) return apiError(404, "EMPLOYEE_NOT_FOUND");
 
-  await prisma.mstEmployee.update({ where: { EmpCode: empCode }, data: { IsActive: false } });
+  await prisma.mstEmployee.update({
+    where: { EmpCode: empCode },
+    data: { IsActive: false, UpdatedBy: user.userId, UpdatedDate: new Date() },
+  });
   await logAction(user.userId, "DEACTIVATE_EMPLOYEE", { targetTable: "mst_employee", targetId: empCode });
   return apiSuccess({ ok: true });
 }

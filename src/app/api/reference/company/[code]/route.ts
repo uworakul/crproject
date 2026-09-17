@@ -30,6 +30,8 @@ export async function PUT(request: NextRequest, ctx: RouteContext<"/api/referenc
       TaxID: typeof body.taxID === "string" ? (body.taxID.trim() || null) : undefined,
       SSORegistNo: typeof body.ssoRegistNo === "string" ? (body.ssoRegistNo.trim() || null) : undefined,
       ContactPhone: typeof body.contactPhone === "string" ? (body.contactPhone.trim() || null) : undefined,
+      UpdatedBy: user.userId,
+      UpdatedDate: new Date(),
     },
   });
 

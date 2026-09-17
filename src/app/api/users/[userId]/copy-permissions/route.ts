@@ -53,6 +53,7 @@ export async function POST(request: NextRequest, ctx: RouteContext<"/api/users/[
               CanSave: p.CanSave,
               CanDelete: p.CanDelete,
               CanApprove: p.CanApprove,
+              CreatedBy: user.userId,
             })),
           }),
         ]

@@ -45,7 +45,7 @@ export async function POST(request: NextRequest, ctx: RouteContext<"/api/employe
   if (!memoText) return apiError(400, "INVALID_PARAMS", "memoText is required");
 
   const created = await prisma.mstEmployeeHistory.create({
-    data: { EmpCode: empCode, MemoType: body.memoType, MemoText: memoText, RecordedBy: user.userId },
+    data: { EmpCode: empCode, MemoType: body.memoType, MemoText: memoText, RecordedBy: user.userId, CreatedBy: user.userId },
   });
 
   await logAction(user.userId, "ADD_EMPLOYEE_HISTORY", { targetTable: "mst_employee_history", targetId: String(created.HistoryID) });

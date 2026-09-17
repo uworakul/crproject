@@ -26,7 +26,7 @@ export async function POST(_req: Request, ctx: RouteContext<"/api/worksheets/[id
 
   await prisma.trnWorksheetHeader.update({
     where: { WorksheetID: worksheetId },
-    data: { Status: "SUBMITTED", SubmittedBy: user.userId, SubmittedDate: new Date() },
+    data: { Status: "SUBMITTED", SubmittedBy: user.userId, SubmittedDate: new Date(), UpdatedBy: user.userId, UpdatedDate: new Date() },
   });
 
   await logAction(user.userId, "SUBMIT_WORKSHEET", { targetTable: "trn_worksheet_header", targetId: String(worksheetId) });

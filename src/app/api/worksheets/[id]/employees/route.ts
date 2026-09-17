@@ -58,9 +58,9 @@ export async function POST(request: NextRequest, ctx: RouteContext<"/api/workshe
   // Raw INSERT — see comment in src/lib/worksheet.ts: Prisma 7 drops
   // .create() for models with an Unsupported("rowversion") field.
   const [{ WorksheetDetailID: worksheetDetailId }] = await prisma.$queryRaw<{ WorksheetDetailID: number }[]>`
-    INSERT INTO trn_worksheet_detail (WorksheetID, EmpCode, EmpType, DailyRate, DisplayOrder)
+    INSERT INTO trn_worksheet_detail (WorksheetID, EmpCode, EmpType, DailyRate, DisplayOrder, CreatedBy)
     OUTPUT INSERTED.WorksheetDetailID
-    VALUES (${worksheetId}, ${empCode}, 'SPARE', ${employee.DailyRate}, ${displayOrder})
+    VALUES (${worksheetId}, ${empCode}, 'SPARE', ${employee.DailyRate}, ${displayOrder}, ${user.userId})
   `;
 
   await logAction(user.userId, "ADD_WORKSHEET_EMPLOYEE", {

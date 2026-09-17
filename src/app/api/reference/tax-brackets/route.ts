@@ -40,7 +40,7 @@ export async function POST(request: NextRequest) {
   if (taxRate < 0 || taxRate > 1) return apiError(400, "VALIDATION_FAILED", "taxRate must be between 0 and 1");
 
   const created = await prisma.refTaxBracket.create({
-    data: { EffectiveYear: effectiveYear, IncomeFrom: incomeFrom, IncomeTo: incomeTo, TaxRate: taxRate },
+    data: { EffectiveYear: effectiveYear, IncomeFrom: incomeFrom, IncomeTo: incomeTo, TaxRate: taxRate, CreatedBy: user.userId },
   });
   await logAction(user.userId, "CREATE_TAX_BRACKET", { targetTable: "ref_tax_bracket", targetId: String(created.BracketID) });
   return apiSuccess(created, 201);

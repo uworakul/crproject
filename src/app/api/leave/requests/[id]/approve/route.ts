@@ -37,8 +37,14 @@ export async function POST(_req: Request, ctx: RouteContext<"/api/leave/requests
   const newRemaining = balance.Remaining.sub(existing.TotalDays);
 
   const [updated] = await prisma.$transaction([
-    prisma.trnLeaveRequest.update({ where: { LeaveID: leaveId }, data: { Status: "APPROVED", ApprovedBy: user.userId, ApprovedDate: new Date() } }),
-    prisma.mstEmployeeLeaveBalance.update({ where: { BalanceID: balance.BalanceID }, data: { Used: newUsed, Remaining: newRemaining } }),
+    prisma.trnLeaveRequest.update({
+      where: { LeaveID: leaveId },
+      data: { Status: "APPROVED", ApprovedBy: user.userId, ApprovedDate: new Date(), UpdatedBy: user.userId, UpdatedDate: new Date() },
+    }),
+    prisma.mstEmployeeLeaveBalance.update({
+      where: { BalanceID: balance.BalanceID },
+      data: { Used: newUsed, Remaining: newRemaining, UpdatedBy: user.userId, UpdatedDate: new Date() },
+    }),
   ]);
 
   await logAction(user.userId, "APPROVE_LEAVE_REQUEST", { targetTable: "trn_leave_request", targetId: id });

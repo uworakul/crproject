@@ -227,6 +227,16 @@ Next.js เองเคยแทรกคำเตือนอัตโนมั
 - **เพิ่มตารางใหม่ `ref_company`** (CompanyCode/CompanyName/Address/TaxID/SSORegistNo/ContactPhone) — ตรงกับที่ BR-009 เคยพูดถึง "กำหนดข้อมูลบริษัท" ไว้แต่ไม่เคยมีตารางจริงในสคีมา 33 ตารางที่อนุมัติไว้เดิม เพิ่มแท็บ "Company" ไว้อันดับแรกสุดของหน้า `/reference`, ย้าย "ฐานประกันสังคม" ไปอันดับสุดท้าย — **ตารางนี้ตั้งใจปล่อยว่างไว้ ไม่ seed ข้อมูลบริษัทจริงให้** เพราะไม่มีเลขประจำตัวผู้เสียภาษี/เลขทะเบียนประกันสังคม/ที่อยู่/เบอร์โทรจริงของ ABC CO., LTD. อยู่ในมือ (ตรงกฎ "ห้ามเดาหรือสมมติข้อมูลสำคัญ") — ผู้ใช้ต้องกรอกเองผ่านหน้าเว็บ
 - ทดสอบ Company CRUD + SSO EffectiveDate ผ่าน DB จริงแล้ว (สร้าง/แก้ไขสำเร็จ, ลบข้อมูลทดสอบออกหมดหลังทดสอบ ไม่เหลือ placeholder ค้างใน DB จริง)
 
+## Audit columns ทั้งระบบ — CreatedDate/CreatedBy/UpdatedDate/UpdatedBy (2026-09-17)
+
+ผู้ใช้ขอเพิ่มคอลัมน์ตรวจสอบย้อนหลังมาตรฐานให้ **ทุกตารางในระบบ (34 ตาราง)** — ไม่ใช่แค่ตารางที่เพิ่งแก้ล่าสุด ถามขอบเขตก่อนเริ่มเพราะเป็นงานใหญ่ระดับ schema-wide (ทางเลือก "เฉพาะตารางอ้างอิง" vs "ทั้ง 34 ตาราง") ผู้ใช้ยืนยันเอาทั้งระบบ
+
+- **Schema**: เพิ่ม `CreatedDate`/`CreatedBy`/`UpdatedDate`/`UpdatedBy` (ทุกตัว nullable) ในทุกโมเดลที่ยังไม่มีชื่อฟิลด์นี้ตรงๆ — ข้ามตารางที่มีชื่อนี้อยู่แล้ว (เช่น `trn_request.CreatedBy/CreatedDate` เดิม เพิ่มแค่ `UpdatedBy/UpdatedDate` ที่ขาด) — ตารางที่มี field ความหมายเดียวกันแต่ชื่อต่างกัน (`ref_black_list.AddedDate`, `mst_employee_history.RecordedBy/RecordedDate`, `trn_payroll_calculate_log.CalculatedBy/CalculatedDate`, `trn_payroll_lock.LockedBy/LockedDate`) **ยังคงฟิลด์เดิมไว้ทั้งหมด แล้วเพิ่มคอลัมน์มาตรฐานเข้าไปเพิ่ม** (ยอมรับว่ามีความซ้ำซ้อนเล็กน้อยบางตาราง แลกกับ query ยอดเดียวกันได้ทุกตารางแบบเดียวกันเสมอ)
+- **`CreatedBy`/`UpdatedBy` เป็น `VARCHAR(20)` ธรรมดา ไม่มี FK ไปหา `sys_user`** — ยึด pattern เดิมที่มีอยู่แล้วในโปรเจกต์ (`trn_worksheet_header.SubmittedBy/ApprovedBy/RejectedBy`, `trn_worksheet_daily.UpdatedBy` — คอมเมนต์เดิมบอกชัดว่า "ไม่มี FK ใน DDL ที่อนุมัติ (ตั้งใจ)") ถ้าเพิ่ม FK จริงจะต้องเพิ่ม named relation ~34 เส้นเข้า `SysUser` model ซึ่งใหญ่เกินความจำเป็นเพื่อ audit trail ธรรมดา
+- **Migration**: `20260917_add_audit_columns` — ใช้วิธีเดิม (`prisma migrate diff --from-config-datasource` แล้ว apply ด้วย `migrate deploy`) เพราะ DB user ไม่มีสิทธิ์ `CREATE DATABASE` สำหรับ shadow DB ที่ `migrate dev` ต้องการ — ตัด `ALTER COLUMN RowVer rowversion NOT NULL` ที่ diff เสนอมาออกอีกครั้ง (เป็น introspection artifact เดิม ไม่เกี่ยวกับการเปลี่ยนแปลงจริง เหมือนที่เจอตอนเพิ่ม `ref_company`)
+- **แก้ API ทุกจุดที่ create/update ข้อมูล (63 ไฟล์ route.ts ทั่วทั้งระบบ)** ให้ใส่ `CreatedBy: user.userId` ตอนสร้าง และ `UpdatedBy: user.userId, UpdatedDate: new Date()` ตอนแก้ไข/soft-delete/state-transition (submit/approve/reject/confirm/lock/close ทุกจุดนับเป็น "แก้ไข" ด้วย) ครอบคลุมทุกโมดูล — **ข้อยกเว้นเดียวที่ตั้งใจ**: `POST /api/auth/login` อัปเดต `sys_user.LastLoginDate` แต่ไม่แตะ `UpdatedBy/UpdatedDate` เพราะจะทำให้ "แก้ไขล่าสุดเมื่อไหร่" ของบัญชีผู้ใช้กลายเป็นแค่เวลา login ล่าสุดแทนที่จะสื่อถึงการแก้ไขข้อมูลโปรไฟล์/สิทธิ์จริงๆ — `LastLoginDate` เป็น field เฉพาะสำหรับสิ่งนี้อยู่แล้ว
+- ทดสอบผ่าน DB จริงครบทุกโมดูลตัวแทน (ref_department, mst_site, inv_supplier, ref_company, mst_employee) ยืนยัน `CreatedBy`/`UpdatedBy` บันทึกถูกต้อง (ลบข้อมูลทดสอบออกหมดแล้ว)
+
 ## Version
 
 - เอกสารนี้ตรงกับ HFC_System_Database_Design.docx v1.0 (15/09/2026)

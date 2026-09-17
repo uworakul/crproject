@@ -50,6 +50,8 @@ export async function PUT(request: NextRequest, ctx: RouteContext<"/api/inventor
       UnitCost: unitCost,
       UnitPrice: unitPrice,
       IsActive: typeof body.isActive === "boolean" ? body.isActive : existing.IsActive,
+      UpdatedBy: user.userId,
+      UpdatedDate: new Date(),
     },
   });
 
@@ -67,7 +69,10 @@ export async function DELETE(_req: NextRequest, ctx: RouteContext<"/api/inventor
   const existing = await prisma.invProduct.findUnique({ where: { ProductCode: productCode } });
   if (!existing) return apiError(404, "PRODUCT_NOT_FOUND");
 
-  const updated = await prisma.invProduct.update({ where: { ProductCode: productCode }, data: { IsActive: false } });
+  const updated = await prisma.invProduct.update({
+    where: { ProductCode: productCode },
+    data: { IsActive: false, UpdatedBy: user.userId, UpdatedDate: new Date() },
+  });
   await logAction(user.userId, "DEACTIVATE_PRODUCT", { targetTable: "inv_product", targetId: productCode });
   return apiSuccess(updated);
 }

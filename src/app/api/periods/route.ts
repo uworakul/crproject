@@ -77,6 +77,7 @@ export async function POST(request: NextRequest) {
       StartDate: new Date(startDate),
       EndDate: new Date(endDate),
       PayDate: new Date(payDate),
+      CreatedBy: user.userId,
     },
   });
 

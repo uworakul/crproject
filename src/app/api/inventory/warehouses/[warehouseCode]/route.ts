@@ -39,7 +39,12 @@ export async function PUT(request: NextRequest, ctx: RouteContext<"/api/inventor
 
   const updated = await prisma.invWarehouse.update({
     where: { WarehouseCode: warehouseCode },
-    data: { WarehouseName: warehouseName, IsActive: typeof body.isActive === "boolean" ? body.isActive : existing.IsActive },
+    data: {
+      WarehouseName: warehouseName,
+      IsActive: typeof body.isActive === "boolean" ? body.isActive : existing.IsActive,
+      UpdatedBy: user.userId,
+      UpdatedDate: new Date(),
+    },
   });
 
   await logAction(user.userId, "UPDATE_WAREHOUSE", { targetTable: "inv_warehouse", targetId: warehouseCode });
@@ -56,7 +61,10 @@ export async function DELETE(_req: NextRequest, ctx: RouteContext<"/api/inventor
   const existing = await prisma.invWarehouse.findUnique({ where: { WarehouseCode: warehouseCode } });
   if (!existing) return apiError(404, "WAREHOUSE_NOT_FOUND");
 
-  const updated = await prisma.invWarehouse.update({ where: { WarehouseCode: warehouseCode }, data: { IsActive: false } });
+  const updated = await prisma.invWarehouse.update({
+    where: { WarehouseCode: warehouseCode },
+    data: { IsActive: false, UpdatedBy: user.userId, UpdatedDate: new Date() },
+  });
   await logAction(user.userId, "DEACTIVATE_WAREHOUSE", { targetTable: "inv_warehouse", targetId: warehouseCode });
   return apiSuccess(updated);
 }

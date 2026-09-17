@@ -82,6 +82,7 @@ export async function PUT(request: NextRequest, ctx: RouteContext<"/api/users/[u
               CanSave: !!r.canSave,
               CanDelete: !!r.canDelete,
               CanApprove: !!r.canApprove,
+              CreatedBy: user.userId,
             })),
           }),
         ]

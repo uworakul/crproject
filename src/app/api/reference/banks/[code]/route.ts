@@ -28,6 +28,8 @@ export async function PUT(request: NextRequest, ctx: RouteContext<"/api/referenc
       BankNameTH: typeof body.bankNameTH === "string" ? body.bankNameTH.trim() : undefined,
       BankNameEN: typeof body.bankNameEN === "string" ? body.bankNameEN.trim() : undefined,
       IsActive: typeof body.isActive === "boolean" ? body.isActive : undefined,
+      UpdatedBy: user.userId,
+      UpdatedDate: new Date(),
     },
   });
 
@@ -46,7 +48,7 @@ export async function DELETE(_req: Request, ctx: RouteContext<"/api/reference/ba
   const existing = await prisma.refBank.findUnique({ where: { BankCode: code } });
   if (!existing) return apiError(404, "BANK_NOT_FOUND");
 
-  await prisma.refBank.update({ where: { BankCode: code }, data: { IsActive: false } });
+  await prisma.refBank.update({ where: { BankCode: code }, data: { IsActive: false, UpdatedBy: user.userId, UpdatedDate: new Date() } });
   await logAction(user.userId, "DEACTIVATE_BANK", { targetTable: "ref_bank", targetId: code });
   return apiSuccess({ ok: true });
 }

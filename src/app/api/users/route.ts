@@ -93,6 +93,7 @@ export async function POST(request: NextRequest) {
       Email: email,
       Role: body.role,
       DefaultSiteCode: defaultSiteCode,
+      CreatedBy: user.userId,
     },
     select: {
       UserID: true,

@@ -41,7 +41,7 @@ export async function POST(request: NextRequest) {
   if (existing) return apiError(409, "DEDUCTION_RATE_ALREADY_EXISTS", undefined, { deductionCode });
 
   const created = await prisma.refDeductionRate.create({
-    data: { DeductionCode: deductionCode, DeductionName: deductionName, MaxAmount: maxAmount, EffectiveYear: effectiveYear },
+    data: { DeductionCode: deductionCode, DeductionName: deductionName, MaxAmount: maxAmount, EffectiveYear: effectiveYear, CreatedBy: user.userId },
   });
   await logAction(user.userId, "CREATE_DEDUCTION_RATE", { targetTable: "ref_deduction_rate", targetId: deductionCode });
   return apiSuccess(created, 201);

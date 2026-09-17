@@ -43,6 +43,7 @@ export async function POST(request: NextRequest) {
       TaxID: typeof body.taxID === "string" && body.taxID.trim() ? body.taxID.trim() : null,
       SSORegistNo: typeof body.ssoRegistNo === "string" && body.ssoRegistNo.trim() ? body.ssoRegistNo.trim() : null,
       ContactPhone: typeof body.contactPhone === "string" && body.contactPhone.trim() ? body.contactPhone.trim() : null,
+      CreatedBy: user.userId,
     },
   });
 

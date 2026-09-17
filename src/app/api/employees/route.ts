@@ -91,6 +91,7 @@ export async function POST(request: NextRequest) {
       BankCode: typeof body.bankCode === "string" && body.bankCode ? body.bankCode : null,
       BankAccountNo: typeof body.bankAccountNo === "string" && body.bankAccountNo.trim() ? body.bankAccountNo.trim() : null,
       DailyRate: dailyRate,
+      CreatedBy: user.userId,
     },
   });
 

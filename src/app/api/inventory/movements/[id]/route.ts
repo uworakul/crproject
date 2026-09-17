@@ -123,6 +123,8 @@ export async function PUT(request: NextRequest, ctx: RouteContext<"/api/inventor
         EmpCode: empCode,
         MovementDate: movementDate,
         Details: { create: detailData },
+        UpdatedBy: user.userId,
+        UpdatedDate: new Date(),
       },
     }),
   ]);
