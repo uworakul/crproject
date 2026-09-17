@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { verifySession } from "@/lib/dal";
 import { hasPermission } from "@/lib/authorize";
+import { REQUEST_TYPE_VALUES, REQUEST_TYPE_DOCTYPE } from "@/lib/request";
 import Sidebar from "./sidebar";
 import LogoutButton from "./logout-button";
 
@@ -8,13 +9,16 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   const user = await verifySession();
   if (!user) redirect("/login");
 
-  const [canViewUsers, canViewReference, canViewTax, canViewEmployees, canViewPeriod] = await Promise.all([
-    hasPermission(user, "USER", "read"),
-    hasPermission(user, "REFERENCE", "read"),
-    hasPermission(user, "TAX_RATE", "read"),
-    hasPermission(user, "EMPLOYEE", "read"),
-    hasPermission(user, "PERIOD", "read"),
-  ]);
+  const [canViewUsers, canViewReference, canViewTax, canViewEmployees, canViewPeriod, canViewDraftList, canViewAnyRequest] =
+    await Promise.all([
+      hasPermission(user, "USER", "read"),
+      hasPermission(user, "REFERENCE", "read"),
+      hasPermission(user, "TAX_RATE", "read"),
+      hasPermission(user, "EMPLOYEE", "read"),
+      hasPermission(user, "PERIOD", "read"),
+      hasPermission(user, "DRAFT_LIST", "read"),
+      Promise.all(REQUEST_TYPE_VALUES.map((t) => hasPermission(user, REQUEST_TYPE_DOCTYPE[t], "read"))).then((r) => r.some(Boolean)),
+    ]);
 
   const groups = [
     {
@@ -32,6 +36,13 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     {
       label: "ข้อมูลหลักพนักงาน",
       items: canViewEmployees ? [{ href: "/employees", label: "ทะเบียนพนักงาน" }] : [],
+    },
+    {
+      label: "การขออนุมัติ",
+      items: [
+        ...(canViewAnyRequest ? [{ href: "/requests", label: "คำขอเบิก/กู้/อบรม" }] : []),
+        ...(canViewDraftList ? [{ href: "/requests/draft-list", label: "รายการรออนุมัติ" }] : []),
+      ],
     },
     {
       label: "ใบลงเวลาปฏิบัติงาน",

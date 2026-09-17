@@ -48,12 +48,18 @@ export async function PUT(request: NextRequest, ctx: RouteContext<"/api/employee
     if (!Number.isFinite(n) || n < 0) return apiError(400, "VALIDATION_FAILED", "quotaLimit must be a non-negative number");
   }
 
+  // upsert, not updateMany: employees created before this API existed (or
+  // directly via SQL) may have zero quota rows, and updateMany silently
+  // no-ops when nothing matches instead of erroring — this was caught
+  // testing against exactly that case.
   await prisma.$transaction(
     entries.map((e) => {
       const limit = Number(e.quotaLimit);
-      return prisma.mstEmployeeQuota.updateMany({
-        where: { EmpCode: empCode, QuotaType: e.quotaType as string },
-        data: { QuotaLimit: limit },
+      const quotaType = e.quotaType as string;
+      return prisma.mstEmployeeQuota.upsert({
+        where: { EmpCode_QuotaType: { EmpCode: empCode, QuotaType: quotaType } },
+        update: { QuotaLimit: limit },
+        create: { EmpCode: empCode, QuotaType: quotaType, QuotaLimit: limit },
       });
     }),
   );
