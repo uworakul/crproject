@@ -9,16 +9,40 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   const user = await verifySession();
   if (!user) redirect("/login");
 
-  const [canViewUsers, canViewReference, canViewTax, canViewEmployees, canViewPeriod, canViewDraftList, canViewAnyRequest] =
-    await Promise.all([
-      hasPermission(user, "USER", "read"),
-      hasPermission(user, "REFERENCE", "read"),
-      hasPermission(user, "TAX_RATE", "read"),
-      hasPermission(user, "EMPLOYEE", "read"),
-      hasPermission(user, "PERIOD", "read"),
-      hasPermission(user, "DRAFT_LIST", "read"),
-      Promise.all(REQUEST_TYPE_VALUES.map((t) => hasPermission(user, REQUEST_TYPE_DOCTYPE[t], "read"))).then((r) => r.some(Boolean)),
-    ]);
+  const [
+    canViewUsers,
+    canViewReference,
+    canViewTax,
+    canViewEmployees,
+    canViewPeriod,
+    canViewDraftList,
+    canViewAnyRequest,
+    canViewSupplier,
+    canViewWarehouse,
+    canViewProduct,
+    canViewCount,
+    canViewPurchase,
+    canViewTransfer,
+    canViewIssue,
+    canViewReturn,
+  ] = await Promise.all([
+    hasPermission(user, "USER", "read"),
+    hasPermission(user, "REFERENCE", "read"),
+    hasPermission(user, "TAX_RATE", "read"),
+    hasPermission(user, "EMPLOYEE", "read"),
+    hasPermission(user, "PERIOD", "read"),
+    hasPermission(user, "DRAFT_LIST", "read"),
+    Promise.all(REQUEST_TYPE_VALUES.map((t) => hasPermission(user, REQUEST_TYPE_DOCTYPE[t], "read"))).then((r) => r.some(Boolean)),
+    hasPermission(user, "SUPPLIER", "read"),
+    hasPermission(user, "WAREHOUSE", "read"),
+    hasPermission(user, "PRODUCT", "read"),
+    hasPermission(user, "STOCK_COUNT", "read"),
+    hasPermission(user, "STOCK_PURCHASE", "read"),
+    hasPermission(user, "STOCK_TRANSFER", "read"),
+    hasPermission(user, "STOCK_ISSUE", "read"),
+    hasPermission(user, "STOCK_RETURN", "read"),
+  ]);
+  const canViewInventoryMaster = canViewSupplier || canViewWarehouse || canViewProduct;
 
   const groups = [
     {
@@ -42,6 +66,17 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       items: [
         ...(canViewAnyRequest ? [{ href: "/requests", label: "คำขอเบิก/กู้/อบรม" }] : []),
         ...(canViewDraftList ? [{ href: "/requests/draft-list", label: "รายการรออนุมัติ" }] : []),
+      ],
+    },
+    {
+      label: "สินค้าคงคลัง/เครื่องแบบ",
+      items: [
+        ...(canViewInventoryMaster ? [{ href: "/inventory", label: "ข้อมูลหลัก (ผู้ขาย/คลัง/สินค้า)" }] : []),
+        ...(canViewCount ? [{ href: "/inventory/count", label: "ตรวจนับสต๊อก" }] : []),
+        ...(canViewPurchase ? [{ href: "/inventory/purchase", label: "ซื้อสินค้า" }] : []),
+        ...(canViewTransfer ? [{ href: "/inventory/transfer", label: "โอนสินค้าระหว่างคลัง" }] : []),
+        ...(canViewIssue ? [{ href: "/inventory/issue", label: "จำหน่ายสินค้า" }] : []),
+        ...(canViewReturn ? [{ href: "/inventory/return", label: "คืนสินค้า" }] : []),
       ],
     },
     {
