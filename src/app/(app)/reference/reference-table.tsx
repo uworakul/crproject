@@ -25,8 +25,21 @@ function emptyForm(fields: FieldDef[]): Record<string, string> {
   return Object.fromEntries(fields.map((f) => [f.key, ""]));
 }
 
+// PascalCase field name -> the API's camelCase JSON key. A plain
+// charAt(0).toLowerCase() breaks on a leading acronym run — "SSORegistNo"
+// became "sSORegistNo" instead of "ssoRegistNo" (silently dropped by the
+// API, which only checks for its exact expected key) — so the whole
+// leading uppercase run is lowercased, except its last letter is kept
+// capitalized when it starts the next word (e.g. "IDCardNo" -> "idCardNo").
 function toApiKey(key: string) {
-  return key.charAt(0).toLowerCase() + key.slice(1);
+  const match = key.match(/^[A-Z]+/);
+  if (!match) return key;
+  const upperRun = match[0];
+  const rest = key.slice(upperRun.length);
+  if (upperRun.length > 1 && rest.length > 0) {
+    return upperRun.slice(0, -1).toLowerCase() + upperRun.slice(-1) + rest;
+  }
+  return upperRun.toLowerCase() + rest;
 }
 
 function displayValue(field: FieldDef, value: unknown) {
