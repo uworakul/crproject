@@ -25,6 +25,8 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     canViewTransfer,
     canViewIssue,
     canViewReturn,
+    canViewSite,
+    canViewPayrollWorkspace,
   ] = await Promise.all([
     hasPermission(user, "USER", "read"),
     hasPermission(user, "REFERENCE", "read"),
@@ -41,6 +43,13 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     hasPermission(user, "STOCK_TRANSFER", "read"),
     hasPermission(user, "STOCK_ISSUE", "read"),
     hasPermission(user, "STOCK_RETURN", "read"),
+    hasPermission(user, "SITE", "read"),
+    Promise.all([
+      hasPermission(user, "PAYROLL_TRANSACTION", "read"),
+      hasPermission(user, "PAYROLL_CALCULATE", "save"),
+      hasPermission(user, "PAYROLL_LOCK", "read"),
+      hasPermission(user, "PAYROLL_REPORT", "read"),
+    ]).then((r) => r.some(Boolean)),
   ]);
   const canViewInventoryMaster = canViewSupplier || canViewWarehouse || canViewProduct;
 
@@ -82,6 +91,13 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     {
       label: "ใบลงเวลาปฏิบัติงาน",
       items: [{ href: "/worksheet", label: "Worksheet" }],
+    },
+    {
+      label: "คำนวณและจ่ายเงินเดือน",
+      items: [
+        ...(canViewSite ? [{ href: "/payroll/sites", label: "หน่วยงาน (Site)" }] : []),
+        ...(canViewPayrollWorkspace ? [{ href: "/payroll/period", label: "ประมวลผลเงินเดือน" }] : []),
+      ],
     },
   ].filter((g) => g.items.length > 0);
 

@@ -183,6 +183,18 @@ export async function approveWorksheet(
       };
     }
 
+    // BR-032: a locked period is closed to further changes, including new
+    // payroll postings from a Worksheet approve — added when the Payroll
+    // module introduced trn_payroll_lock (this gap was flagged when
+    // Worksheet was first built, before Lock existed).
+    const lock = await prisma.trnPayrollLock.findFirst({ where: { PeriodID: period.PeriodID, IsLocked: true } });
+    if (lock) {
+      return {
+        ok: false,
+        error: { reason: "PERIOD_LOCKED", empCode: detail.EmpCode },
+      };
+    }
+
     let workDays = zero;
     let doubleShiftDays = zero;
     let holidayDays = zero;
@@ -212,6 +224,23 @@ export async function approveWorksheet(
 
   await prisma.$transaction(async (tx) => {
     for (const p of postings) {
+      // On re-approve, GrossWage may change — any previously Calculate'd
+      // TaxWithheld/SSOAmount are now stale, so they're reset to 0 (BR-030:
+      // "สามารถคำนวณซ้ำได้ตลอด" — re-run Calculate afterward). Manually
+      // entered fields from the Transaction screen (allowances/OT/manual
+      // deductions/other income) are preserved and folded back into NetPay
+      // rather than discarded.
+      const existing = await tx.trnPayrollTransaction.findUnique({ where: { EmpCode_PeriodID: { EmpCode: p.empCode, PeriodID: p.periodId } } });
+      const netPay = existing
+        ? p.grossWage
+            .sub(existing.AdvanceDeduct)
+            .sub(existing.LoanDeduct)
+            .sub(existing.TrainingDeduct)
+            .sub(existing.UniformDeduct)
+            .add(existing.OtherIncome)
+            .sub(existing.OtherDeduction)
+        : p.grossWage;
+
       await tx.trnPayrollTransaction.upsert({
         where: { EmpCode_PeriodID: { EmpCode: p.empCode, PeriodID: p.periodId } },
         update: {
@@ -220,7 +249,9 @@ export async function approveWorksheet(
           DoubleShiftDays: p.doubleShiftDays,
           HolidayDays: p.holidayDays,
           GrossWage: p.grossWage,
-          NetPay: p.grossWage,
+          TaxWithheld: 0,
+          SSOAmount: 0,
+          NetPay: netPay,
           SourceWorksheetID: header.WorksheetID,
         },
         create: {

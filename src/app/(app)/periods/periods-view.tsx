@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
 import { EMPLOYEE_TYPE_VALUES, EMPLOYEE_TYPE_LABELS, type EmployeeType } from "@/lib/validation";
 
 interface Period {
@@ -16,7 +15,6 @@ interface Period {
 }
 
 export default function PeriodsView({ initialPeriods, canSave, canDelete }: { initialPeriods: Period[]; canSave: boolean; canDelete: boolean }) {
-  const router = useRouter();
   const [periods, setPeriods] = useState(initialPeriods);
   const [form, setForm] = useState({
     employeeType: "" as string,
@@ -55,19 +53,6 @@ export default function PeriodsView({ initialPeriods, canSave, canDelete }: { in
     }
   }
 
-  async function toggleStatus(p: Period) {
-    setMessage(null);
-    const res = await fetch(`/api/periods/${p.PeriodID}`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ status: p.Status === "OPEN" ? "CLOSED" : "OPEN" }),
-    });
-    const body = await res.json().catch(() => ({}));
-    if (!res.ok) setMessage(body.message || body.error);
-    await refresh();
-    router.refresh();
-  }
-
   async function remove(p: Period) {
     setMessage(null);
     const res = await fetch(`/api/periods/${p.PeriodID}`, { method: "DELETE" });
@@ -91,7 +76,7 @@ export default function PeriodsView({ initialPeriods, canSave, canDelete }: { in
               <th className="px-3 py-2 font-medium">วันสิ้นสุด</th>
               <th className="px-3 py-2 font-medium">วันจ่าย</th>
               <th className="px-3 py-2 font-medium">สถานะ</th>
-              {(canSave || canDelete) && <th className="px-3 py-2"></th>}
+              {canDelete && <th className="px-3 py-2"></th>}
             </tr>
           </thead>
           <tbody>
@@ -105,22 +90,13 @@ export default function PeriodsView({ initialPeriods, canSave, canDelete }: { in
                 <td className="px-3 py-2 text-gray-500">{new Date(p.EndDate).toLocaleDateString("th-TH")}</td>
                 <td className="px-3 py-2 text-gray-500">{new Date(p.PayDate).toLocaleDateString("th-TH")}</td>
                 <td className="px-3 py-2">
-                  {p.Status === "OPEN" ? <span className="text-green-600">เปิด</span> : <span className="text-gray-400">ปิด</span>}
+                  {p.Status === "OPEN" ? <span className="text-green-600">เปิด</span> : <span className="text-gray-400">ปิดแล้ว (Payroll Closing)</span>}
                 </td>
-                {(canSave || canDelete) && (
+                {canDelete && (
                   <td className="px-3 py-2 text-right">
-                    <div className="flex justify-end gap-2">
-                      {canSave && (
-                        <button onClick={() => toggleStatus(p)} className="text-gray-500 hover:text-gray-900 hover:underline">
-                          {p.Status === "OPEN" ? "ปิดงวด" : "เปิดงวด"}
-                        </button>
-                      )}
-                      {canDelete && (
-                        <button onClick={() => remove(p)} className="text-red-500 hover:underline">
-                          ลบ
-                        </button>
-                      )}
-                    </div>
+                    <button onClick={() => remove(p)} className="text-red-500 hover:underline">
+                      ลบ
+                    </button>
                   </td>
                 )}
               </tr>

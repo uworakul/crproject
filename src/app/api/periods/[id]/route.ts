@@ -18,6 +18,14 @@ export async function PUT(request: NextRequest, ctx: RouteContext<"/api/periods/
   const existing = await prisma.sysPeriod.findUnique({ where: { PeriodID: periodId } });
   if (!existing) return apiError(404, "PERIOD_NOT_FOUND");
 
+  // BR-034: closing is the Payroll module's job now (POST
+  // /api/payroll/closing — requires Lock first, irreversible, updates
+  // trn_payroll_lock together with Status). This endpoint predates that
+  // module and originally toggled Status freely; now that a proper closing
+  // workflow exists, letting this endpoint flip Status directly would let
+  // anyone with plain PERIOD 'save' bypass the Lock precondition entirely.
+  if (existing.Status === "CLOSED") return apiError(409, "PERIOD_CLOSED", "This period is closed and cannot be edited");
+
   let body: { startDate?: unknown; endDate?: unknown; payDate?: unknown; status?: unknown };
   try {
     body = await request.json();
@@ -25,8 +33,8 @@ export async function PUT(request: NextRequest, ctx: RouteContext<"/api/periods/
     return apiError(400, "INVALID_PARAMS", "Request body must be JSON");
   }
 
-  if (body.status !== undefined && body.status !== "OPEN" && body.status !== "CLOSED") {
-    return apiError(400, "VALIDATION_FAILED", "status must be OPEN or CLOSED");
+  if (body.status !== undefined) {
+    return apiError(400, "VALIDATION_FAILED", "status can no longer be set here — use POST /api/payroll/closing to close a period");
   }
 
   const updated = await prisma.sysPeriod.update({
@@ -35,7 +43,6 @@ export async function PUT(request: NextRequest, ctx: RouteContext<"/api/periods/
       StartDate: typeof body.startDate === "string" && body.startDate ? new Date(body.startDate) : undefined,
       EndDate: typeof body.endDate === "string" && body.endDate ? new Date(body.endDate) : undefined,
       PayDate: typeof body.payDate === "string" && body.payDate ? new Date(body.payDate) : undefined,
-      Status: typeof body.status === "string" ? body.status : undefined,
     },
   });
 

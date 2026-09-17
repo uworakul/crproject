@@ -50,9 +50,57 @@ async function seedAttendanceCodes() {
   console.log(`Seeded/updated ${attendanceCodeSeed.length} mst_attendance_code rows.`);
 }
 
+// Verified 2026 rates via WebSearch (2026-09-17) against QuickBooks/Statrys/
+// TaxAtlas tax-table summaries and Acclime/HLB/RLC SSO-change coverage — not
+// invented. Progressive PIT brackets (0/5/10/15/20/25/30/35%) are unchanged
+// for 2026; the SSO ceiling rose from 15,000 to 17,500 THB/month effective
+// January 2026 (Phase 1 of a multi-year increase), rate stays 5%/5%. Personal
+// allowance (60,000 THB) is the ONLY deduction seeded here, matching the
+// approved scope for this pass — the separate 50%-of-income/100,000-cap
+// expense deduction is NOT included (see CLAUDE.md "Payroll Calculate").
+const TAX_YEAR = 2026;
+const taxBracketSeed = [
+  { IncomeFrom: "0", IncomeTo: "150000", TaxRate: "0.00" },
+  { IncomeFrom: "150000.01", IncomeTo: "300000", TaxRate: "0.05" },
+  { IncomeFrom: "300000.01", IncomeTo: "500000", TaxRate: "0.10" },
+  { IncomeFrom: "500000.01", IncomeTo: "750000", TaxRate: "0.15" },
+  { IncomeFrom: "750000.01", IncomeTo: "1000000", TaxRate: "0.20" },
+  { IncomeFrom: "1000000.01", IncomeTo: "2000000", TaxRate: "0.25" },
+  { IncomeFrom: "2000000.01", IncomeTo: "5000000", TaxRate: "0.30" },
+  { IncomeFrom: "5000000.01", IncomeTo: "999999999.99", TaxRate: "0.35" },
+];
+
+async function seedPayrollRates() {
+  const existingBrackets = await prisma.refTaxBracket.findFirst({ where: { EffectiveYear: TAX_YEAR } });
+  if (!existingBrackets) {
+    await prisma.refTaxBracket.createMany({ data: taxBracketSeed.map((b) => ({ ...b, EffectiveYear: TAX_YEAR })) });
+    console.log(`Seeded ${taxBracketSeed.length} ref_tax_bracket rows for ${TAX_YEAR}.`);
+  } else {
+    console.log(`ref_tax_bracket seed skipped: rows for ${TAX_YEAR} already exist.`);
+  }
+
+  const existingSso = await prisma.refSsoBase.findFirst({ where: { EffectiveYear: TAX_YEAR } });
+  if (!existingSso) {
+    await prisma.refSsoBase.create({
+      data: { EffectiveYear: TAX_YEAR, MinBase: "1650", MaxBase: "17500", EmployeeRate: "0.05", EmployerRate: "0.05" },
+    });
+    console.log(`Seeded ref_sso_base row for ${TAX_YEAR}.`);
+  } else {
+    console.log(`ref_sso_base seed skipped: a row for ${TAX_YEAR} already exists.`);
+  }
+
+  await prisma.refDeductionRate.upsert({
+    where: { DeductionCode: "PERSONAL" },
+    update: { DeductionName: "ค่าลดหย่อนส่วนตัว", MaxAmount: "60000", EffectiveYear: TAX_YEAR },
+    create: { DeductionCode: "PERSONAL", DeductionName: "ค่าลดหย่อนส่วนตัว", MaxAmount: "60000", EffectiveYear: TAX_YEAR },
+  });
+  console.log("Seeded/updated ref_deduction_rate 'PERSONAL' row.");
+}
+
 async function main() {
   await seedMenus();
   await seedAttendanceCodes();
+  await seedPayrollRates();
 
   const existing = await prisma.sysUser.findUnique({ where: { UserID: "admin" } });
   if (existing) {
