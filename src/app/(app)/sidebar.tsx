@@ -55,7 +55,7 @@ export default function Sidebar({ groups }: { groups: NavGroup[] }) {
                 </svg>
               </button>
               {isOpen && (
-                <div className="mb-4 flex flex-col gap-0.5 border-l border-gray-100 pt-1 pl-3">
+                <div className="mb-4 flex flex-col gap-0.5 pt-1 pl-5">
                   {group.items.map((item) => {
                     const active = pathname === item.href || pathname.startsWith(item.href + "/");
                     return (
