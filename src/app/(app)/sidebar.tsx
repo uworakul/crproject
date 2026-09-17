@@ -43,7 +43,7 @@ export default function Sidebar({ groups }: { groups: NavGroup[] }) {
               <button
                 type="button"
                 onClick={() => toggle(group.label)}
-                className="flex w-full items-center justify-between rounded-md px-2 py-1.5 text-[11px] font-medium uppercase tracking-wide text-gray-400 hover:bg-gray-50 hover:text-gray-600"
+                className="flex w-full items-center justify-between rounded-md px-2 py-1.5 text-sm font-medium text-gray-500 hover:bg-gray-50 hover:text-gray-900"
               >
                 {group.label}
                 <svg
