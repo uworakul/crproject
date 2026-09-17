@@ -60,10 +60,12 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   const groups = [
     {
       label: "ผู้ใช้งานและสิทธิ์",
+      icon: "users" as const,
       items: canViewUsers ? [{ href: "/users", label: "ผู้ใช้งาน" }] : [],
     },
     {
       label: "ตั้งค่าระบบ/รหัสอ้างอิง",
+      icon: "settings" as const,
       items: [
         ...(canViewReference ? [{ href: "/reference", label: "รหัสอ้างอิงหลัก" }] : []),
         ...(canViewReference ? [{ href: "/leave/types", label: "ประเภทและสิทธิการลา" }] : []),
@@ -73,10 +75,12 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     },
     {
       label: "ข้อมูลหลักพนักงาน",
+      icon: "employee" as const,
       items: canViewEmployees ? [{ href: "/employees", label: "ทะเบียนพนักงาน" }] : [],
     },
     {
       label: "การขออนุมัติ",
+      icon: "approve" as const,
       items: [
         ...(canViewAnyRequest ? [{ href: "/requests", label: "คำขอเบิก/กู้/อบรม" }] : []),
         ...(canViewDraftList ? [{ href: "/requests/draft-list", label: "รายการรออนุมัติ" }] : []),
@@ -84,6 +88,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     },
     {
       label: "สินค้าคงคลัง/เครื่องแบบ",
+      icon: "inventory" as const,
       items: [
         ...(canViewInventoryMaster ? [{ href: "/inventory", label: "ข้อมูลหลัก (ผู้ขาย/คลัง/สินค้า)" }] : []),
         ...(canViewCount ? [{ href: "/inventory/count", label: "ตรวจนับสต๊อก" }] : []),
@@ -95,6 +100,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     },
     {
       label: "ใบลงเวลาปฏิบัติงาน",
+      icon: "worksheet" as const,
       items: [
         ...(canViewSite ? [{ href: "/payroll/sites", label: "หน่วยงาน (Site)" }] : []),
         { href: "/worksheet", label: "Worksheet" },
@@ -102,12 +108,14 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     },
     {
       label: "คำนวณและจ่ายเงินเดือน",
+      icon: "payroll" as const,
       items: [
         ...(canViewPayrollWorkspace ? [{ href: "/payroll/period", label: "ประมวลผลเงินเดือน" }] : []),
       ],
     },
     {
       label: "การลา",
+      icon: "leave" as const,
       items: [
         ...(canViewLeaveRequest ? [{ href: "/leave", label: "ใบลา" }] : []),
         ...(canViewLeaveRequest ? [{ href: "/leave/balances", label: "สิทธิวันลาพนักงาน" }] : []),
