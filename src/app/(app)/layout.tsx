@@ -95,12 +95,14 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     },
     {
       label: "ใบลงเวลาปฏิบัติงาน",
-      items: [{ href: "/worksheet", label: "Worksheet" }],
+      items: [
+        ...(canViewSite ? [{ href: "/payroll/sites", label: "หน่วยงาน (Site)" }] : []),
+        { href: "/worksheet", label: "Worksheet" },
+      ],
     },
     {
       label: "คำนวณและจ่ายเงินเดือน",
       items: [
-        ...(canViewSite ? [{ href: "/payroll/sites", label: "หน่วยงาน (Site)" }] : []),
         ...(canViewPayrollWorkspace ? [{ href: "/payroll/period", label: "ประมวลผลเงินเดือน" }] : []),
       ],
     },
