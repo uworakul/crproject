@@ -8,11 +8,12 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   const user = await verifySession();
   if (!user) redirect("/login");
 
-  const [canViewUsers, canViewReference, canViewTax, canViewEmployees] = await Promise.all([
+  const [canViewUsers, canViewReference, canViewTax, canViewEmployees, canViewPeriod] = await Promise.all([
     hasPermission(user, "USER", "read"),
     hasPermission(user, "REFERENCE", "read"),
     hasPermission(user, "TAX_RATE", "read"),
     hasPermission(user, "EMPLOYEE", "read"),
+    hasPermission(user, "PERIOD", "read"),
   ]);
 
   const groups = [
@@ -23,6 +24,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     {
       label: "ตั้งค่าระบบ/รหัสอ้างอิง",
       items: [
+        ...(canViewPeriod ? [{ href: "/periods", label: "งวดจ่ายเงินเดือน" }] : []),
         ...(canViewReference ? [{ href: "/reference", label: "รหัสอ้างอิง" }] : []),
         ...(canViewTax ? [{ href: "/reference/tax", label: "อัตราภาษี/ลดหย่อน" }] : []),
       ],

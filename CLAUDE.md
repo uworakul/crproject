@@ -147,6 +147,13 @@ Next.js เองเคยแทรกคำเตือนอัตโนมั
 - ทดสอบ end-to-end กับ DB จริงครบ: สร้างพนักงาน→quota auto-create 5 แถว→ตั้งวงเงิน→เพิ่ม memo (Thai ถูกต้อง)→ลาออก→ลาออกซ้ำ 409→เงินเดือนย้อนหลังว่างเปล่าตามคาด (ลบข้อมูลทดสอบออกจาก DB แล้ว)
 - ยังไม่มี: อัปโหลดรูปพนักงาน (BR-012 — `PhotoPath` มีคอลัมน์ใน DDL แต่ยังไม่ตัดสินใจที่เก็บไฟล์ ไม่ทำ UI จนกว่าจะเลือก storage), ค้นหา/กรองในหน้ารายการพนักงาน
 
+## Period Setup ที่ทำไปแล้ว (2026-09-17, โมดูล 2 ส่วนสุดท้าย — BR-005)
+
+- `GET/POST /api/periods`, `PUT/DELETE /api/periods/[id]` (DocumentType `PERIOD`) — DDL ไม่มี UNIQUE constraint บน (EmployeeType, PeriodYear, PeriodMonth) แต่ API กันซ้ำเองระดับ application เพราะ `approveWorksheet()` หาแบบ `findFirst` จากชุดนี้ ถ้าซ้ำจะกำกวมว่าใช้ตัวไหน
+- ลบเป็น hard delete (ไม่มี `IsActive` ใน DDL) แต่ปล่อยให้ DB reject เองถ้ามี `trn_payroll_transaction`/`trn_payroll_calculate_log`/`trn_payroll_lock` อ้างอิงอยู่แล้ว (NO ACTION FK) แล้วจับ error คืนเป็น `PERIOD_IN_USE` แทนที่จะเช็คไล่ทีละตารางเอง
+- ปุ่ม "ปิดงวด/เปิดงวด" สลับ `Status` ได้ — **หมายเหตุที่พบระหว่างทดสอบ (ยังไม่แก้ เก็บไว้พิจารณา)**: `approveWorksheet()` ไม่เช็ค `Status` ของ period เลย (หา period ที่ตรง EmployeeType/Year/Month เจอก็ใช้ได้แม้ Status='CLOSED') — ถ้าต้องการให้ period ที่ปิดแล้วห้าม auto-post เพิ่ม ต้องแก้ `src/lib/worksheet.ts` ตอนทำ Payroll Lock/Closing module (BR-032/034) ซึ่งน่าจะเป็นจุดที่ถูกต้องกว่าที่จะบังคับกฎนี้
+- **ทดสอบ full loop จริงจบครบวงจรแล้ว**: สร้าง period ผ่าน UI/API (ไม่ใช่ script) → Worksheet ของ DEMO01 (2026-09) → บันทึกวัน → submit → **approve สำเร็จโดยใช้ period ที่สร้างผ่านหน้าเว็บจริง** — ปิด gap "Worksheet approve ต้องพึ่ง script สร้าง period" ที่บันทึกไว้ตั้งแต่โมดูล Worksheet เรียบร้อยแล้ว (ข้อมูล demo นี้ตั้งใจเก็บไว้ไม่ลบ เพราะ DEMO01/DEMO001/DEMO002 ถูกเก็บไว้ให้ผู้ใช้ดูอยู่แล้ว)
+
 ### เหตุการณ์ที่ต้องระวัง: `next dev` เคยลบเนื้อหาไฟล์นี้เอง (2026-09-16)
 
 ตอนเขียนหัวข้อ "Next.js 16" ด้านบน มีประโยคที่ quote ข้อความ marker comment ของฟีเจอร์ auto-agent-rules ของ Next.js ไว้ตรงๆ (เพื่ออธิบายว่ามันหน้าตาเป็นยังไง) — พอรัน `next dev` รอบถัดมา ตัวสร้างไฟล์อัตโนมัติของ Next.js ไปเจอ marker ที่ผมเขียนอธิบายไว้ (ไม่ใช่ block จริง) เข้าใจผิดคิดว่าเป็น block เดิม แล้วลบเนื้อหาระหว่างนั้นไปเกือบ 23 บรรทัด (หัวข้อ "Scaffold ที่ทำไปแล้ว" หายไปทั้งหมด) กู้คืนจาก git commit ล่าสุดได้ทัน — **ปิดฟีเจอร์นี้แล้ว** (`agentRules: false` ใน `next.config.ts`) และเขียนประโยคด้านบนใหม่ไม่ให้ quote marker ตรงๆ อีก
@@ -154,7 +161,7 @@ Next.js เองเคยแทรกคำเตือนอัตโนมั
 ## Version
 
 - เอกสารนี้ตรงกับ HFC_System_Database_Design.docx v1.0 (15/09/2026)
-- สถานะ: Database Design อนุมัติแล้ว, Technology Stack ยืนยันเป็น Next.js Full-stack + Prisma 7.10.0 (pinned, ไม่ใช้ 8.0.0-rc) + MSSQL + Session/Cookie Auth ผ่าน `sys_session` (2026-09-15). Prisma schema + migration ประยุกต์เข้า DB จริงสำเร็จแล้ว (`CRPAYROLL_007`). Next.js scaffold + Authentication เสร็จแล้ว (2026-09-16). User Setup/Authorization (โมดูล 1) และ Worksheet (โมดูล 9) เสร็จแล้ว (2026-09-16). **UI shell ใหม่ (sidebar/login แบบ CRPAYROLL), Reference module (โมดูล 2 บางส่วน), Employee Master (โมดูล 3) เสร็จแล้ว** (2026-09-17, ทดสอบ e2e ผ่านหมด). ขั้นถัดไป: Period Setup (ที่เหลือของโมดูล 2) เพื่อให้ Worksheet approve ใช้งานได้เต็มรูปแบบโดยไม่ต้องพึ่ง script, หรือ Request & Approve (โมดูล 4)
+- สถานะ: Database Design อนุมัติแล้ว, Technology Stack ยืนยันเป็น Next.js Full-stack + Prisma 7.10.0 (pinned, ไม่ใช้ 8.0.0-rc) + MSSQL + Session/Cookie Auth ผ่าน `sys_session` (2026-09-15). Prisma schema + migration ประยุกต์เข้า DB จริงสำเร็จแล้ว (`CRPAYROLL_007`). Next.js scaffold + Authentication เสร็จแล้ว (2026-09-16). User Setup/Authorization (โมดูล 1) และ Worksheet (โมดูล 9) เสร็จแล้ว (2026-09-16). UI shell ใหม่, Reference module, Employee Master (โมดูล 3) เสร็จแล้ว (2026-09-17). **Period Setup เสร็จแล้ว — ปิดโมดูล 2 ครบ** (2026-09-17, ทดสอบ full loop Employee→Period→Worksheet approve จบผ่าน UI/API จริงทั้งหมดแล้ว ไม่ต้องพึ่ง script อีกต่อไป). ขั้นถัดไป: Request & Approve (โมดูล 4), Inventory (โมดูล 5), Payroll (โมดูล 6), Leave (โมดูล 7) — กำลังไล่ทำต่อเนื่องตามที่ผู้ใช้สั่ง "ต่อ module ที่เหลือเลย"
 
 <!-- BEGIN:nextjs-agent-rules -->
 
