@@ -172,7 +172,6 @@ export default function ReferenceTable({ apiBase, fields, hasIsActive, canSave, 
                   {f.label}
                 </th>
               ))}
-              {hasIsActive && <th className="px-3 py-2 font-medium">สถานะ</th>}
               {(canSave || canDelete) && <th className="px-3 py-2"></th>}
             </tr>
           </thead>
@@ -196,11 +195,6 @@ export default function ReferenceTable({ apiBase, fields, hasIsActive, canSave, 
                       )}
                     </td>
                   ))}
-                  {hasIsActive && (
-                    <td className="px-3 py-2">
-                      {row.IsActive ? <span className="text-green-600">ใช้งาน</span> : <span className="text-red-500">ระงับ</span>}
-                    </td>
-                  )}
                   {(canSave || canDelete) && (
                     <td className="whitespace-nowrap px-3 py-2 text-right">
                       {isEditing ? (
@@ -238,7 +232,7 @@ export default function ReferenceTable({ apiBase, fields, hasIsActive, canSave, 
             })}
             {rows.length === 0 && (
               <tr>
-                <td colSpan={visibleFields.length + 2} className="px-3 py-6 text-center text-gray-400">
+                <td colSpan={visibleFields.length + 1} className="px-3 py-6 text-center text-gray-400">
                   ยังไม่มีข้อมูล
                 </td>
               </tr>
