@@ -65,10 +65,10 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     {
       label: "ตั้งค่าระบบ/รหัสอ้างอิง",
       items: [
-        ...(canViewPeriod ? [{ href: "/periods", label: "งวดจ่ายเงินเดือน" }] : []),
-        ...(canViewReference ? [{ href: "/reference", label: "รหัสอ้างอิง" }] : []),
-        ...(canViewTax ? [{ href: "/reference/tax", label: "อัตราภาษี/ลดหย่อน" }] : []),
-        ...(canViewReference ? [{ href: "/leave/types", label: "ประเภทการลา" }] : []),
+        ...(canViewReference ? [{ href: "/reference", label: "รหัสอ้างอิงหลัก" }] : []),
+        ...(canViewReference ? [{ href: "/leave/types", label: "ประเภทและสิทธิการลา" }] : []),
+        ...(canViewTax ? [{ href: "/reference/tax", label: "อัตราภาษี/ค่าลดหย่อน" }] : []),
+        ...(canViewPeriod ? [{ href: "/periods", label: "งวดการจ่าย" }] : []),
       ],
     },
     {
