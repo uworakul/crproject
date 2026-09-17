@@ -5,7 +5,7 @@ import { useState } from "react";
 export interface FieldDef {
   key: string; // matches the API's JSON field name (PascalCase, from Prisma)
   label: string;
-  type: "text" | "number" | "percent"; // percent: stored 0-1, edited as a 0-100 field
+  type: "text" | "number" | "percent" | "date"; // percent: stored 0-1, edited as a 0-100 field
   isKey?: boolean; // primary key — shown but not editable once created
   hidden?: boolean; // not rendered as a column or form input, but still tracked
   // (e.g. an auto-increment PK used as the API's URL id when the visible
@@ -32,7 +32,16 @@ function toApiKey(key: string) {
 function displayValue(field: FieldDef, value: unknown) {
   if (value === null || value === undefined) return "-";
   if (field.type === "percent") return `${(Number(value) * 100).toFixed(2)}%`;
+  if (field.type === "date") return new Date(String(value)).toLocaleDateString("th-TH");
   return String(value);
+}
+
+// API dates come back as full ISO timestamps — <input type="date"> needs
+// just the YYYY-MM-DD portion to display/edit correctly.
+function toDateInputValue(value: unknown): string {
+  if (value === null || value === undefined) return "";
+  const s = String(value);
+  return s.length >= 10 ? s.slice(0, 10) : s;
 }
 
 export default function ReferenceTable({ apiBase, fields, hasIsActive, canSave, canDelete, initialRows }: Props) {
@@ -85,7 +94,14 @@ export default function ReferenceTable({ apiBase, fields, hasIsActive, canSave, 
   function startEdit(row: Record<string, unknown>) {
     const id = String(row[keyField.key]);
     setEditingId(id);
-    setEditForm(Object.fromEntries(fields.map((f) => [f.key, f.type === "percent" ? String(Number(row[f.key]) * 100) : String(row[f.key] ?? "")])));
+    setEditForm(
+      Object.fromEntries(
+        fields.map((f) => [
+          f.key,
+          f.type === "percent" ? String(Number(row[f.key]) * 100) : f.type === "date" ? toDateInputValue(row[f.key]) : String(row[f.key] ?? ""),
+        ]),
+      ),
+    );
   }
 
   async function saveEdit(id: string) {
@@ -157,6 +173,7 @@ export default function ReferenceTable({ apiBase, fields, hasIsActive, canSave, 
                     <td key={f.key} className="px-3 py-2">
                       {isEditing && !f.isKey ? (
                         <input
+                          type={f.type === "date" ? "date" : "text"}
                           value={editForm[f.key] ?? ""}
                           onChange={(e) => setEditForm({ ...editForm, [f.key]: e.target.value })}
                           className="w-full rounded border border-gray-300 px-2 py-1 text-sm"
@@ -223,6 +240,7 @@ export default function ReferenceTable({ apiBase, fields, hasIsActive, canSave, 
             <label key={f.key} className="flex flex-col gap-1 text-xs text-gray-500">
               {f.label}
               <input
+                type={f.type === "date" ? "date" : "text"}
                 value={form[f.key]}
                 onChange={(e) => setForm({ ...form, [f.key]: e.target.value })}
                 className="w-32 rounded border border-gray-300 px-2 py-1 text-sm text-gray-900"

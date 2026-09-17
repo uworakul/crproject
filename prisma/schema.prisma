@@ -76,14 +76,30 @@ model RefBank {
 }
 
 model RefSsoBase {
-  SSOBaseID     Int     @id(map: "PK_ref_sso_base") @default(autoincrement())
-  EffectiveYear Int     @db.SmallInt
-  MinBase       Decimal @db.Decimal(10, 2)
-  MaxBase       Decimal @db.Decimal(10, 2)
-  EmployeeRate  Decimal @db.Decimal(5, 4)
-  EmployerRate  Decimal @db.Decimal(5, 4)
+  SSOBaseID     Int       @id(map: "PK_ref_sso_base") @default(autoincrement())
+  EffectiveYear Int       @db.SmallInt
+  EffectiveDate DateTime? @db.Date
+  MinBase       Decimal   @db.Decimal(10, 2)
+  MaxBase       Decimal   @db.Decimal(10, 2)
+  EmployeeRate  Decimal   @db.Decimal(5, 4)
+  EmployerRate  Decimal   @db.Decimal(5, 4)
 
   @@map("ref_sso_base")
+}
+
+// Added 2026-09-17 at the user's request — BR-009 already described
+// "กำหนดข้อมูลบริษัท" (configure company data) as part of System > Reference
+// > Tax & Rate, but no table for it existed in the originally approved
+// 33-table DDL. Standalone reference data, no FK from any other table.
+model RefCompany {
+  CompanyCode  String  @id(map: "PK_ref_company") @db.VarChar(10)
+  CompanyName  String  @db.NVarChar(150)
+  Address      String? @db.NVarChar(300)
+  TaxID        String? @db.VarChar(20)
+  SSORegistNo  String? @db.VarChar(20)
+  ContactPhone String? @db.VarChar(20)
+
+  @@map("ref_company")
 }
 
 model RefBlackList {

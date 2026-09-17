@@ -23,6 +23,7 @@ export async function POST(request: NextRequest) {
 
   let body: {
     effectiveYear?: unknown;
+    effectiveDate?: unknown;
     minBase?: unknown;
     maxBase?: unknown;
     employeeRate?: unknown;
@@ -48,8 +49,17 @@ export async function POST(request: NextRequest) {
     return apiError(400, "VALIDATION_FAILED", "employeeRate and employerRate must be between 0 and 1");
   }
 
+  // EffectiveDate is purely informational (the exact date the rate took
+  // effect, e.g. 2026-01-01 for the SSO ceiling change) — Calculate still
+  // looks rates up by EffectiveYear only (src/lib/payroll.ts), unchanged.
+  let effectiveDate: Date | undefined;
+  if (typeof body.effectiveDate === "string" && body.effectiveDate) {
+    effectiveDate = new Date(body.effectiveDate);
+    if (Number.isNaN(effectiveDate.getTime())) return apiError(400, "VALIDATION_FAILED", "effectiveDate is invalid");
+  }
+
   const created = await prisma.refSsoBase.create({
-    data: { EffectiveYear: effectiveYear, MinBase: minBase, MaxBase: maxBase, EmployeeRate: employeeRate, EmployerRate: employerRate },
+    data: { EffectiveYear: effectiveYear, EffectiveDate: effectiveDate, MinBase: minBase, MaxBase: maxBase, EmployeeRate: employeeRate, EmployerRate: employerRate },
   });
   await logAction(user.userId, "CREATE_SSO_BASE", { targetTable: "ref_sso_base", targetId: String(created.SSOBaseID) });
   return apiSuccess(created, 201);
