@@ -37,7 +37,7 @@ export default async function TaxRatePage() {
 
   return (
     <div className="mx-auto max-w-3xl p-8">
-      <h1 className="mb-6 text-lg font-semibold text-gray-900">อัตราภาษี/ลดหย่อน</h1>
+      <h1 className="mb-6 text-lg font-semibold text-gray-900">อัตราภาษี/ค่าลดหย่อน</h1>
       <Tabs
         tabs={[
           {

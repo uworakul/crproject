@@ -19,7 +19,7 @@ export default async function LeaveTypesPage() {
 
   return (
     <div className="mx-auto max-w-3xl p-8">
-      <h1 className="mb-6 text-lg font-semibold text-gray-900">ประเภทการลา</h1>
+      <h1 className="mb-6 text-lg font-semibold text-gray-900">ประเภทและสิทธิการลา</h1>
       <LeaveTypesView initialRows={types} canSave={canSave} canDelete={canDelete} />
     </div>
   );
