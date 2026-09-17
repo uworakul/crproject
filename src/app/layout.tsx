@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "ABC CO., LTD. — HR & Payroll",
+  title: "CRPAYROLL — ABC CO., LTD.",
   description: "ระบบ HR & Payroll สำหรับ ABC CO., LTD.",
 };
 

@@ -1,5 +1,4 @@
 import { redirect } from "next/navigation";
-import Link from "next/link";
 import { verifySession } from "@/lib/dal";
 import { hasPermission } from "@/lib/authorize";
 import { prisma } from "@/lib/prisma";
@@ -44,11 +43,8 @@ export default async function WorksheetPage() {
   }
 
   return (
-    <main className="mx-auto max-w-6xl p-8">
-      <Link href="/" className="text-sm text-gray-500 hover:underline">
-        ← กลับหน้าแรก
-      </Link>
-      <h1 className="mb-6 mt-2 text-xl font-semibold">ใบลงเวลาปฏิบัติงานประจำเดือน</h1>
+    <div className="mx-auto max-w-6xl p-8">
+      <h1 className="mb-6 text-lg font-semibold text-gray-900">ใบลงเวลาปฏิบัติงานประจำเดือน</h1>
 
       {sites.length === 0 ? (
         <p className="text-sm text-gray-500">
@@ -57,6 +53,6 @@ export default async function WorksheetPage() {
       ) : (
         <WorksheetView sites={sites} initialData={initialData} initialError={initialError} />
       )}
-    </main>
+    </div>
   );
 }

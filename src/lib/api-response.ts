@@ -13,6 +13,11 @@ export function apiError(
   return NextResponse.json({ error: code, message, ...context }, { status });
 }
 
+// BigInt fields (e.g. mst_employee_history.HistoryID, sys_process_log.LogID)
+// aren't valid JSON — NextResponse.json() throws on them directly, so
+// stringify them first via a replacer, same as the Server Component ->
+// Client Component boundary has to.
 export function apiSuccess<T>(data: T, status = 200) {
-  return NextResponse.json(data, { status });
+  const safe = JSON.parse(JSON.stringify(data, (_key, value) => (typeof value === "bigint" ? value.toString() : value)));
+  return NextResponse.json(safe, { status });
 }

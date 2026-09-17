@@ -46,11 +46,11 @@ export default async function UserDetailPage({
   if (!target) notFound();
 
   return (
-    <main className="mx-auto max-w-3xl p-8">
+    <div className="mx-auto max-w-3xl p-8">
       <Link href="/users" className="text-sm text-gray-500 hover:underline">
         ← กลับรายการผู้ใช้งาน
       </Link>
-      <h1 className="mb-6 mt-2 text-xl font-semibold">
+      <h1 className="mb-6 mt-2 text-lg font-semibold text-gray-900">
         ผู้ใช้งาน: {target.UserID} — {target.DisplayName}
       </h1>
 
@@ -62,6 +62,6 @@ export default async function UserDetailPage({
         canSave={canSave}
         isSelf={currentUser.userId === target.UserID}
       />
-    </main>
+    </div>
   );
 }

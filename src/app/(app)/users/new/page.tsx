@@ -59,11 +59,11 @@ export default function NewUserPage() {
   }
 
   return (
-    <main className="mx-auto max-w-lg p-8">
+    <div className="mx-auto max-w-lg p-8">
       <Link href="/users" className="text-sm text-gray-500 hover:underline">
         ← กลับรายการผู้ใช้งาน
       </Link>
-      <h1 className="mb-6 mt-2 text-xl font-semibold">สร้างผู้ใช้งานใหม่</h1>
+      <h1 className="mb-6 mt-2 text-lg font-semibold text-gray-900">สร้างผู้ใช้งานใหม่</h1>
 
       <form onSubmit={handleSubmit} className="flex flex-col gap-3">
         <Field label="รหัสผู้ใช้งาน (Login Name)">
@@ -137,12 +137,12 @@ export default function NewUserPage() {
         <button
           type="submit"
           disabled={pending}
-          className="mt-2 rounded bg-blue-600 px-4 py-2 text-white disabled:opacity-50"
+          className="mt-2 rounded-md bg-gray-900 px-4 py-2 text-white hover:bg-gray-700 disabled:opacity-50"
         >
           {pending ? "กำลังบันทึก..." : "สร้างผู้ใช้งาน"}
         </button>
       </form>
-    </main>
+    </div>
   );
 }
 
