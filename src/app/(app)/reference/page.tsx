@@ -71,7 +71,7 @@ export default async function ReferencePage() {
       <Tabs
         tabs={[
           {
-            label: "Company",
+            label: "บริษัท",
             content: (
               <ReferenceTable
                 apiBase="/api/reference/company"
