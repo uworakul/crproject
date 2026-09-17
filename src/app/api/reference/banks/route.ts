@@ -30,9 +30,13 @@ export async function POST(request: NextRequest) {
 
   const bankCode = typeof body.bankCode === "string" ? body.bankCode.trim() : "";
   const bankNameTH = typeof body.bankNameTH === "string" ? body.bankNameTH.trim() : "";
-  const bankNameEN = typeof body.bankNameEN === "string" ? body.bankNameEN.trim() : "";
-  if (!bankCode || !bankNameTH || !bankNameEN) {
-    return apiError(400, "INVALID_PARAMS", "bankCode, bankNameTH, and bankNameEN are required");
+  // bankNameEN is NOT NULL in the DDL but the simplified UI (code + name
+  // only) no longer collects it separately — default to the Thai name
+  // rather than block creation; can still be set precisely later via a
+  // direct edit if the English name genuinely differs.
+  const bankNameEN = typeof body.bankNameEN === "string" && body.bankNameEN.trim() ? body.bankNameEN.trim() : bankNameTH;
+  if (!bankCode || !bankNameTH) {
+    return apiError(400, "INVALID_PARAMS", "bankCode and bankNameTH are required");
   }
 
   const existing = await prisma.refBank.findUnique({ where: { BankCode: bankCode } });

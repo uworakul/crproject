@@ -48,7 +48,6 @@ export default function LoginPage() {
             AC
           </div>
           <div className="text-lg font-semibold tracking-tight text-gray-900">CRPAYROLL</div>
-          <p className="mt-1 text-xs text-gray-500">ระบบ HR &amp; Payroll — ABC CO., LTD.</p>
         </div>
 
         <form onSubmit={handleSubmit} className="flex flex-col gap-4">
@@ -104,7 +103,7 @@ export default function LoginPage() {
           </button>
         </form>
 
-        <p className="mt-6 text-center text-xs text-gray-400">ABC CO., LTD. — HR &amp; Payroll System</p>
+        <p className="mt-6 text-center text-xs text-gray-400">ABC CO., LTD.</p>
       </div>
     </main>
   );

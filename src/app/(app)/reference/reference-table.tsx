@@ -7,6 +7,9 @@ export interface FieldDef {
   label: string;
   type: "text" | "number" | "percent"; // percent: stored 0-1, edited as a 0-100 field
   isKey?: boolean; // primary key — shown but not editable once created
+  hidden?: boolean; // not rendered as a column or form input, but still tracked
+  // (e.g. an auto-increment PK used as the API's URL id when the visible
+  // "code" column is a different, more meaningful field — see ref_black_list)
 }
 
 interface Props {
@@ -41,6 +44,7 @@ export default function ReferenceTable({ apiBase, fields, hasIsActive, canSave, 
   const [message, setMessage] = useState<string | null>(null);
 
   const keyField = fields.find((f) => f.isKey)!;
+  const visibleFields = fields.filter((f) => !f.hidden);
 
   async function refresh() {
     const res = await fetch(apiBase);
@@ -134,7 +138,7 @@ export default function ReferenceTable({ apiBase, fields, hasIsActive, canSave, 
         <table className="w-full border-collapse text-sm">
           <thead className="border-b border-gray-200 bg-gray-50 text-left text-gray-500">
             <tr>
-              {fields.map((f) => (
+              {visibleFields.map((f) => (
                 <th key={f.key} className="px-3 py-2 font-medium">
                   {f.label}
                 </th>
@@ -149,7 +153,7 @@ export default function ReferenceTable({ apiBase, fields, hasIsActive, canSave, 
               const isEditing = editingId === id;
               return (
                 <tr key={id} className="border-t border-gray-100 hover:bg-gray-50">
-                  {fields.map((f) => (
+                  {visibleFields.map((f) => (
                     <td key={f.key} className="px-3 py-2">
                       {isEditing && !f.isKey ? (
                         <input
@@ -204,7 +208,7 @@ export default function ReferenceTable({ apiBase, fields, hasIsActive, canSave, 
             })}
             {rows.length === 0 && (
               <tr>
-                <td colSpan={fields.length + 2} className="px-3 py-6 text-center text-gray-400">
+                <td colSpan={visibleFields.length + 2} className="px-3 py-6 text-center text-gray-400">
                   ยังไม่มีข้อมูล
                 </td>
               </tr>
@@ -215,7 +219,7 @@ export default function ReferenceTable({ apiBase, fields, hasIsActive, canSave, 
 
       {canSave && (
         <div className="flex flex-wrap items-end gap-2 rounded-lg border border-dashed border-gray-300 p-3">
-          {fields.map((f) => (
+          {visibleFields.map((f) => (
             <label key={f.key} className="flex flex-col gap-1 text-xs text-gray-500">
               {f.label}
               <input

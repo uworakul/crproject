@@ -7,8 +7,7 @@ import ReferenceTable, { type FieldDef } from "./reference-table";
 
 const bankFields: FieldDef[] = [
   { key: "BankCode", label: "รหัสธนาคาร", type: "text", isKey: true },
-  { key: "BankNameTH", label: "ชื่อ (ไทย)", type: "text" },
-  { key: "BankNameEN", label: "ชื่อ (English)", type: "text" },
+  { key: "BankNameTH", label: "ชื่อ", type: "text" },
 ];
 const deptFields: FieldDef[] = [
   { key: "DeptCode", label: "รหัสแผนก", type: "text", isKey: true },
@@ -17,7 +16,6 @@ const deptFields: FieldDef[] = [
 const positionFields: FieldDef[] = [
   { key: "PositionCode", label: "รหัสตำแหน่ง", type: "text", isKey: true },
   { key: "PositionName", label: "ชื่อตำแหน่ง", type: "text" },
-  { key: "PositionAllowance", label: "เงินตำแหน่ง (บาท)", type: "number" },
 ];
 const ssoFields: FieldDef[] = [
   { key: "SSOBaseID", label: "ID", type: "text", isKey: true },
@@ -28,10 +26,9 @@ const ssoFields: FieldDef[] = [
   { key: "EmployerRate", label: "อัตรานายจ้าง (%)", type: "percent" },
 ];
 const blacklistFields: FieldDef[] = [
-  { key: "BlackListID", label: "ID", type: "text", isKey: true },
-  { key: "IDCardNo", label: "เลขบัตรประชาชน", type: "text" },
-  { key: "FullName", label: "ชื่อ-นามสกุล", type: "text" },
-  { key: "Reason", label: "เหตุผล", type: "text" },
+  { key: "BlackListID", label: "ID", type: "text", isKey: true, hidden: true },
+  { key: "IDCardNo", label: "รหัส", type: "text" },
+  { key: "FullName", label: "ชื่อ", type: "text" },
 ];
 
 export default async function ReferencePage() {
@@ -102,7 +99,7 @@ export default async function ReferencePage() {
             ),
           },
           {
-            label: "บัญชีดำ",
+            label: "Blacklist",
             content: (
               <ReferenceTable
                 apiBase="/api/reference/blacklist"
