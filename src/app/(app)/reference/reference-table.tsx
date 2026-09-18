@@ -1,6 +1,20 @@
 "use client";
 
 import { useState } from "react";
+import Swal from "sweetalert2";
+
+async function confirmDialog(text: string) {
+  const result = await Swal.fire({
+    text,
+    icon: "warning",
+    showCancelButton: true,
+    confirmButtonText: "ยืนยัน",
+    cancelButtonText: "ยกเลิก",
+    confirmButtonColor: "#111827",
+    cancelButtonColor: "#9ca3af",
+  });
+  return result.isConfirmed;
+}
 
 export interface FieldDef {
   key: string; // matches the API's JSON field name (PascalCase, from Prisma)
@@ -118,7 +132,7 @@ export default function ReferenceTable({ apiBase, fields, hasIsActive, canSave, 
   }
 
   async function saveEdit(id: string) {
-    if (!confirm("ยืนยันการบันทึก?")) return;
+    if (!(await confirmDialog("ยืนยันการบันทึก?"))) return;
     setMessage(null);
     const res = await fetch(`${apiBase}/${encodeURIComponent(id)}`, {
       method: "PUT",
@@ -137,7 +151,7 @@ export default function ReferenceTable({ apiBase, fields, hasIsActive, canSave, 
   async function toggleActive(row: Record<string, unknown>) {
     const id = String(row[keyField.key]);
     const isActive = row.IsActive as boolean;
-    if (!confirm(isActive ? "ยืนยันการระงับ?" : "ยืนยันการเปิดใช้งาน?")) return;
+    if (!(await confirmDialog(isActive ? "ยืนยันการระงับ?" : "ยืนยันการเปิดใช้งาน?"))) return;
     setMessage(null);
     const res = isActive
       ? await fetch(`${apiBase}/${encodeURIComponent(id)}`, { method: "DELETE" })
@@ -152,7 +166,7 @@ export default function ReferenceTable({ apiBase, fields, hasIsActive, canSave, 
   }
 
   async function handleDelete(row: Record<string, unknown>) {
-    if (!confirm("ยืนยันการลบ?")) return;
+    if (!(await confirmDialog("ยืนยันการลบ?"))) return;
     const id = String(row[keyField.key]);
     setMessage(null);
     const res = await fetch(`${apiBase}/${encodeURIComponent(id)}`, { method: "DELETE" });
