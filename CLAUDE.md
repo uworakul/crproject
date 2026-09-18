@@ -237,6 +237,22 @@ Next.js เองเคยแทรกคำเตือนอัตโนมั
 - **แก้ API ทุกจุดที่ create/update ข้อมูล (63 ไฟล์ route.ts ทั่วทั้งระบบ)** ให้ใส่ `CreatedBy: user.userId` ตอนสร้าง และ `UpdatedBy: user.userId, UpdatedDate: new Date()` ตอนแก้ไข/soft-delete/state-transition (submit/approve/reject/confirm/lock/close ทุกจุดนับเป็น "แก้ไข" ด้วย) ครอบคลุมทุกโมดูล — **ข้อยกเว้นเดียวที่ตั้งใจ**: `POST /api/auth/login` อัปเดต `sys_user.LastLoginDate` แต่ไม่แตะ `UpdatedBy/UpdatedDate` เพราะจะทำให้ "แก้ไขล่าสุดเมื่อไหร่" ของบัญชีผู้ใช้กลายเป็นแค่เวลา login ล่าสุดแทนที่จะสื่อถึงการแก้ไขข้อมูลโปรไฟล์/สิทธิ์จริงๆ — `LastLoginDate` เป็น field เฉพาะสำหรับสิ่งนี้อยู่แล้ว
 - ทดสอบผ่าน DB จริงครบทุกโมดูลตัวแทน (ref_department, mst_site, inv_supplier, ref_company, mst_employee) ยืนยัน `CreatedBy`/`UpdatedBy` บันทึกถูกต้อง (ลบข้อมูลทดสอบออกหมดแล้ว)
 
+## บั๊กจริง: Tabs ทำให้ ReferenceTable ค้าง state ข้ามแท็บ (2026-09-18)
+
+ผู้ใช้รายงานว่าสลับแท็บ (เช่น บริษัท → ธนาคาร) แล้วตารางแสดง "-" ทุกแถวหรือแสดงจำนวนแถวผิด ทั้งที่ DB/API/SSR payload ถูกต้องทุกอย่าง (ตรวจสอบละเอียดหลายชั้น: query DB ตรง, เรียก API ตรง, อ่าน RSC payload ที่ embed ใน HTML ตรง — ถูกต้องทุกจุด) สุดท้ายเจอสาเหตุจริงด้วย `console.log` วาง props ที่ต้นฟังก์ชัน:
+
+- **Root cause**: `Tabs` (`src/app/(app)/reference/tabs.tsx`) render `{tabs[active].content}` โดยไม่มี `key` — เมื่อทุกแท็บใช้ component type เดียวกัน (`<ReferenceTable>` ซ้ำกันในหลายแท็บ, หรือ `<RequestTypeView>` ในหน้า `/requests`) React ที่ reconciliation ตำแหน่ง JSX เดิม **เห็นว่าเป็น component type เดิม เลยใช้ fiber/instance เดิมแทนที่จะ unmount+remount** — `useState(initialRows)` จึงไม่ re-initialize ตาม prop ใหม่ ทำให้ state (`rows`) ค้างเป็นของแท็บก่อนหน้า แล้วไป lookup field ที่ไม่มีในแถวเดิม (เช่น `row.BankCode` บนแถวที่จริงเป็น Company) ได้ `undefined` → แสดง "-"
+- **แก้แล้ว**: เพิ่ม `key` ที่ไม่ซ้ำกัน (ใช้ `apiBase`/`type` เป็น key) ให้ทุก `<ReferenceTable>`/`<RequestTypeView>` ที่ใช้เป็น `content` ของ `Tabs` — บังคับให้ React unmount+remount ทุกครั้งที่สลับแท็บ ครอบคลุม 4 ไฟล์: `reference/page.tsx` (6 แท็บ), `reference/tax/page.tsx` (2 แท็บ), `inventory/page.tsx` (3 แท็บ), `requests/page.tsx`
+- **บทเรียน**: ถ้าเจอ "ข้อมูลแสดงผิดทั้งที่ backend ถูกต้อง 100%" ให้สงสัย React reconciliation/component identity ก่อนสงสัย cache — โดยเฉพาะเวลามี component เดียวกันถูกใช้ซ้ำในหลายๆ branch ของ conditional render โดยไม่มี key ชัดเจน (list ปกติจะมี lint warning เตือน แต่ conditional render แบบนี้ (`{cond ? <Foo/> : <Foo/>}` หรือ `{arr[i].content}`) ไม่มี warning เตือนเลย)
+
+## Reference table เพิ่ม search + sort (2026-09-18)
+
+ผู้ใช้ขอเพิ่มการค้นหาและเรียงลำดับใน `reference-table.tsx` (component กลางที่ใช้ทั้ง Reference/Payroll Sites/Inventory):
+
+- **ค้นหา**: ช่อง input กรองบนฝั่ง client จาก `rows` ที่มีอยู่แล้ว (ไม่ยิง API ใหม่) เทียบเฉพาะคอลัมน์ code (`keyField`) กับคอลัมน์ name (`nameField` = visible field แรกที่ไม่ใช่ key) แบบ case-insensitive substring match
+- **เรียงลำดับ**: คลิก header คอลัมน์ไหนก็ได้เพื่อ sort ตามคอลัมน์นั้น (คลิกซ้ำสลับ asc/desc, มีลูกศร ▲/▼ บอกสถานะ) เทียบค่าตาม `field.type` ให้ถูกต้อง (number/percent เทียบเป็นตัวเลข, date เทียบเป็น timestamp, text ใช้ `localeCompare` แบบไทย) — **ค่า default เริ่มต้น sort ด้วยคอลัมน์แรกเสมอ** (ไม่ใช่ unsorted) ตามที่ผู้ใช้ระบุ
+- **แก้ปุ่ม "ลบ" ของ Bank/Department/Position ให้ลบจริง (hard delete)**: พบว่า commit ก่อนหน้า (`083b195`, "Drop the ระงับ/เปิดใช้งาน toggle") เปลี่ยนแค่ฝั่ง UI (label เป็น "ลบ" แทน "ระงับ") แต่ DELETE endpoint (`banks/departments/positions/[code]/route.ts`) ยังเป็นโค้ดเก่าที่ set `IsActive=false` เท่านั้น — เพราะ `GET` ไม่ได้ filter `IsActive` เลย แถวเลยไม่หายไปจากตารางแม้ "ลบ" สำเร็จ (200) ผู้ใช้สังเกตเจอเอง ("มี isactive = 0 แต่อยากให้ลบออกไปเลย") — แก้เป็น `prisma.*.delete()` จริง พร้อม `try/catch` ดัก FK violation จาก `mst_employee.BankCode/DeptCode/PositionCode` (NO ACTION FK) คืน 409 `BANK_IN_USE`/`DEPARTMENT_IN_USE`/`POSITION_IN_USE` แทนที่จะเดา (pattern เดียวกับ `PERIOD_IN_USE`/`LEAVE_TYPE_IN_USE` ที่มีอยู่แล้ว) — ทดสอบลบผ่าน API ตรงยืนยันแล้วว่าหายจริง
+
 ## Version
 
 - เอกสารนี้ตรงกับ HFC_System_Database_Design.docx v1.0 (15/09/2026)

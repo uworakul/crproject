@@ -37,7 +37,9 @@ export async function PUT(request: NextRequest, ctx: RouteContext<"/api/referenc
   return apiSuccess(updated);
 }
 
-// Soft delete: mst_employee.BankCode has a NO ACTION FK to this table.
+// Hard delete — mst_employee.BankCode has a NO ACTION FK to this table, which
+// SQL Server rejects on its own the moment a bank is actually referenced; we
+// just surface that cleanly instead of guessing.
 export async function DELETE(_req: Request, ctx: RouteContext<"/api/reference/banks/[code]">) {
   const user = await verifySession();
   if (!user) return apiError(401, "UNAUTHORIZED");
@@ -48,7 +50,12 @@ export async function DELETE(_req: Request, ctx: RouteContext<"/api/reference/ba
   const existing = await prisma.refBank.findUnique({ where: { BankCode: code } });
   if (!existing) return apiError(404, "BANK_NOT_FOUND");
 
-  await prisma.refBank.update({ where: { BankCode: code }, data: { IsActive: false, UpdatedBy: user.userId, UpdatedDate: new Date() } });
-  await logAction(user.userId, "DEACTIVATE_BANK", { targetTable: "ref_bank", targetId: code });
+  try {
+    await prisma.refBank.delete({ where: { BankCode: code } });
+  } catch {
+    return apiError(409, "BANK_IN_USE", "This bank is linked to one or more employees and cannot be deleted");
+  }
+
+  await logAction(user.userId, "DELETE_BANK", { targetTable: "ref_bank", targetId: code });
   return apiSuccess({ ok: true });
 }

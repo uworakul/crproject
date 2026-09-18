@@ -58,6 +58,7 @@ export default async function InventoryMasterPage() {
       label: "ผู้ขาย (Supplier)",
       content: (
         <ReferenceTable
+          key="/api/inventory/suppliers"
           apiBase="/api/inventory/suppliers"
           fields={supplierFields}
           hasIsActive
@@ -73,6 +74,7 @@ export default async function InventoryMasterPage() {
       label: "คลังสินค้า (Warehouse)",
       content: (
         <ReferenceTable
+          key="/api/inventory/warehouses"
           apiBase="/api/inventory/warehouses"
           fields={warehouseFields}
           hasIsActive
@@ -88,6 +90,7 @@ export default async function InventoryMasterPage() {
       label: "สินค้า (Product)",
       content: (
         <ReferenceTable
+          key="/api/inventory/products"
           apiBase="/api/inventory/products"
           fields={productFields}
           hasIsActive

@@ -44,6 +44,7 @@ export default async function TaxRatePage() {
             label: "ขั้นภาษี",
             content: (
               <ReferenceTable
+                key="/api/reference/tax-brackets"
                 apiBase="/api/reference/tax-brackets"
                 fields={bracketFields}
                 canSave={canSave}
@@ -56,6 +57,7 @@ export default async function TaxRatePage() {
             label: "ค่าลดหย่อน",
             content: (
               <ReferenceTable
+                key="/api/reference/deduction-rates"
                 apiBase="/api/reference/deduction-rates"
                 fields={deductionFields}
                 hasIsActive={false}

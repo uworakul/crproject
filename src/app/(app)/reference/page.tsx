@@ -27,8 +27,8 @@ const positionFields: FieldDef[] = [
 ];
 const blacklistFields: FieldDef[] = [
   { key: "BlackListID", label: "ID", type: "text", isKey: true, hidden: true },
-  { key: "IDCardNo", label: "รหัส", type: "text" },
-  { key: "FullName", label: "ชื่อ", type: "text" },
+  { key: "IDCardNo", label: "รหัสแบล็คลิส", type: "text" },
+  { key: "FullName", label: "รายละเอียด", type: "text" },
 ];
 const ssoFields: FieldDef[] = [
   { key: "SSOBaseID", label: "ID", type: "text", isKey: true },
@@ -74,6 +74,7 @@ export default async function ReferencePage() {
             label: "บริษัท",
             content: (
               <ReferenceTable
+                key="/api/reference/company"
                 apiBase="/api/reference/company"
                 fields={companyFields}
                 canSave={canSave}
@@ -85,13 +86,21 @@ export default async function ReferencePage() {
           {
             label: "ธนาคาร",
             content: (
-              <ReferenceTable apiBase="/api/reference/banks" fields={bankFields} canSave={canSave} canDelete={canDelete} initialRows={banks} />
+              <ReferenceTable
+                key="/api/reference/banks"
+                apiBase="/api/reference/banks"
+                fields={bankFields}
+                canSave={canSave}
+                canDelete={canDelete}
+                initialRows={banks}
+              />
             ),
           },
           {
             label: "แผนก",
             content: (
               <ReferenceTable
+                key="/api/reference/departments"
                 apiBase="/api/reference/departments"
                 fields={deptFields}
                 canSave={canSave}
@@ -104,6 +113,7 @@ export default async function ReferencePage() {
             label: "ตำแหน่ง",
             content: (
               <ReferenceTable
+                key="/api/reference/positions"
                 apiBase="/api/reference/positions"
                 fields={positionFields}
                 canSave={canSave}
@@ -116,6 +126,7 @@ export default async function ReferencePage() {
             label: "Blacklist",
             content: (
               <ReferenceTable
+                key="/api/reference/blacklist"
                 apiBase="/api/reference/blacklist"
                 fields={blacklistFields}
                 canSave={canSave}
@@ -127,7 +138,14 @@ export default async function ReferencePage() {
           {
             label: "ฐานประกันสังคม",
             content: (
-              <ReferenceTable apiBase="/api/reference/sso-base" fields={ssoFields} canSave={canSave} canDelete={canDelete} initialRows={ssoBase} />
+              <ReferenceTable
+                key="/api/reference/sso-base"
+                apiBase="/api/reference/sso-base"
+                fields={ssoFields}
+                canSave={canSave}
+                canDelete={canDelete}
+                initialRows={ssoBase}
+              />
             ),
           },
         ]}

@@ -36,6 +36,9 @@ export async function PUT(request: NextRequest, ctx: RouteContext<"/api/referenc
   return apiSuccess(updated);
 }
 
+// Hard delete — mst_employee.DeptCode has a NO ACTION FK to this table, which
+// SQL Server rejects on its own the moment a department is actually
+// referenced; we just surface that cleanly instead of guessing.
 export async function DELETE(_req: Request, ctx: RouteContext<"/api/reference/departments/[code]">) {
   const user = await verifySession();
   if (!user) return apiError(401, "UNAUTHORIZED");
@@ -46,7 +49,12 @@ export async function DELETE(_req: Request, ctx: RouteContext<"/api/reference/de
   const existing = await prisma.refDepartment.findUnique({ where: { DeptCode: code } });
   if (!existing) return apiError(404, "DEPARTMENT_NOT_FOUND");
 
-  await prisma.refDepartment.update({ where: { DeptCode: code }, data: { IsActive: false, UpdatedBy: user.userId, UpdatedDate: new Date() } });
-  await logAction(user.userId, "DEACTIVATE_DEPARTMENT", { targetTable: "ref_department", targetId: code });
+  try {
+    await prisma.refDepartment.delete({ where: { DeptCode: code } });
+  } catch {
+    return apiError(409, "DEPARTMENT_IN_USE", "This department is linked to one or more employees and cannot be deleted");
+  }
+
+  await logAction(user.userId, "DELETE_DEPARTMENT", { targetTable: "ref_department", targetId: code });
   return apiSuccess({ ok: true });
 }

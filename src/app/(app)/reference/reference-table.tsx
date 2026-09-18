@@ -72,6 +72,14 @@ function toDateInputValue(value: unknown): string {
   return s.length >= 10 ? s.slice(0, 10) : s;
 }
 
+function compareValues(field: FieldDef, a: unknown, b: unknown) {
+  if (a === null || a === undefined) return b === null || b === undefined ? 0 : -1;
+  if (b === null || b === undefined) return 1;
+  if (field.type === "number" || field.type === "percent") return Number(a) - Number(b);
+  if (field.type === "date") return new Date(String(a)).getTime() - new Date(String(b)).getTime();
+  return String(a).localeCompare(String(b), "th");
+}
+
 export default function ReferenceTable({ apiBase, fields, hasIsActive, canSave, canDelete, initialRows }: Props) {
   const [rows, setRows] = useState(initialRows);
   const [form, setForm] = useState(emptyForm(fields));
@@ -79,9 +87,39 @@ export default function ReferenceTable({ apiBase, fields, hasIsActive, canSave, 
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editForm, setEditForm] = useState<Record<string, string>>({});
   const [message, setMessage] = useState<string | null>(null);
+  const [search, setSearch] = useState("");
+  const [sortKey, setSortKey] = useState<string | null>(fields.filter((f) => !f.hidden)[0]?.key ?? null);
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
 
   const keyField = fields.find((f) => f.isKey)!;
   const visibleFields = fields.filter((f) => !f.hidden);
+  const nameField = visibleFields.find((f) => !f.isKey);
+
+  const searchNorm = search.trim().toLowerCase();
+  const filteredRows = searchNorm
+    ? rows.filter((row) => {
+        const codeText = displayValue(keyField, row[keyField.key]).toLowerCase();
+        const nameText = nameField ? displayValue(nameField, row[nameField.key]).toLowerCase() : "";
+        return codeText.includes(searchNorm) || nameText.includes(searchNorm);
+      })
+    : rows;
+
+  const sortField = sortKey ? fields.find((f) => f.key === sortKey) : undefined;
+  const sortedRows = sortField
+    ? [...filteredRows].sort((a, b) => {
+        const cmp = compareValues(sortField, a[sortField.key], b[sortField.key]);
+        return sortDir === "asc" ? cmp : -cmp;
+      })
+    : filteredRows;
+
+  function handleSort(key: string) {
+    if (sortKey === key) {
+      setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+    } else {
+      setSortKey(key);
+      setSortDir("asc");
+    }
+  }
 
   async function refresh() {
     const res = await fetch(apiBase);
@@ -167,7 +205,6 @@ export default function ReferenceTable({ apiBase, fields, hasIsActive, canSave, 
   }
 
   async function handleDelete(row: Record<string, unknown>) {
-    const nameField = visibleFields.find((f) => !f.isKey);
     const codeText = `${keyField.label}: ${displayValue(keyField, row[keyField.key])}`;
     const nameText = nameField ? `${nameField.label}: ${displayValue(nameField, row[nameField.key])}` : "";
     if (!(await confirmDialog(["ยืนยันการลบ?", codeText, nameText]))) return;
@@ -184,20 +221,32 @@ export default function ReferenceTable({ apiBase, fields, hasIsActive, canSave, 
 
   return (
     <div className="flex flex-col gap-3">
+      <input
+        type="text"
+        value={search}
+        onChange={(e) => setSearch(e.target.value)}
+        placeholder={`ค้นหา${keyField.label}หรือ${nameField?.label ?? "ชื่อ"}`}
+        className="w-64 rounded border border-gray-300 px-2 py-1.5 text-sm text-gray-900"
+      />
       <div className="overflow-x-auto rounded-lg border border-gray-200 bg-white">
         <table className="w-full border-collapse text-sm">
           <thead className="border-b border-gray-200 bg-gray-50 text-left text-gray-500">
             <tr>
               {visibleFields.map((f) => (
-                <th key={f.key} className="px-3 py-2 font-medium">
+                <th
+                  key={f.key}
+                  onClick={() => handleSort(f.key)}
+                  className="cursor-pointer select-none px-3 py-2 font-medium hover:text-gray-900"
+                >
                   {f.label}
+                  {sortKey === f.key && <span className="ml-1">{sortDir === "asc" ? "▲" : "▼"}</span>}
                 </th>
               ))}
               {(canSave || canDelete) && <th className="px-3 py-2"></th>}
             </tr>
           </thead>
           <tbody>
-            {rows.map((row) => {
+            {sortedRows.map((row) => {
               const id = String(row[keyField.key]);
               const isEditing = editingId === id;
               return (
@@ -251,10 +300,10 @@ export default function ReferenceTable({ apiBase, fields, hasIsActive, canSave, 
                 </tr>
               );
             })}
-            {rows.length === 0 && (
+            {filteredRows.length === 0 && (
               <tr>
                 <td colSpan={visibleFields.length + 1} className="px-3 py-6 text-center text-gray-400">
-                  ยังไม่มีข้อมูล
+                  {rows.length === 0 ? "ยังไม่มีข้อมูล" : "ไม่พบรายการที่ค้นหา"}
                 </td>
               </tr>
             )}

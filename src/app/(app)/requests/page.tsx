@@ -40,7 +40,7 @@ export default async function RequestsPage() {
       <Tabs
         tabs={visibleTypes.map((v, i) => ({
           label: TYPE_LABELS[v.type],
-          content: <RequestTypeView type={v.type} initialRows={safeRows[i]} canSave={v.canSave} />,
+          content: <RequestTypeView key={v.type} type={v.type} initialRows={safeRows[i]} canSave={v.canSave} />,
         }))}
       />
     </div>

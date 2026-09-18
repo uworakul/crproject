@@ -42,6 +42,9 @@ export async function PUT(request: NextRequest, ctx: RouteContext<"/api/referenc
   return apiSuccess(updated);
 }
 
+// Hard delete — mst_employee.PositionCode has a NO ACTION FK to this table,
+// which SQL Server rejects on its own the moment a position is actually
+// referenced; we just surface that cleanly instead of guessing.
 export async function DELETE(_req: Request, ctx: RouteContext<"/api/reference/positions/[code]">) {
   const user = await verifySession();
   if (!user) return apiError(401, "UNAUTHORIZED");
@@ -52,7 +55,12 @@ export async function DELETE(_req: Request, ctx: RouteContext<"/api/reference/po
   const existing = await prisma.refPosition.findUnique({ where: { PositionCode: code } });
   if (!existing) return apiError(404, "POSITION_NOT_FOUND");
 
-  await prisma.refPosition.update({ where: { PositionCode: code }, data: { IsActive: false, UpdatedBy: user.userId, UpdatedDate: new Date() } });
-  await logAction(user.userId, "DEACTIVATE_POSITION", { targetTable: "ref_position", targetId: code });
+  try {
+    await prisma.refPosition.delete({ where: { PositionCode: code } });
+  } catch {
+    return apiError(409, "POSITION_IN_USE", "This position is linked to one or more employees and cannot be deleted");
+  }
+
+  await logAction(user.userId, "DELETE_POSITION", { targetTable: "ref_position", targetId: code });
   return apiSuccess({ ok: true });
 }
