@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { LEAVE_STATUS_LABELS } from "@/lib/leave";
+import { toBuddhistYear, toGregorianYear } from "@/lib/buddhist-year";
 
 interface HistoryRow {
   LeaveID: number;
@@ -25,7 +26,7 @@ interface BalanceRow {
 
 export default function LeaveReportView({ employees }: { employees: { EmpCode: string; FullName: string }[] }) {
   const [empCode, setEmpCode] = useState("");
-  const [year, setYear] = useState(String(new Date().getFullYear()));
+  const [year, setYear] = useState(String(toBuddhistYear(new Date().getFullYear())));
   const [history, setHistory] = useState<HistoryRow[]>([]);
   const [balances, setBalances] = useState<BalanceRow[]>([]);
   const [loaded, setLoaded] = useState(false);
@@ -33,7 +34,7 @@ export default function LeaveReportView({ employees }: { employees: { EmpCode: s
   async function load() {
     const params = new URLSearchParams();
     if (empCode) params.set("empCode", empCode);
-    if (year) params.set("year", year);
+    if (year) params.set("year", String(toGregorianYear(Number(year))));
     const res = await fetch(`/api/leave/report?${params.toString()}`);
     if (res.ok) {
       const body = await res.json();
@@ -58,7 +59,7 @@ export default function LeaveReportView({ employees }: { employees: { EmpCode: s
           </select>
         </label>
         <label className="flex flex-col gap-1 text-xs text-gray-500">
-          ปี (ค.ศ., ไม่ระบุ = ทั้งหมด)
+          ปี (พ.ศ., ไม่ระบุ = ทั้งหมด)
           <input value={year} onChange={(e) => setYear(e.target.value)} className="w-28 rounded border border-gray-300 px-2 py-1 text-sm text-gray-900" />
         </label>
         <button onClick={load} className="rounded-md bg-gray-900 px-3 py-1.5 text-sm text-white hover:bg-gray-700">
@@ -87,7 +88,7 @@ export default function LeaveReportView({ employees }: { employees: { EmpCode: s
                     <tr key={b.BalanceID} className="border-t border-gray-100">
                       <td className="px-3 py-2">{b.Employee.FullName}</td>
                       <td className="px-3 py-2">{b.LeaveType.LeaveTypeName}</td>
-                      <td className="px-3 py-2">{b.Year}</td>
+                      <td className="px-3 py-2">{toBuddhistYear(b.Year)}</td>
                       <td className="px-3 py-2 text-right">{b.Entitled}</td>
                       <td className="px-3 py-2 text-right">{b.Used}</td>
                       <td className="px-3 py-2 text-right font-medium">{b.Remaining}</td>

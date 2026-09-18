@@ -21,7 +21,13 @@ export async function POST(request: NextRequest) {
   const denied = await requirePermission(user, "REFERENCE", "save");
   if (denied) return denied;
 
-  let body: { leaveTypeCode?: unknown; leaveTypeName?: unknown; maxDaysPerYear?: unknown; requireMedicalCert?: unknown };
+  let body: {
+    leaveTypeCode?: unknown;
+    leaveTypeName?: unknown;
+    maxDaysPerYear?: unknown;
+    requireMedicalCert?: unknown;
+    basedOnTenure?: unknown;
+  };
   try {
     body = await request.json();
   } catch {
@@ -43,6 +49,7 @@ export async function POST(request: NextRequest) {
       LeaveTypeName: leaveTypeName,
       MaxDaysPerYear: maxDaysPerYear,
       RequireMedicalCert: body.requireMedicalCert === true,
+      BasedOnTenure: body.basedOnTenure === true,
       CreatedBy: user.userId,
     },
   });

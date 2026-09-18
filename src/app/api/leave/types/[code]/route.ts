@@ -15,7 +15,7 @@ export async function PUT(request: NextRequest, ctx: RouteContext<"/api/leave/ty
   const existing = await prisma.mstLeaveType.findUnique({ where: { LeaveTypeCode: code } });
   if (!existing) return apiError(404, "LEAVE_TYPE_NOT_FOUND");
 
-  let body: { leaveTypeName?: unknown; maxDaysPerYear?: unknown; requireMedicalCert?: unknown };
+  let body: { leaveTypeName?: unknown; maxDaysPerYear?: unknown; requireMedicalCert?: unknown; basedOnTenure?: unknown };
   try {
     body = await request.json();
   } catch {
@@ -32,7 +32,8 @@ export async function PUT(request: NextRequest, ctx: RouteContext<"/api/leave/ty
     data: {
       LeaveTypeName: leaveTypeName,
       MaxDaysPerYear: maxDaysPerYear,
-      RequireMedicalCert: body.requireMedicalCert === true,
+      RequireMedicalCert: typeof body.requireMedicalCert === "boolean" ? body.requireMedicalCert : existing.RequireMedicalCert,
+      BasedOnTenure: typeof body.basedOnTenure === "boolean" ? body.basedOnTenure : existing.BasedOnTenure,
       UpdatedBy: user.userId,
       UpdatedDate: new Date(),
     },

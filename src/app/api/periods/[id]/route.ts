@@ -26,7 +26,15 @@ export async function PUT(request: NextRequest, ctx: RouteContext<"/api/periods/
   // anyone with plain PERIOD 'save' bypass the Lock precondition entirely.
   if (existing.Status === "CLOSED") return apiError(409, "PERIOD_CLOSED", "This period is closed and cannot be edited");
 
-  let body: { startDate?: unknown; endDate?: unknown; payDate?: unknown; status?: unknown };
+  let body: {
+    periodYear?: unknown;
+    periodMonth?: unknown;
+    startDate?: unknown;
+    endDate?: unknown;
+    payDate?: unknown;
+    status?: unknown;
+    isCurrent?: unknown;
+  };
   try {
     body = await request.json();
   } catch {
@@ -37,15 +45,60 @@ export async function PUT(request: NextRequest, ctx: RouteContext<"/api/periods/
     return apiError(400, "VALIDATION_FAILED", "status can no longer be set here — use POST /api/payroll/closing to close a period");
   }
 
-  const updated = await prisma.sysPeriod.update({
-    where: { PeriodID: periodId },
-    data: {
-      StartDate: typeof body.startDate === "string" && body.startDate ? new Date(body.startDate) : undefined,
-      EndDate: typeof body.endDate === "string" && body.endDate ? new Date(body.endDate) : undefined,
-      PayDate: typeof body.payDate === "string" && body.payDate ? new Date(body.payDate) : undefined,
-      UpdatedBy: user.userId,
-      UpdatedDate: new Date(),
+  const newStartDate = typeof body.startDate === "string" && body.startDate ? new Date(body.startDate) : existing.StartDate;
+  const newEndDate = typeof body.endDate === "string" && body.endDate ? new Date(body.endDate) : existing.EndDate;
+  if (newEndDate <= newStartDate) {
+    return apiError(400, "VALIDATION_FAILED", "endDate must be after startDate");
+  }
+
+  // Same overlap rule as POST — see the comment there. Excludes this period
+  // itself so re-saving with the same dates doesn't trip over its own row.
+  const overlapping = await prisma.sysPeriod.findFirst({
+    where: {
+      PeriodID: { not: periodId },
+      EmployeeType: existing.EmployeeType,
+      StartDate: { lte: newEndDate },
+      EndDate: { gte: newStartDate },
     },
+  });
+  if (overlapping) {
+    return apiError(409, "PERIOD_ALREADY_EXISTS", "Date range overlaps an existing period for this employee type", {
+      conflictingPeriodId: overlapping.PeriodID,
+    });
+  }
+
+  const periodYear = Number(body.periodYear);
+  const periodMonth = Number(body.periodMonth);
+  if (body.periodMonth !== undefined && (!Number.isInteger(periodMonth) || periodMonth < 1 || periodMonth > 12)) {
+    return apiError(400, "INVALID_PARAMS", "periodMonth must be 1-12");
+  }
+
+  if (body.isCurrent !== undefined && typeof body.isCurrent !== "boolean") {
+    return apiError(400, "INVALID_PARAMS", "isCurrent must be a boolean");
+  }
+
+  // At most one "current" period per EmployeeType — setting this one true
+  // un-sets whichever other period of the same type currently holds it.
+  const updated = await prisma.$transaction(async (tx) => {
+    if (body.isCurrent === true) {
+      await tx.sysPeriod.updateMany({
+        where: { EmployeeType: existing.EmployeeType, PeriodID: { not: periodId }, IsCurrent: true },
+        data: { IsCurrent: false, UpdatedBy: user.userId, UpdatedDate: new Date() },
+      });
+    }
+    return tx.sysPeriod.update({
+      where: { PeriodID: periodId },
+      data: {
+        PeriodYear: body.periodYear !== undefined && Number.isFinite(periodYear) ? periodYear : undefined,
+        PeriodMonth: body.periodMonth !== undefined ? periodMonth : undefined,
+        StartDate: typeof body.startDate === "string" && body.startDate ? new Date(body.startDate) : undefined,
+        EndDate: typeof body.endDate === "string" && body.endDate ? new Date(body.endDate) : undefined,
+        PayDate: typeof body.payDate === "string" && body.payDate ? new Date(body.payDate) : undefined,
+        IsCurrent: typeof body.isCurrent === "boolean" ? body.isCurrent : undefined,
+        UpdatedBy: user.userId,
+        UpdatedDate: new Date(),
+      },
+    });
   });
 
   await logAction(user.userId, "UPDATE_PERIOD", { targetTable: "sys_period", targetId: id });

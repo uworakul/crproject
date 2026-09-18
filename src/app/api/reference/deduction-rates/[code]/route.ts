@@ -15,7 +15,7 @@ export async function PUT(request: NextRequest, ctx: RouteContext<"/api/referenc
   const existing = await prisma.refDeductionRate.findUnique({ where: { DeductionCode: code } });
   if (!existing) return apiError(404, "DEDUCTION_RATE_NOT_FOUND");
 
-  let body: { deductionName?: unknown; maxAmount?: unknown; effectiveYear?: unknown };
+  let body: { deductionName?: unknown; rate?: unknown; maxAmount?: unknown; effectiveYear?: unknown };
   try {
     body = await request.json();
   } catch {
@@ -26,6 +26,7 @@ export async function PUT(request: NextRequest, ctx: RouteContext<"/api/referenc
     where: { DeductionCode: code },
     data: {
       DeductionName: typeof body.deductionName === "string" ? body.deductionName.trim() : undefined,
+      Rate: body.rate === undefined ? undefined : body.rate === null || body.rate === "" ? null : Number(body.rate),
       MaxAmount: body.maxAmount !== undefined ? Number(body.maxAmount) : undefined,
       EffectiveYear: body.effectiveYear !== undefined ? Number(body.effectiveYear) : undefined,
       UpdatedBy: user.userId,

@@ -32,7 +32,7 @@ const blacklistFields: FieldDef[] = [
 ];
 const ssoFields: FieldDef[] = [
   { key: "SSOBaseID", label: "ID", type: "text", isKey: true },
-  { key: "EffectiveYear", label: "ปี พ.ศ.", type: "number" },
+  { key: "EffectiveYear", label: "ปี พ.ศ.", type: "year" },
   { key: "EffectiveDate", label: "วันที่มีผลบังคับใช้", type: "date" },
   { key: "MinBase", label: "ฐานต่ำสุด (บาท)", type: "number" },
   { key: "MaxBase", label: "ฐานสูงสุด (บาท)", type: "number" },

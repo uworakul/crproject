@@ -13,7 +13,7 @@ export async function GET() {
   if (denied) return denied;
 
   const periods = await prisma.sysPeriod.findMany({
-    orderBy: [{ PeriodYear: "desc" }, { PeriodMonth: "desc" }, { EmployeeType: "asc" }],
+    orderBy: [{ EmployeeType: "asc" }, { PayDate: "asc" }],
   });
   return apiSuccess(periods);
 }
@@ -57,16 +57,25 @@ export async function POST(request: NextRequest) {
     return apiError(400, "VALIDATION_FAILED", "endDate must be after startDate");
   }
 
-  // No UNIQUE constraint on sys_period in the approved DDL for
-  // (EmployeeType, PeriodYear, PeriodMonth) — Worksheet's approve step
-  // looks up a period with findFirst on that combination, so a duplicate
-  // wouldn't break anything outright, but it would be ambiguous which one
-  // gets used. Guard against it at the application level.
-  const existing = await prisma.sysPeriod.findFirst({
-    where: { EmployeeType: body.employeeType, PeriodYear: periodYear, PeriodMonth: periodMonth },
+  // No UNIQUE constraint on sys_period in the approved DDL. Two periods for
+  // the same EmployeeType CAN share a year/month now (e.g. 1-15 and 16-30,
+  // to support semi-monthly pay) — approveWorksheet() matches each
+  // Worksheet day to a period by which one's [StartDate, EndDate] actually
+  // contains that calendar date, not by year/month. What must never happen
+  // is two periods for the same EmployeeType with overlapping date ranges —
+  // that would make the match ambiguous for any day inside the overlap.
+  const overlapping = await prisma.sysPeriod.findFirst({
+    where: {
+      EmployeeType: body.employeeType,
+      StartDate: { lte: new Date(endDate) },
+      EndDate: { gte: new Date(startDate) },
+    },
   });
-  if (existing) {
-    return apiError(409, "PERIOD_ALREADY_EXISTS", undefined, { employeeType: body.employeeType, periodYear, periodMonth });
+  if (overlapping) {
+    return apiError(409, "PERIOD_ALREADY_EXISTS", "Date range overlaps an existing period for this employee type", {
+      employeeType: body.employeeType,
+      conflictingPeriodId: overlapping.PeriodID,
+    });
   }
 
   const created = await prisma.sysPeriod.create({

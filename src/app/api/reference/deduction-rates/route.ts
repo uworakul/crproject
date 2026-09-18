@@ -11,7 +11,7 @@ export async function GET() {
   const denied = await requirePermission(user, "TAX_RATE", "read");
   if (denied) return denied;
 
-  const rows = await prisma.refDeductionRate.findMany({ orderBy: [{ EffectiveYear: "desc" }, { DeductionCode: "asc" }] });
+  const rows = await prisma.refDeductionRate.findMany({ orderBy: [{ SortOrder: "asc" }, { DeductionCode: "asc" }] });
   return apiSuccess(rows);
 }
 
@@ -21,7 +21,7 @@ export async function POST(request: NextRequest) {
   const denied = await requirePermission(user, "TAX_RATE", "save");
   if (denied) return denied;
 
-  let body: { deductionCode?: unknown; deductionName?: unknown; maxAmount?: unknown; effectiveYear?: unknown };
+  let body: { deductionCode?: unknown; deductionName?: unknown; rate?: unknown; maxAmount?: unknown; effectiveYear?: unknown };
   try {
     body = await request.json();
   } catch {
@@ -40,8 +40,18 @@ export async function POST(request: NextRequest) {
   const existing = await prisma.refDeductionRate.findUnique({ where: { DeductionCode: deductionCode } });
   if (existing) return apiError(409, "DEDUCTION_RATE_ALREADY_EXISTS", undefined, { deductionCode });
 
+  const rate = body.rate !== undefined && body.rate !== null && body.rate !== "" ? Number(body.rate) : null;
+  if (rate !== null && !Number.isFinite(rate)) return apiError(400, "INVALID_PARAMS", "rate must be a number");
+
   const created = await prisma.refDeductionRate.create({
-    data: { DeductionCode: deductionCode, DeductionName: deductionName, MaxAmount: maxAmount, EffectiveYear: effectiveYear, CreatedBy: user.userId },
+    data: {
+      DeductionCode: deductionCode,
+      DeductionName: deductionName,
+      Rate: rate,
+      MaxAmount: maxAmount,
+      EffectiveYear: effectiveYear,
+      CreatedBy: user.userId,
+    },
   });
   await logAction(user.userId, "CREATE_DEDUCTION_RATE", { targetTable: "ref_deduction_rate", targetId: deductionCode });
   return apiSuccess(created, 201);

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { toBuddhistYear, toGregorianYear } from "@/lib/buddhist-year";
 
 interface BalanceRow {
   leaveTypeCode: string;
@@ -13,12 +14,11 @@ interface BalanceRow {
 
 export default function LeaveBalancesView({ employees, canSave }: { employees: { EmpCode: string; FullName: string }[]; canSave: boolean }) {
   const [empCode, setEmpCode] = useState("");
-  // Gregorian year, matching sys_period.PeriodYear's convention elsewhere in
-  // the app (despite that screen's UI label saying "พ.ศ." — a pre-existing
-  // label/value mismatch from Period Setup, noted in CLAUDE.md, not repeated
-  // here since mst_employee_leave_balance.Year is compared directly against
-  // StartDate.getUTCFullYear() on approve).
-  const [year, setYear] = useState(String(new Date().getFullYear()));
+  // Displayed/typed as พ.ศ. — converted to Gregorian (toGregorianYear) only
+  // at the API call boundary, matching mst_employee_leave_balance.Year's
+  // storage convention (compared directly against StartDate.getUTCFullYear()
+  // on approve).
+  const [year, setYear] = useState(String(toBuddhistYear(new Date().getFullYear())));
   const [rows, setRows] = useState<BalanceRow[]>([]);
   const [entitledForm, setEntitledForm] = useState<Record<string, string>>({});
   const [message, setMessage] = useState<string | null>(null);
@@ -27,7 +27,7 @@ export default function LeaveBalancesView({ employees, canSave }: { employees: {
   async function load() {
     if (!empCode || !year) return;
     setMessage(null);
-    const res = await fetch(`/api/leave/balances?empCode=${empCode}&year=${year}`);
+    const res = await fetch(`/api/leave/balances?empCode=${empCode}&year=${toGregorianYear(Number(year))}`);
     const body = await res.json().catch(() => ([]));
     if (!res.ok) {
       setMessage(body.message || body.error);
@@ -46,7 +46,7 @@ export default function LeaveBalancesView({ employees, canSave }: { employees: {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           empCode,
-          year: Number(year),
+          year: toGregorianYear(Number(year)),
           entries: rows.map((r) => ({ leaveTypeCode: r.leaveTypeCode, entitled: Number(entitledForm[r.leaveTypeCode] || 0) })),
         }),
       });
@@ -76,7 +76,7 @@ export default function LeaveBalancesView({ employees, canSave }: { employees: {
           </select>
         </label>
         <label className="flex flex-col gap-1 text-xs text-gray-500">
-          ปี (ค.ศ.)
+          ปี (พ.ศ.)
           <input value={year} onChange={(e) => setYear(e.target.value)} className="w-24 rounded border border-gray-300 px-2 py-1 text-sm text-gray-900" />
         </label>
         <button onClick={load} className="rounded-md border border-gray-300 px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50">

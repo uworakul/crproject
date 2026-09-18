@@ -1,3 +1,5 @@
+import { toBuddhistYear } from "@/lib/buddhist-year";
+
 interface PayrollRow {
   TransactionID: number;
   Period: { PeriodYear: number; PeriodMonth: number } | null;
@@ -24,7 +26,7 @@ export default function PayrollHistoryTab({ rows }: { rows: PayrollRow[] }) {
         <tbody>
           {rows.map((r) => (
             <tr key={r.TransactionID} className="border-t border-gray-100">
-              <td className="px-3 py-2">{r.Period ? `${r.Period.PeriodMonth}/${r.Period.PeriodYear}` : "-"}</td>
+              <td className="px-3 py-2">{r.Period ? `${r.Period.PeriodMonth}/${toBuddhistYear(r.Period.PeriodYear)}` : "-"}</td>
               <td className="px-3 py-2 text-gray-500">{r.Site?.SiteName ?? "-"}</td>
               <td className="px-3 py-2 text-right">{Number(r.WorkDays).toLocaleString("th-TH")}</td>
               <td className="px-3 py-2 text-right">{Number(r.GrossWage).toLocaleString("th-TH", { minimumFractionDigits: 2 })}</td>

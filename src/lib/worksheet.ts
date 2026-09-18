@@ -168,58 +168,89 @@ export async function approveWorksheet(
     grossWage: Prisma.Decimal;
   }[] = [];
 
+  // Periods can now split a calendar month for the same EmployeeType (e.g.
+  // 1-15 and 16-30, semi-monthly pay) — matched per day by which period's
+  // [StartDate, EndDate] actually contains that day, not by WorkYear/Month.
+  // One employee's worksheet can therefore post to more than one period.
+  // Cached per EmployeeType since multiple Details usually share a type.
+  const periodsByEmployeeType = new Map<string, { PeriodID: number; StartDate: Date; EndDate: Date }[]>();
+  async function periodsForType(employeeType: string) {
+    let list = periodsByEmployeeType.get(employeeType);
+    if (!list) {
+      list = await prisma.sysPeriod.findMany({
+        where: { EmployeeType: employeeType },
+        select: { PeriodID: true, StartDate: true, EndDate: true },
+      });
+      periodsByEmployeeType.set(employeeType, list);
+    }
+    return list;
+  }
+
   for (const detail of header.Details) {
-    const period = await prisma.sysPeriod.findFirst({
-      where: {
-        EmployeeType: detail.Employee.EmployeeType,
-        PeriodYear: header.WorkYear,
-        PeriodMonth: header.WorkMonth,
-      },
-    });
-    if (!period) {
-      return {
-        ok: false,
-        error: { reason: "PERIOD_NOT_FOUND", empCode: detail.EmpCode },
-      };
-    }
+    const candidatePeriods = await periodsForType(detail.Employee.EmployeeType);
 
-    // BR-032: a locked period is closed to further changes, including new
-    // payroll postings from a Worksheet approve — added when the Payroll
-    // module introduced trn_payroll_lock (this gap was flagged when
-    // Worksheet was first built, before Lock existed).
-    const lock = await prisma.trnPayrollLock.findFirst({ where: { PeriodID: period.PeriodID, IsLocked: true } });
-    if (lock) {
-      return {
-        ok: false,
-        error: { reason: "PERIOD_LOCKED", empCode: detail.EmpCode },
-      };
-    }
-
-    let workDays = zero;
-    let doubleShiftDays = zero;
-    let holidayDays = zero;
-    let grossWage = zero;
+    // Group this employee's days by whichever period's date range contains
+    // that day — a day matching no period fails the whole approve (same
+    // atomicity guarantee as before: header stays SUBMITTED, nothing posts).
+    const byPeriod = new Map<
+      number,
+      { workDays: Prisma.Decimal; doubleShiftDays: Prisma.Decimal; holidayDays: Prisma.Decimal; grossWage: Prisma.Decimal }
+    >();
 
     for (const day of detail.DailyRecords) {
       if (!day.AttendCode) continue;
       const multiplier = multiplierByCode.get(day.AttendCode);
       if (multiplier === undefined) continue;
 
-      grossWage = grossWage.add(detail.DailyRate.mul(multiplier));
+      const period = candidatePeriods.find((p) => p.StartDate <= day.WorkDate && p.EndDate >= day.WorkDate);
+      if (!period) {
+        return {
+          ok: false,
+          error: { reason: "PERIOD_NOT_FOUND", empCode: detail.EmpCode },
+        };
+      }
 
-      if (multiplier.equals(0)) holidayDays = holidayDays.add(1);
-      else if (multiplier.equals(2)) doubleShiftDays = doubleShiftDays.add(1);
-      else workDays = workDays.add(1);
+      const acc = byPeriod.get(period.PeriodID) ?? { workDays: zero, doubleShiftDays: zero, holidayDays: zero, grossWage: zero };
+      acc.grossWage = acc.grossWage.add(detail.DailyRate.mul(multiplier));
+      if (multiplier.equals(0)) acc.holidayDays = acc.holidayDays.add(1);
+      else if (multiplier.equals(2)) acc.doubleShiftDays = acc.doubleShiftDays.add(1);
+      else acc.workDays = acc.workDays.add(1);
+      byPeriod.set(period.PeriodID, acc);
     }
 
-    postings.push({
-      empCode: detail.EmpCode,
-      periodId: period.PeriodID,
-      workDays,
-      doubleShiftDays,
-      holidayDays,
-      grossWage,
-    });
+    for (const [periodId, acc] of byPeriod) {
+      // BR-032: a locked period is closed to further changes, including new
+      // payroll postings from a Worksheet approve — added when the Payroll
+      // module introduced trn_payroll_lock (this gap was flagged when
+      // Worksheet was first built, before Lock existed).
+      const lock = await prisma.trnPayrollLock.findFirst({ where: { PeriodID: periodId, IsLocked: true } });
+      if (lock) {
+        return {
+          ok: false,
+          error: { reason: "PERIOD_LOCKED", empCode: detail.EmpCode },
+        };
+      }
+
+      postings.push({ empCode: detail.EmpCode, periodId, ...acc });
+    }
+  }
+
+  // If a prior approve of this worksheet posted to some (employee, period)
+  // pair that no longer has any matching day this time (e.g. all that
+  // employee's days were cleared and the worksheet re-approved), that old
+  // posting would otherwise be left stale instead of reflecting the edit —
+  // zero it out explicitly rather than silently skipping it.
+  const postedKeys = new Set(postings.map((p) => `${p.empCode}|${p.periodId}`));
+  const priorPostings = await prisma.trnPayrollTransaction.findMany({
+    where: { SourceWorksheetID: worksheetId },
+    select: { EmpCode: true, PeriodID: true },
+  });
+  for (const prior of priorPostings) {
+    const key = `${prior.EmpCode}|${prior.PeriodID}`;
+    if (!postedKeys.has(key)) {
+      postings.push({ empCode: prior.EmpCode, periodId: prior.PeriodID, workDays: zero, doubleShiftDays: zero, holidayDays: zero, grossWage: zero });
+      postedKeys.add(key);
+    }
   }
 
   await prisma.$transaction(async (tx) => {

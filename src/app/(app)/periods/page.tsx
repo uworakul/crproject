@@ -12,7 +12,7 @@ export default async function PeriodsPage() {
   if (!canRead) redirect("/");
 
   const [periods, canSave, canDelete] = await Promise.all([
-    prisma.sysPeriod.findMany({ orderBy: [{ PeriodYear: "desc" }, { PeriodMonth: "desc" }, { EmployeeType: "asc" }] }),
+    prisma.sysPeriod.findMany({ orderBy: [{ EmployeeType: "asc" }, { PayDate: "asc" }] }),
     hasPermission(user, "PERIOD", "save"),
     hasPermission(user, "PERIOD", "delete"),
   ]);

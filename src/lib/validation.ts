@@ -11,22 +11,16 @@ export function isValidRole(value: unknown): value is Role {
 // mst_employee.EmployeeType has no CHECK constraint in the DDL (free
 // VARCHAR(20)), but it MUST line up with sys_period.EmployeeType or
 // Worksheet's approve step can't find a matching period to post against
-// (see approveWorksheet() in src/lib/worksheet.ts). BR-005 fixes these 4
-// categories — kept here as the one shared source both Employee Master and
-// the future Period Setup module read from.
-export const EMPLOYEE_TYPE_VALUES = [
-  "PROVINCIAL_DAILY",
-  "PROVINCIAL_MONTHLY",
-  "KORAT_DAILY",
-  "KORAT_MONTHLY",
-] as const;
+// (see approveWorksheet() in src/lib/worksheet.ts). Originally BR-005's 4
+// categories (province × pay frequency); simplified 2026-09-18 at the
+// user's request to just pay frequency — kept here as the one shared source
+// both Employee Master and Period Setup read from.
+export const EMPLOYEE_TYPE_VALUES = ["DAILY", "MONTHLY"] as const;
 export type EmployeeType = (typeof EMPLOYEE_TYPE_VALUES)[number];
 
 export const EMPLOYEE_TYPE_LABELS: Record<EmployeeType, string> = {
-  PROVINCIAL_DAILY: "ต่างจังหวัด - รายวัน",
-  PROVINCIAL_MONTHLY: "ต่างจังหวัด - รายเดือน",
-  KORAT_DAILY: "โคราช - รายวัน",
-  KORAT_MONTHLY: "โคราช - รายเดือน",
+  DAILY: "รายวัน",
+  MONTHLY: "รายเดือน",
 };
 
 export function isValidEmployeeType(value: unknown): value is EmployeeType {

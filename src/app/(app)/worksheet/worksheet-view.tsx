@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { toBuddhistYear, toGregorianYear } from "@/lib/buddhist-year";
 
 interface Site {
   SiteCode: string;
@@ -223,8 +224,8 @@ export default function WorksheetView({
         </select>
         <input
           type="number"
-          value={year}
-          onChange={(e) => onFilterChange({ year: Number(e.target.value) })}
+          value={toBuddhistYear(year)}
+          onChange={(e) => onFilterChange({ year: toGregorianYear(Number(e.target.value)) })}
           className="w-24 rounded border border-gray-300 px-2 py-1 text-sm"
         />
         {data && (

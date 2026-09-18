@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { EMPLOYEE_TYPE_LABELS, type EmployeeType } from "@/lib/validation";
+import { toBuddhistYear } from "@/lib/buddhist-year";
 
 interface Period {
   PeriodID: number;
@@ -254,7 +255,8 @@ export default function PayrollWorkspace({
           <option value="">-- เลือกงวด --</option>
           {periods.map((p) => (
             <option key={p.PeriodID} value={p.PeriodID}>
-              {EMPLOYEE_TYPE_LABELS[p.EmployeeType as EmployeeType] ?? p.EmployeeType} — {p.PeriodMonth}/{p.PeriodYear} ({p.Status === "OPEN" ? "เปิด" : "ปิดแล้ว"})
+              {EMPLOYEE_TYPE_LABELS[p.EmployeeType as EmployeeType] ?? p.EmployeeType} — {p.PeriodMonth}/{toBuddhistYear(p.PeriodYear)} (
+              {p.Status === "OPEN" ? "เปิด" : "ปิดแล้ว"})
             </option>
           ))}
         </select>

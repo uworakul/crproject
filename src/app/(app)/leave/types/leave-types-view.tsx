@@ -7,15 +7,45 @@ interface LeaveType {
   LeaveTypeName: string;
   MaxDaysPerYear: number;
   RequireMedicalCert: boolean;
+  BasedOnTenure: boolean;
+}
+
+type SortKey = "LeaveTypeCode" | "LeaveTypeName" | "MaxDaysPerYear";
+
+function compareValues(key: SortKey, a: LeaveType, b: LeaveType) {
+  if (key === "MaxDaysPerYear") return a.MaxDaysPerYear - b.MaxDaysPerYear;
+  return a[key].localeCompare(b[key], "th");
 }
 
 export default function LeaveTypesView({ initialRows, canSave, canDelete }: { initialRows: LeaveType[]; canSave: boolean; canDelete: boolean }) {
   const [rows, setRows] = useState(initialRows);
-  const [form, setForm] = useState({ leaveTypeCode: "", leaveTypeName: "", maxDaysPerYear: "", requireMedicalCert: false });
+  const [form, setForm] = useState({ leaveTypeCode: "", leaveTypeName: "", maxDaysPerYear: "", basedOnTenure: false });
   const [editingCode, setEditingCode] = useState<string | null>(null);
-  const [editForm, setEditForm] = useState({ leaveTypeName: "", maxDaysPerYear: "", requireMedicalCert: false });
+  const [editForm, setEditForm] = useState({ leaveTypeName: "", maxDaysPerYear: "", basedOnTenure: false });
   const [message, setMessage] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
+  const [sortKey, setSortKey] = useState<SortKey>("LeaveTypeCode");
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
+  const [search, setSearch] = useState("");
+
+  const searchNorm = search.trim().toLowerCase();
+  const filteredRows = searchNorm
+    ? rows.filter((t) => t.LeaveTypeCode.toLowerCase().includes(searchNorm) || t.LeaveTypeName.toLowerCase().includes(searchNorm))
+    : rows;
+
+  const sortedRows = [...filteredRows].sort((a, b) => {
+    const cmp = compareValues(sortKey, a, b);
+    return sortDir === "asc" ? cmp : -cmp;
+  });
+
+  function handleSort(key: SortKey) {
+    if (sortKey === key) {
+      setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+    } else {
+      setSortKey(key);
+      setSortDir("asc");
+    }
+  }
 
   async function refresh() {
     const res = await fetch("/api/leave/types");
@@ -36,7 +66,7 @@ export default function LeaveTypesView({ initialRows, canSave, canDelete }: { in
         setMessage(body.message || body.error);
         return;
       }
-      setForm({ leaveTypeCode: "", leaveTypeName: "", maxDaysPerYear: "", requireMedicalCert: false });
+      setForm({ leaveTypeCode: "", leaveTypeName: "", maxDaysPerYear: "", basedOnTenure: false });
       await refresh();
     } finally {
       setPending(false);
@@ -45,7 +75,7 @@ export default function LeaveTypesView({ initialRows, canSave, canDelete }: { in
 
   function startEdit(t: LeaveType) {
     setEditingCode(t.LeaveTypeCode);
-    setEditForm({ leaveTypeName: t.LeaveTypeName, maxDaysPerYear: String(t.MaxDaysPerYear), requireMedicalCert: t.RequireMedicalCert });
+    setEditForm({ leaveTypeName: t.LeaveTypeName, maxDaysPerYear: String(t.MaxDaysPerYear), basedOnTenure: t.BasedOnTenure });
   }
 
   async function saveEdit(code: string) {
@@ -77,19 +107,39 @@ export default function LeaveTypesView({ initialRows, canSave, canDelete }: { in
 
   return (
     <div className="flex flex-col gap-3">
+      <input
+        type="text"
+        value={search}
+        onChange={(e) => setSearch(e.target.value)}
+        placeholder="ค้นหารหัสหรือชื่อประเภทการลา"
+        className="w-64 rounded border border-gray-300 px-2 py-1.5 text-sm text-gray-900"
+      />
       <div className="overflow-x-auto rounded-lg border border-gray-200 bg-white">
         <table className="w-full border-collapse text-sm">
           <thead className="border-b border-gray-200 bg-gray-50 text-left text-gray-500">
             <tr>
-              <th className="px-3 py-2 font-medium">รหัส</th>
-              <th className="px-3 py-2 font-medium">ชื่อประเภทการลา</th>
-              <th className="px-3 py-2 font-medium">สิทธิ/ปี (วัน)</th>
-              <th className="px-3 py-2 font-medium">ต้องมีใบรับรองแพทย์</th>
+              {(
+                [
+                  ["LeaveTypeCode", "รหัส"],
+                  ["LeaveTypeName", "ชื่อประเภทการลา"],
+                  ["MaxDaysPerYear", "สิทธิ/ปี (วัน)"],
+                ] as [SortKey, string][]
+              ).map(([key, label]) => (
+                <th
+                  key={key}
+                  onClick={() => handleSort(key)}
+                  className="cursor-pointer select-none px-3 py-2 font-medium hover:text-gray-900"
+                >
+                  {label}
+                  {sortKey === key && <span className="ml-1">{sortDir === "asc" ? "▲" : "▼"}</span>}
+                </th>
+              ))}
+              <th className="px-3 py-2 font-medium">ตามอายุงาน</th>
               {(canSave || canDelete) && <th className="px-3 py-2"></th>}
             </tr>
           </thead>
           <tbody>
-            {rows.map((t) => {
+            {sortedRows.map((t) => {
               const isEditing = editingCode === t.LeaveTypeCode;
               return (
                 <tr key={t.LeaveTypeCode} className="border-t border-gray-100">
@@ -120,13 +170,13 @@ export default function LeaveTypesView({ initialRows, canSave, canDelete }: { in
                     {isEditing ? (
                       <input
                         type="checkbox"
-                        checked={editForm.requireMedicalCert}
-                        onChange={(e) => setEditForm({ ...editForm, requireMedicalCert: e.target.checked })}
+                        checked={editForm.basedOnTenure}
+                        onChange={(e) => setEditForm({ ...editForm, basedOnTenure: e.target.checked })}
                       />
-                    ) : t.RequireMedicalCert ? (
-                      "ใช่"
+                    ) : t.BasedOnTenure ? (
+                      "Yes"
                     ) : (
-                      "ไม่"
+                      "No"
                     )}
                   </td>
                   {(canSave || canDelete) && (
@@ -159,10 +209,10 @@ export default function LeaveTypesView({ initialRows, canSave, canDelete }: { in
                 </tr>
               );
             })}
-            {rows.length === 0 && (
+            {sortedRows.length === 0 && (
               <tr>
                 <td colSpan={5} className="px-3 py-6 text-center text-gray-400">
-                  ยังไม่มีข้อมูล
+                  {rows.length === 0 ? "ยังไม่มีข้อมูล" : "ไม่พบรายการที่ค้นหา"}
                 </td>
               </tr>
             )}
@@ -197,8 +247,8 @@ export default function LeaveTypesView({ initialRows, canSave, canDelete }: { in
             />
           </label>
           <label className="flex items-center gap-1 pb-1.5 text-xs text-gray-500">
-            <input type="checkbox" checked={form.requireMedicalCert} onChange={(e) => setForm({ ...form, requireMedicalCert: e.target.checked })} />
-            ต้องมีใบรับรองแพทย์
+            <input type="checkbox" checked={form.basedOnTenure} onChange={(e) => setForm({ ...form, basedOnTenure: e.target.checked })} />
+            ตามอายุงาน
           </label>
           <button
             onClick={handleCreate}
