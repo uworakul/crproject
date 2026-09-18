@@ -3,9 +3,10 @@
 import { useState } from "react";
 import Swal from "sweetalert2";
 
-async function confirmDialog(text: string) {
+async function confirmDialog(lines: string | string[]) {
+  const html = (Array.isArray(lines) ? lines : [lines]).filter(Boolean).join("<br>");
   const result = await Swal.fire({
-    text,
+    html,
     icon: "warning",
     showCancelButton: true,
     confirmButtonText: "ยืนยัน",
@@ -29,7 +30,7 @@ export interface FieldDef {
 interface Props {
   apiBase: string; // e.g. "/api/reference/banks"
   fields: FieldDef[];
-  hasIsActive?: boolean;
+  hasIsActive?: boolean; // shows a ระงับ/เปิดใช้งาน toggle instead of ลบ
   canSave: boolean;
   canDelete: boolean;
   initialRows: Record<string, unknown>[];
@@ -166,7 +167,10 @@ export default function ReferenceTable({ apiBase, fields, hasIsActive, canSave, 
   }
 
   async function handleDelete(row: Record<string, unknown>) {
-    if (!(await confirmDialog("ยืนยันการลบ?"))) return;
+    const nameField = visibleFields.find((f) => !f.isKey);
+    const codeText = `${keyField.label}: ${displayValue(keyField, row[keyField.key])}`;
+    const nameText = nameField ? `${nameField.label}: ${displayValue(nameField, row[nameField.key])}` : "";
+    if (!(await confirmDialog(["ยืนยันการลบ?", codeText, nameText]))) return;
     const id = String(row[keyField.key]);
     setMessage(null);
     const res = await fetch(`${apiBase}/${encodeURIComponent(id)}`, { method: "DELETE" });

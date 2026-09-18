@@ -85,7 +85,7 @@ export default async function ReferencePage() {
           {
             label: "ธนาคาร",
             content: (
-              <ReferenceTable apiBase="/api/reference/banks" fields={bankFields} hasIsActive canSave={canSave} canDelete={canDelete} initialRows={banks} />
+              <ReferenceTable apiBase="/api/reference/banks" fields={bankFields} canSave={canSave} canDelete={canDelete} initialRows={banks} />
             ),
           },
           {
@@ -94,7 +94,6 @@ export default async function ReferencePage() {
               <ReferenceTable
                 apiBase="/api/reference/departments"
                 fields={deptFields}
-                hasIsActive
                 canSave={canSave}
                 canDelete={canDelete}
                 initialRows={departments}
@@ -107,7 +106,6 @@ export default async function ReferencePage() {
               <ReferenceTable
                 apiBase="/api/reference/positions"
                 fields={positionFields}
-                hasIsActive
                 canSave={canSave}
                 canDelete={canDelete}
                 initialRows={positions}
