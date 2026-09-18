@@ -118,6 +118,7 @@ export default function ReferenceTable({ apiBase, fields, hasIsActive, canSave, 
   }
 
   async function saveEdit(id: string) {
+    if (!confirm("ยืนยันการบันทึก?")) return;
     setMessage(null);
     const res = await fetch(`${apiBase}/${encodeURIComponent(id)}`, {
       method: "PUT",
@@ -136,6 +137,7 @@ export default function ReferenceTable({ apiBase, fields, hasIsActive, canSave, 
   async function toggleActive(row: Record<string, unknown>) {
     const id = String(row[keyField.key]);
     const isActive = row.IsActive as boolean;
+    if (!confirm(isActive ? "ยืนยันการระงับ?" : "ยืนยันการเปิดใช้งาน?")) return;
     setMessage(null);
     const res = isActive
       ? await fetch(`${apiBase}/${encodeURIComponent(id)}`, { method: "DELETE" })
@@ -150,6 +152,7 @@ export default function ReferenceTable({ apiBase, fields, hasIsActive, canSave, 
   }
 
   async function handleDelete(row: Record<string, unknown>) {
+    if (!confirm("ยืนยันการลบ?")) return;
     const id = String(row[keyField.key]);
     setMessage(null);
     const res = await fetch(`${apiBase}/${encodeURIComponent(id)}`, { method: "DELETE" });
