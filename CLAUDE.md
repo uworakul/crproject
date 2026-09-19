@@ -290,6 +290,64 @@ Next.js เองเคยแทรกคำเตือนอัตโนมั
 - **เพิ่ม reconciliation สำหรับ posting ที่ค้าง**: ถ้าเคย post เข้า (พนักงาน, period) คู่ไหนไปแล้วจาก worksheet นี้ แล้วรอบถัดมาไม่มีวันไหน match period นั้นอีก (เช่น แก้ไขลบวันออกหมด) จะ**เซ็ตยอดเป็น 0 ให้อัตโนมัติ**แทนที่จะปล่อยข้อมูลเก่าค้างอยู่เงียบๆ — ป้องกันปัญหาเดียวกับที่เคยแก้ตอนสร้าง Payroll module (NetPay ค้างจาก re-approve)
 - ทดสอบ end-to-end กับ DB จริงครบ: สร้าง 2 งวดไม่ทับกัน (1-15, 16-30) สำเร็จ → สร้างงวดทับซ้อน (10-20) ถูกปฏิเสธ 409 → worksheet ทำเครื่องหมายวันที่ 5 (เข้า period แรก) และวันที่ 20 (เข้า period สอง) → approve สำเร็จ → ตรวจ `trn_payroll_transaction` ตรง **2 แถวแยกกันจริง** ตาม period ที่ถูกต้อง (WorkDays=1, GrossWage=500 ต่อแถว) → ทดสอบ gap (มีแค่ period ครอบคลุม 1-20 แต่ทำเครื่องหมายวันที่ 25) → approve ล้มเหลว 422 `PERIOD_NOT_FOUND` ตามคาด, worksheet ยังคง SUBMITTED (ลบข้อมูลทดสอบออกจาก DB ครบแล้ว)
 
+## Export/Import Excel — แผนก/ตำแหน่ง/หน่วยงาน (2026-09-18)
+
+ผู้ใช้ขอให้หน้า แผนก/ตำแหน่ง (ใน รหัสอ้างอิงหลัก) และหน้า หน่วยงาน (Site) ส่งออก/นำเข้าเป็น Excel ได้ — นำเข้าต้องถามก่อนว่าจะลบข้อมูลเดิมทั้งหมดหรือไม่
+
+- **เลือก `exceljs` แทน `xlsx` (SheetJS)**: ลองติดตั้ง `xlsx@0.18.5` (เวอร์ชันล่าสุดบน npm registry) ก่อน แต่ `npm audit` ขึ้น high severity 2 รายการที่ "No fix available" จริง (Prototype Pollution + ReDoS) ตรงกับ attack surface ของฟีเจอร์นี้พอดี (parse ไฟล์ที่ผู้ใช้ upload) — ถอนออกแล้วใช้ `exceljs@4.4.0` แทน (มีแค่ vulnerability ระดับ moderate จาก `uuid` ที่ไม่เกี่ยวกับการอ่านไฟล์เลย) ทั้งคู่ pin exact version
+- **`src/lib/excel-reference.ts`** (server-only): helper กลางสำหรับตาราง code+name 2 คอลัมน์ — `buildTwoColumnWorkbook()` สร้าง buffer, `parseTwoColumnWorkbook()` อ่านตาม**ตำแหน่งคอลัมน์** (คอลัมน์ A=code, B=name) ไม่ยึดชื่อ header เป๊ะๆ เพื่อทนทานต่อไฟล์ที่ export ออกมาแล้วแก้ไขเอง
+- **Export**: `GET {apiBase}/export` (departments/positions/sites) คืนไฟล์ .xlsx ตรงๆ (ไม่ผ่าน apiSuccess/apiError เพราะเป็น binary response) ต้องมีสิทธิ์ read
+- **Import**: `POST {apiBase}/import` รับ `multipart/form-data` (`file` + `clearFirst`) ต้องมีสิทธิ์ save เสมอ, ต้องมีสิทธิ์ delete เพิ่มถ้า `clearFirst=true` — ทำ clear+upsert ทั้งหมดในทรานแซกชันเดียว (ถ้า clear ไม่ได้เพราะมี FK ผูกอยู่ เช่น พนักงานอ้างอิงแผนกนั้นอยู่ จะ rollback ทั้งหมดไม่ import บางส่วน) คืนจำนวน created/updated
+- **UI (`reference-table.tsx`)**: เพิ่ม prop `allowExport`/`allowImport` — ปุ่มนำเข้าใช้ SweetAlert2 ถาม 3 ทาง (`confirmImportClearFirst()`): ลบข้อมูลเดิมทั้งหมดก่อน / ไม่ลบ (เพิ่ม/อัปเดตทับ) / ยกเลิก — ไม่ใช่ confirm แบบ 2 ปุ่มเดิม เพราะต้องเลือกได้ 3 ทาง
+- **ปรับหน้า หน่วยงาน (Site) พร้อมกัน**: เอา `hasIsActive` (ปุ่มระงับ) ออก เหลือ ลบ จริง — แก้ `DELETE /api/sites/[siteCode]` จาก soft-deactivate (`IsActive=false`) เป็น hard delete จริง พร้อมจับ FK violation คืน 409 `SITE_IN_USE` (pattern เดียวกับที่แก้ไป Bank/Department/Position ก่อนหน้านี้)
+- ทดสอบผ่าน DB จริงครบ: export แล้วอ่านกลับตรวจ header/ข้อมูลถูกต้อง → import ไม่ clear เพิ่มแถวใหม่ 2 แถว (created=2) → import ซ้ำไฟล์เดิมกลายเป็น update ไม่ error (updated=2) → **ทดสอบ clearFirst=true จริงกับข้อมูลจริง** (แผนก 101-104) แล้ว restore กลับให้ตรงเป๊ะ 100% ก่อนจบงาน → ทดสอบลบหน่วยงานจริงยืนยันว่าหายจริง (404) ไม่ใช่แค่ IsActive=false
+
+## เมนูใหม่ "รายได้และรายการหัก" (2026-09-19)
+
+ผู้ใช้ขอเพิ่มเมนูย่อยใหม่ในกลุ่ม "ตั้งค่าระบบ/รหัสอ้างอิง" — 2 tabsheet (รายได้ / รายการหัก) พร้อม export/import Excel ตั้งแต่แรก
+
+- **ตารางใหม่ที่ไม่เคยมีในสคีมา 33/34 ตารางเดิม**: `ref_income_type` (IncomeCode/IncomeName) และ `ref_deduction_type` (DeductionCode/DeductionName) — โครงสร้าง code+name ธรรมดาเหมือน Department/Position/Site หลัง simplify (migration `20260919_add_income_deduction_types`) **hard delete, ยังไม่มีตารางไหนอ้างอิงกลับมา** (เป็นข้อมูลอ้างอิงเฉยๆ ยังไม่ได้ผูกกับ `trn_payroll_transaction.OtherIncome/OtherDeduction` ที่ยังเป็นช่องตัวเลขอิสระเหมือนเดิม — ต้องมีการตัดสินใจเพิ่มเติมถ้าจะเชื่อมเข้ากับ Payroll Transaction จริงๆ ไม่ใช่ scope ของรอบนี้)
+- **DocumentType ใหม่ `INCOME_DEDUCTION`** (เพิ่มใน `prisma/seed-menus.ts`, รันผ่าน `npx prisma db seed` แล้ว — ตอนนี้ `sys_menu` มี 34 แถว) เมนูอยู่ในกลุ่มเดียวกับ อัตราภาษี/ค่าลดหย่อน และ งวดการจ่าย (`ตั้งค่าระบบ/รหัสอ้างอิง` ใน `src/app/(app)/layout.tsx`)
+- **หน้า `/reference/income-deduction`**: โครงสร้างเหมือน `/reference/tax` เป๊ะ (2 แท็บผ่าน `Tabs` + `ReferenceTable`) ต่างกันแค่ทั้ง 2 ตารางเปิด `allowExport`/`allowImport` ตั้งแต่แรกตามที่ขอ (reuse `src/lib/excel-reference.ts` เดิมจากฟีเจอร์ Export/Import ก่อนหน้าได้ตรงๆ ไม่ต้องเขียนใหม่ เพราะเป็นโครงสร้าง code+name 2 คอลัมน์เหมือนกัน)
+- ทดสอบผ่าน DB จริงครบ: หน้าโหลดได้ → สร้าง/แก้ไขทั้ง 2 ตารางสำเร็จ → export ทั้งคู่ได้ไฟล์ถูกต้อง → import เพิ่มแถวใหม่สำเร็จ (created=1) → ลบข้อมูลทดสอบออกหมด (เหลือ 0 แถวทั้งคู่ ตรงกับที่ว่างเปล่ามาแต่แรก)
+
+## แท็บใหม่ "กองทุนสงเคราะห์พนักงาน" ใน รหัสอ้างอิงหลัก (2026-09-19)
+
+ผู้ใช้ขอเพิ่มแท็บใหม่ต่อจาก ฐานประกันสังคม — โครงสร้างเหมือนกันทุกอย่างยกเว้นไม่เอา ฐานต่ำสุด/ฐานสูงสุด
+
+- **ตารางใหม่ `ref_welfare_fund`** (migration `20260919_add_welfare_fund`) — คัดลอกโครงสร้าง `ref_sso_base` มาเป๊ะๆ (WelfareFundID/EffectiveYear/EffectiveDate/EmployeeRate/EmployerRate + audit columns) แค่ตัด `MinBase`/`MaxBase` ออกตามที่ขอ — ไม่มีแนวคิด "ฐานคำนวณ" สำหรับกองทุนนี้ มีแค่อัตรา % ลูกจ้าง/นายจ้างตรงๆ
+- **API `/api/reference/welfare-fund` + `[id]`**: คัดลอก logic จาก `sso-base` routes ทั้งหมด (validation/permission/audit) ตัดเฉพาะส่วน minBase/maxBase ออก
+- **UI**: เพิ่มแท็บ "กองทุนสงเคราะห์พนักงาน" ต่อจาก "ฐานประกันสังคม" ในหน้า `/reference` (`reference/page.tsx`) — field config เดียวกับ ssoFields ลบ MinBase/MaxBase 2 บรรทัด ไม่มี export/import (ไม่ได้ขอ ต่างจาก แผนก/ตำแหน่ง/หน่วยงาน/รายได้-รายการหัก ที่ขอเพิ่ม export/import ไว้ก่อนหน้า)
+- ทดสอบผ่าน DB จริงครบ: หน้าโหลดได้ → สร้าง/แก้ไขสำเร็จ ยืนยันว่า response ไม่มีฟิลด์ MinBase/MaxBase เลย → ลบข้อมูลทดสอบออกหมด
+
+## ย้าย ฐานประกันสังคม/กองทุนสงเคราะห์ ไปหน้า ภาษี/ค่าลดหย่อน/กองทุนฯ (2026-09-19)
+
+ผู้ใช้ขอย้าย 2 แท็บนี้จาก `/reference` (รหัสอ้างอิงหลัก) ไปต่อท้าย "ค่าลดหย่อน" ใน `/reference/tax` และเปลี่ยนชื่อเมนู "อัตราภาษี/ค่าลดหย่อน" เป็น "ภาษี/ค่าลดหย่อน/กองทุนฯ"
+
+- **ย้าย field config + data fetching + tab ทั้ง 2 ตัว** จาก `reference/page.tsx` ไป `reference/tax/page.tsx` (ต่อท้าย ค่าลดหย่อน) — `reference/page.tsx` เหลือ 5 แท็บ (บริษัท/ธนาคาร/แผนก/ตำแหน่ง/Blacklist), `reference/tax/page.tsx` เป็น 4 แท็บ (ขั้นภาษี/ค่าลดหย่อน/ฐานประกันสังคม/กองทุนสงเคราะห์พนักงาน)
+- **⚠️ ผลข้างเคียงที่ตั้งใจแก้ไปด้วย ไม่ใช่แค่ UI**: 4 API routes ของ sso-base และ welfare-fund (`GET/POST` + `[id]` PUT/DELETE) เดิมเช็คสิทธิ์ผ่าน DocumentType `REFERENCE` — เปลี่ยนเป็น `TAX_RATE` ให้ตรงกับหน้าใหม่ที่ทั้งสองตารางย้ายไปอยู่ (หน้า `/reference/tax` ทั้งหน้าใช้ `canSave`/`canDelete` ชุดเดียวจาก TAX_RATE สำหรับทุกแท็บอยู่แล้ว การปล่อยให้ 2 ตารางนี้ยังเช็ค REFERENCE จะทำให้ไม่สอดคล้องกับ tab อื่นในหน้าเดียวกัน — คนละสิทธิ์กับที่ควบคุมหน้าที่มันแสดงอยู่จริง) **หมายเหตุ**: ผู้ใช้ที่เคยมีสิทธิ์ REFERENCE แต่ไม่มี TAX_RATE จะเข้าถึง 2 ตารางนี้ไม่ได้อีกต่อไป (ตรงกันข้ามก็เช่นกัน) — เป็นผลตามธรรมชาติของการย้ายหน้า ไม่ใช่การเดาเอง
+- **เปลี่ยนชื่อเมนู**: `src/app/(app)/layout.tsx` (sidebar label) และ `prisma/seed-menus.ts` (`MenuNameTH` ของ `TAX_RATE`, ใช้แสดงในตารางสิทธิ์หน้า `/users/[userId]`) ให้ตรงกันทั้งคู่ — รัน `npx prisma db seed` แล้ว — และเปลี่ยน `<h1>` ในหน้า `/reference/tax` ให้ตรงกับเมนูด้วย (ตามรูปแบบที่ทำมาตลอดในโปรเจกต์นี้)
+- ทดสอบผ่าน DB จริงครบ: `/reference` ไม่มี 2 แท็บนี้แล้ว, `/reference/tax` มีครบ 4 แท็บ, sidebar/h1 แสดงชื่อใหม่ถูกต้อง, API ทั้ง 2 ตารางยังทำงานได้ปกติภายใต้สิทธิ์ TAX_RATE
+
+## ReferenceTable รองรับ checkbox field type — "หักเป็นงวด" ในรายการหัก (2026-09-19)
+
+ผู้ใช้ขอเพิ่มคอลัมน์ "หักเป็นงวด" ในแท็บรายการหัก (`/reference/income-deduction`) เป็น checkbox แสดงผล "Yes" เมื่อติ๊ก
+
+- **เพิ่ม `FieldDef.type: "checkbox"` แบบ generic ใน `reference-table.tsx`** (ไม่ใช่ bespoke component แยกแบบ `leave-types-view.tsx`) เพราะ boolean column เป็น pattern ที่น่าจะเจออีกในอนาคต — ครอบคลุมทุกจุด: `displayValue` (true→"Yes", false→"-"), `emptyForm` (default "false" ไม่ใช่ "" เพื่อไม่ให้ toApiBody ข้ามฟิลด์นี้ไปตอนสร้างแถวใหม่), `startEdit`/`toApiBody` (แปลงเป็น/จาก string "true"/"false" ให้เข้ากับ `editForm: Record<string,string>` เดิม), edit-mode cell กับฟอร์มเพิ่มแถวใหม่ (render `<input type="checkbox">` จริงแทน text input)
+- **Schema**: เพิ่ม `IsInstallment Boolean @default(false)` ใน `ref_deduction_type` (migration `20260919_add_deduction_type_is_installment`) — API POST/PUT รับ/คืนค่า `isInstallment`
+- **เดิมไม่ได้ต่อเข้า Excel export/import** (ยังเป็น 2 คอลัมน์ code+name ผ่าน `buildTwoColumnWorkbook`/`parseTwoColumnWorkbook`) — **แก้แล้วในรอบถัดมาตามที่ผู้ใช้ขอเพิ่ม** (ดูหัวข้อถัดไป)
+- **พบระหว่างทดสอบ**: ผู้ใช้ import ข้อมูลรายการหักจริงเข้าไปแล้ว 18 รายการผ่านฟีเจอร์ Import Excel ที่สร้างไว้ก่อนหน้า (สาย/ขาดงาน/ประกันสังคม/กองทุนสงเคราะห์พนักงาน ฯลฯ) — ยืนยันว่าเป็นข้อมูลจริงของผู้ใช้ ไม่ใช่ข้อมูลทดสอบตกค้าง ระวังไม่ลบข้อมูลชุดนี้ระหว่างทดสอบฟีเจอร์อื่นในอนาคต
+- ทดสอบผ่าน DB จริงครบ: สร้างพร้อม isInstallment=true สำเร็จ, สร้างแบบไม่ส่ง isInstallment default เป็น false ถูกต้อง, แก้ไขค่าผ่าน PUT สำเร็จ (ลบข้อมูลทดสอบออกหมด ไม่กระทบข้อมูลจริง 18 รายการของผู้ใช้)
+
+## Excel export/import ของรายการหัก เพิ่มคอลัมน์ "หักเป็นงวด" (2026-09-19)
+
+ผู้ใช้ขอให้ export/import ของแท็บรายการหักพาฟิลด์ `IsInstallment` ไปด้วย (ตามที่บันทึกไว้ข้างบนว่ายังไม่ได้ทำ)
+
+- **เพิ่ม `buildThreeColumnWorkbook()`/`parseThreeColumnWorkbook()` ใน `src/lib/excel-reference.ts`** เป็นคู่ฟังก์ชันแยกต่างหาก **ไม่ได้แก้ `buildTwoColumnWorkbook`/`parseTwoColumnWorkbook` เดิม** — เพราะอีก 4 จุด (departments/positions/sites/income-types) ยังใช้แบบ 2 คอลัมน์อยู่และทดสอบผ่านแล้ว การ generalize ให้รองรับทั้ง 2 และ 3 คอลัมน์ในฟังก์ชันเดียวจะเพิ่มความเสี่ยง regression โดยไม่จำเป็น ตอนนี้มีแค่ตารางเดียวที่ต้องการ 3 คอลัมน์
+- **คอลัมน์ที่ 3 (หักเป็นงวด) เป็นข้อความ "Yes"/"No"** ใน Excel ไม่ใช่ TRUE/FALSE หรือ checkbox จริงของ Excel (ให้ตรงกับที่ตารางในเว็บแสดง) — ตอน import ยอมรับ "Yes"/"Y"/"TRUE"/"1" (ไม่สนตัวพิมพ์เล็กใหญ่) เป็น true อย่างอื่นถือเป็น false
+- **⚠️ ผลข้างเคียงที่ควรรู้ (ยังไม่ได้แก้ เพราะไม่ได้ขอ)**: ถ้าใครเอาไฟล์ Excel แบบ 2 คอลัมน์เก่า (ก่อนรอบนี้) มา import ซ้ำ คอลัมน์ที่ 3 จะอ่านไม่เจอ → ตีความเป็น false เสมอ → **ทับค่า `IsInstallment` ที่เคยตั้งไว้เป็น true ให้กลายเป็น false เงียบๆ** ไม่ได้ทำ backward-compat detection ให้ (ไฟล์ export ใหม่ทุกไฟล์จากนี้จะมี 3 คอลัมน์อยู่แล้วตามปกติ ปัญหานี้จะเกิดเฉพาะกรณีเอาไฟล์เก่าที่ export ไว้ก่อนรอบนี้มาใช้ซ้ำเท่านั้น)
+- ทดสอบผ่าน DB จริงครบ โดยไม่กระทบข้อมูลจริง 18 รายการของผู้ใช้เลย: export ตรวจ header 3 คอลัมน์ถูกต้อง + ข้อมูลจริงทุกแถวมี "No" ถูกต้อง (ยังไม่มีใครตั้ง true) → import แถวทดสอบใหม่ 1 แถวพร้อม flag "Yes" → ยืนยัน `IsInstallment=true` ในฐานข้อมูลจริง → ลบแถวทดสอบออก เหลือข้อมูลจริงครบ 18 แถวเหมือนเดิมทุกประการ
+
 ## Version
 
 - เอกสารนี้ตรงกับ HFC_System_Database_Design.docx v1.0 (15/09/2026)

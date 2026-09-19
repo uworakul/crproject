@@ -19,6 +19,22 @@ const deductionFields: FieldDef[] = [
   { key: "MaxAmount", label: "วงเงินสูงสุด (บาท)", type: "number" },
   { key: "EffectiveYear", label: "ปี พ.ศ.", type: "number", hidden: true },
 ];
+const ssoFields: FieldDef[] = [
+  { key: "SSOBaseID", label: "ID", type: "text", isKey: true },
+  { key: "EffectiveYear", label: "ปี พ.ศ.", type: "year" },
+  { key: "EffectiveDate", label: "วันที่มีผลบังคับใช้", type: "date" },
+  { key: "MinBase", label: "ฐานต่ำสุด (บาท)", type: "number" },
+  { key: "MaxBase", label: "ฐานสูงสุด (บาท)", type: "number" },
+  { key: "EmployeeRate", label: "อัตราลูกจ้าง (%)", type: "percent" },
+  { key: "EmployerRate", label: "อัตรานายจ้าง (%)", type: "percent" },
+];
+const welfareFundFields: FieldDef[] = [
+  { key: "WelfareFundID", label: "ID", type: "text", isKey: true },
+  { key: "EffectiveYear", label: "ปี พ.ศ.", type: "year" },
+  { key: "EffectiveDate", label: "วันที่มีผลบังคับใช้", type: "date" },
+  { key: "EmployeeRate", label: "อัตราลูกจ้าง (%)", type: "percent" },
+  { key: "EmployerRate", label: "อัตรานายจ้าง (%)", type: "percent" },
+];
 
 export default async function TaxRatePage() {
   const user = await verifySession();
@@ -27,18 +43,22 @@ export default async function TaxRatePage() {
   const canRead = await hasPermission(user, "TAX_RATE", "read");
   if (!canRead) redirect("/");
 
-  const [canSave, canDelete, bracketsRaw, deductionsRaw] = await Promise.all([
+  const [canSave, canDelete, bracketsRaw, deductionsRaw, ssoBaseRaw, welfareFundRaw] = await Promise.all([
     hasPermission(user, "TAX_RATE", "save"),
     hasPermission(user, "TAX_RATE", "delete"),
     prisma.refTaxBracket.findMany({ orderBy: [{ EffectiveYear: "desc" }, { IncomeFrom: "asc" }] }),
     prisma.refDeductionRate.findMany({ orderBy: [{ SortOrder: "asc" }, { DeductionCode: "asc" }] }),
+    prisma.refSsoBase.findMany({ orderBy: { EffectiveYear: "desc" } }),
+    prisma.refWelfareFund.findMany({ orderBy: { EffectiveYear: "desc" } }),
   ]);
 
-  const [brackets, deductions] = JSON.parse(JSON.stringify([bracketsRaw, deductionsRaw]));
+  const [brackets, deductions, ssoBase, welfareFund] = JSON.parse(
+    JSON.stringify([bracketsRaw, deductionsRaw, ssoBaseRaw, welfareFundRaw]),
+  );
 
   return (
     <div className="mx-auto max-w-3xl p-8">
-      <h1 className="mb-6 text-lg font-semibold text-gray-900">อัตราภาษี/ค่าลดหย่อน</h1>
+      <h1 className="mb-6 text-lg font-semibold text-gray-900">ภาษี/ค่าลดหย่อน/กองทุนฯ</h1>
       <Tabs
         tabs={[
           {
@@ -69,6 +89,32 @@ export default async function TaxRatePage() {
                 sortable={false}
                 showRowNumber
                 initialRows={deductions}
+              />
+            ),
+          },
+          {
+            label: "ฐานประกันสังคม",
+            content: (
+              <ReferenceTable
+                key="/api/reference/sso-base"
+                apiBase="/api/reference/sso-base"
+                fields={ssoFields}
+                canSave={canSave}
+                canDelete={canDelete}
+                initialRows={ssoBase}
+              />
+            ),
+          },
+          {
+            label: "กองทุนสงเคราะห์พนักงาน",
+            content: (
+              <ReferenceTable
+                key="/api/reference/welfare-fund"
+                apiBase="/api/reference/welfare-fund"
+                fields={welfareFundFields}
+                canSave={canSave}
+                canDelete={canDelete}
+                initialRows={welfareFund}
               />
             ),
           },

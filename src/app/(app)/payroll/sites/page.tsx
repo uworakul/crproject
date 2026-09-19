@@ -27,7 +27,15 @@ export default async function SitesPage() {
   return (
     <div className="mx-auto max-w-3xl p-8">
       <h1 className="mb-6 text-lg font-semibold text-gray-900">หน่วยงาน (Site)</h1>
-      <ReferenceTable apiBase="/api/sites" fields={siteFields} hasIsActive canSave={canSave} canDelete={canDelete} initialRows={sites} />
+      <ReferenceTable
+        apiBase="/api/sites"
+        fields={siteFields}
+        canSave={canSave}
+        canDelete={canDelete}
+        allowExport
+        allowImport
+        initialRows={sites}
+      />
     </div>
   );
 }

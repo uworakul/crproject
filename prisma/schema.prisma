@@ -124,6 +124,24 @@ model RefSsoBase {
   @@map("ref_sso_base")
 }
 
+// Added 2026-09-19 at the user's request — "กองทุนสงเคราะห์พนักงาน" (Employee
+// Welfare Fund), tab added right after ฐานประกันสังคม in /reference.
+// Same shape as RefSsoBase but without MinBase/MaxBase (no wage-base ceiling
+// concept for this fund, just flat employee/employer rates per year).
+model RefWelfareFund {
+  WelfareFundID Int       @id(map: "PK_ref_welfare_fund") @default(autoincrement())
+  EffectiveYear Int       @db.SmallInt
+  EffectiveDate DateTime? @db.Date
+  EmployeeRate  Decimal   @db.Decimal(5, 4)
+  EmployerRate  Decimal   @db.Decimal(5, 4)
+  CreatedDate   DateTime? @default(now()) @db.DateTime
+  CreatedBy     String?   @db.VarChar(20)
+  UpdatedDate   DateTime? @db.DateTime
+  UpdatedBy     String?   @db.VarChar(20)
+
+  @@map("ref_welfare_fund")
+}
+
 // Added 2026-09-17 at the user's request — BR-009 already described
 // "กำหนดข้อมูลบริษัท" (configure company data) as part of System > Reference
 // > Tax & Rate, but no table for it existed in the originally approved
@@ -184,6 +202,34 @@ model RefDeductionRate {
   UpdatedBy     String?   @db.VarChar(20)
 
   @@map("ref_deduction_rate")
+}
+
+// Added 2026-09-19 at the user's request — a menu item "รายได้และรายการหัก"
+// (Income & Deduction Types) under ตั้งค่าระบบ/รหัสอ้างอิง, 2 tabs. Plain
+// code+name reference tables, no FK from any other table yet (informational
+// master data only — trn_payroll_transaction's OtherIncome/OtherDeduction
+// are still free-form amounts, not linked to a type code).
+model RefIncomeType {
+  IncomeCode  String    @id(map: "PK_ref_income_type") @db.VarChar(10)
+  IncomeName  String    @db.NVarChar(100)
+  CreatedDate DateTime? @default(now()) @db.DateTime
+  CreatedBy   String?   @db.VarChar(20)
+  UpdatedDate DateTime? @db.DateTime
+  UpdatedBy   String?   @db.VarChar(20)
+
+  @@map("ref_income_type")
+}
+
+model RefDeductionType {
+  DeductionCode String    @id(map: "PK_ref_deduction_type") @db.VarChar(10)
+  DeductionName String    @db.NVarChar(100)
+  IsInstallment Boolean   @default(false)
+  CreatedDate   DateTime? @default(now()) @db.DateTime
+  CreatedBy     String?   @db.VarChar(20)
+  UpdatedDate   DateTime? @db.DateTime
+  UpdatedBy     String?   @db.VarChar(20)
+
+  @@map("ref_deduction_type")
 }
 
 // ============================================================

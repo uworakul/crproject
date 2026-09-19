@@ -1,0 +1,58 @@
+import { NextRequest } from "next/server";
+import { prisma } from "@/lib/prisma";
+import { verifySession } from "@/lib/dal";
+import { requirePermission } from "@/lib/authorize";
+import { logAction } from "@/lib/audit-log";
+import { apiError, apiSuccess } from "@/lib/api-response";
+
+export async function PUT(request: NextRequest, ctx: RouteContext<"/api/reference/income-types/[code]">) {
+  const user = await verifySession();
+  if (!user) return apiError(401, "UNAUTHORIZED");
+  const denied = await requirePermission(user, "INCOME_DEDUCTION", "save");
+  if (denied) return denied;
+
+  const { code } = await ctx.params;
+  const existing = await prisma.refIncomeType.findUnique({ where: { IncomeCode: code } });
+  if (!existing) return apiError(404, "INCOME_TYPE_NOT_FOUND");
+
+  let body: { incomeName?: unknown };
+  try {
+    body = await request.json();
+  } catch {
+    return apiError(400, "INVALID_PARAMS", "Request body must be JSON");
+  }
+
+  const updated = await prisma.refIncomeType.update({
+    where: { IncomeCode: code },
+    data: {
+      IncomeName: typeof body.incomeName === "string" ? body.incomeName.trim() : undefined,
+      UpdatedBy: user.userId,
+      UpdatedDate: new Date(),
+    },
+  });
+
+  await logAction(user.userId, "UPDATE_INCOME_TYPE", { targetTable: "ref_income_type", targetId: code });
+  return apiSuccess(updated);
+}
+
+// Hard delete — no other table references ref_income_type yet, but keep the
+// same FK-safe pattern as the other reference tables for consistency.
+export async function DELETE(_req: Request, ctx: RouteContext<"/api/reference/income-types/[code]">) {
+  const user = await verifySession();
+  if (!user) return apiError(401, "UNAUTHORIZED");
+  const denied = await requirePermission(user, "INCOME_DEDUCTION", "delete");
+  if (denied) return denied;
+
+  const { code } = await ctx.params;
+  const existing = await prisma.refIncomeType.findUnique({ where: { IncomeCode: code } });
+  if (!existing) return apiError(404, "INCOME_TYPE_NOT_FOUND");
+
+  try {
+    await prisma.refIncomeType.delete({ where: { IncomeCode: code } });
+  } catch {
+    return apiError(409, "INCOME_TYPE_IN_USE", "This income type is in use and cannot be deleted");
+  }
+
+  await logAction(user.userId, "DELETE_INCOME_TYPE", { targetTable: "ref_income_type", targetId: code });
+  return apiSuccess({ ok: true });
+}

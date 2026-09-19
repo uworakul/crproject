@@ -5,20 +5,20 @@ import { requirePermission } from "@/lib/authorize";
 import { logAction } from "@/lib/audit-log";
 import { apiError, apiSuccess } from "@/lib/api-response";
 
-export async function PUT(request: NextRequest, ctx: RouteContext<"/api/reference/sso-base/[id]">) {
+export async function PUT(request: NextRequest, ctx: RouteContext<"/api/reference/welfare-fund/[id]">) {
   const user = await verifySession();
   if (!user) return apiError(401, "UNAUTHORIZED");
   const denied = await requirePermission(user, "TAX_RATE", "save");
   if (denied) return denied;
 
   const { id } = await ctx.params;
-  const ssoBaseId = Number(id);
-  if (!Number.isInteger(ssoBaseId)) return apiError(400, "INVALID_PARAMS");
+  const welfareFundId = Number(id);
+  if (!Number.isInteger(welfareFundId)) return apiError(400, "INVALID_PARAMS");
 
-  const existing = await prisma.refSsoBase.findUnique({ where: { SSOBaseID: ssoBaseId } });
-  if (!existing) return apiError(404, "SSO_BASE_NOT_FOUND");
+  const existing = await prisma.refWelfareFund.findUnique({ where: { WelfareFundID: welfareFundId } });
+  if (!existing) return apiError(404, "WELFARE_FUND_NOT_FOUND");
 
-  let body: { effectiveYear?: unknown; effectiveDate?: unknown; minBase?: unknown; maxBase?: unknown; employeeRate?: unknown; employerRate?: unknown };
+  let body: { effectiveYear?: unknown; effectiveDate?: unknown; employeeRate?: unknown; employerRate?: unknown };
   try {
     body = await request.json();
   } catch {
@@ -33,13 +33,11 @@ export async function PUT(request: NextRequest, ctx: RouteContext<"/api/referenc
     if (Number.isNaN(effectiveDate.getTime())) return apiError(400, "VALIDATION_FAILED", "effectiveDate is invalid");
   }
 
-  const updated = await prisma.refSsoBase.update({
-    where: { SSOBaseID: ssoBaseId },
+  const updated = await prisma.refWelfareFund.update({
+    where: { WelfareFundID: welfareFundId },
     data: {
       EffectiveYear: body.effectiveYear !== undefined ? Number(body.effectiveYear) : undefined,
       EffectiveDate: effectiveDate,
-      MinBase: body.minBase !== undefined ? Number(body.minBase) : undefined,
-      MaxBase: body.maxBase !== undefined ? Number(body.maxBase) : undefined,
       EmployeeRate: body.employeeRate !== undefined ? Number(body.employeeRate) : undefined,
       EmployerRate: body.employerRate !== undefined ? Number(body.employerRate) : undefined,
       UpdatedBy: user.userId,
@@ -47,24 +45,24 @@ export async function PUT(request: NextRequest, ctx: RouteContext<"/api/referenc
     },
   });
 
-  await logAction(user.userId, "UPDATE_SSO_BASE", { targetTable: "ref_sso_base", targetId: id });
+  await logAction(user.userId, "UPDATE_WELFARE_FUND", { targetTable: "ref_welfare_fund", targetId: id });
   return apiSuccess(updated);
 }
 
-export async function DELETE(_req: Request, ctx: RouteContext<"/api/reference/sso-base/[id]">) {
+export async function DELETE(_req: Request, ctx: RouteContext<"/api/reference/welfare-fund/[id]">) {
   const user = await verifySession();
   if (!user) return apiError(401, "UNAUTHORIZED");
   const denied = await requirePermission(user, "TAX_RATE", "delete");
   if (denied) return denied;
 
   const { id } = await ctx.params;
-  const ssoBaseId = Number(id);
-  if (!Number.isInteger(ssoBaseId)) return apiError(400, "INVALID_PARAMS");
+  const welfareFundId = Number(id);
+  if (!Number.isInteger(welfareFundId)) return apiError(400, "INVALID_PARAMS");
 
-  const existing = await prisma.refSsoBase.findUnique({ where: { SSOBaseID: ssoBaseId } });
-  if (!existing) return apiError(404, "SSO_BASE_NOT_FOUND");
+  const existing = await prisma.refWelfareFund.findUnique({ where: { WelfareFundID: welfareFundId } });
+  if (!existing) return apiError(404, "WELFARE_FUND_NOT_FOUND");
 
-  await prisma.refSsoBase.delete({ where: { SSOBaseID: ssoBaseId } });
-  await logAction(user.userId, "DELETE_SSO_BASE", { targetTable: "ref_sso_base", targetId: id });
+  await prisma.refWelfareFund.delete({ where: { WelfareFundID: welfareFundId } });
+  await logAction(user.userId, "DELETE_WELFARE_FUND", { targetTable: "ref_welfare_fund", targetId: id });
   return apiSuccess({ ok: true });
 }

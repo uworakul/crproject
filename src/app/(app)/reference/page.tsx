@@ -30,16 +30,6 @@ const blacklistFields: FieldDef[] = [
   { key: "IDCardNo", label: "รหัสแบล็คลิส", type: "text" },
   { key: "FullName", label: "รายละเอียด", type: "text" },
 ];
-const ssoFields: FieldDef[] = [
-  { key: "SSOBaseID", label: "ID", type: "text", isKey: true },
-  { key: "EffectiveYear", label: "ปี พ.ศ.", type: "year" },
-  { key: "EffectiveDate", label: "วันที่มีผลบังคับใช้", type: "date" },
-  { key: "MinBase", label: "ฐานต่ำสุด (บาท)", type: "number" },
-  { key: "MaxBase", label: "ฐานสูงสุด (บาท)", type: "number" },
-  { key: "EmployeeRate", label: "อัตราลูกจ้าง (%)", type: "percent" },
-  { key: "EmployerRate", label: "อัตรานายจ้าง (%)", type: "percent" },
-];
-
 export default async function ReferencePage() {
   const user = await verifySession();
   if (!user) redirect("/login");
@@ -47,7 +37,7 @@ export default async function ReferencePage() {
   const canRead = await hasPermission(user, "REFERENCE", "read");
   if (!canRead) redirect("/");
 
-  const [canSave, canDelete, companiesRaw, banksRaw, departmentsRaw, positionsRaw, blacklistRaw, ssoBaseRaw] = await Promise.all([
+  const [canSave, canDelete, companiesRaw, banksRaw, departmentsRaw, positionsRaw, blacklistRaw] = await Promise.all([
     hasPermission(user, "REFERENCE", "save"),
     hasPermission(user, "REFERENCE", "delete"),
     prisma.refCompany.findMany({ orderBy: { CompanyCode: "asc" } }),
@@ -55,14 +45,13 @@ export default async function ReferencePage() {
     prisma.refDepartment.findMany({ orderBy: { DeptCode: "asc" } }),
     prisma.refPosition.findMany({ orderBy: { PositionCode: "asc" } }),
     prisma.refBlackList.findMany({ orderBy: { AddedDate: "desc" } }),
-    prisma.refSsoBase.findMany({ orderBy: { EffectiveYear: "desc" } }),
   ]);
 
-  // Prisma.Decimal fields (PositionAllowance, MinBase/MaxBase, rates) aren't
-  // plain objects React Server Components can pass to a Client Component —
-  // round-trip through JSON so Decimal.toJSON() turns them into strings.
-  const [companies, banks, departments, positions, blacklist, ssoBase] = JSON.parse(
-    JSON.stringify([companiesRaw, banksRaw, departmentsRaw, positionsRaw, blacklistRaw, ssoBaseRaw]),
+  // Prisma.Decimal fields (PositionAllowance) aren't plain objects React
+  // Server Components can pass to a Client Component — round-trip through
+  // JSON so Decimal.toJSON() turns them into strings.
+  const [companies, banks, departments, positions, blacklist] = JSON.parse(
+    JSON.stringify([companiesRaw, banksRaw, departmentsRaw, positionsRaw, blacklistRaw]),
   );
 
   return (
@@ -105,6 +94,8 @@ export default async function ReferencePage() {
                 fields={deptFields}
                 canSave={canSave}
                 canDelete={canDelete}
+                allowExport
+                allowImport
                 initialRows={departments}
               />
             ),
@@ -118,6 +109,8 @@ export default async function ReferencePage() {
                 fields={positionFields}
                 canSave={canSave}
                 canDelete={canDelete}
+                allowExport
+                allowImport
                 initialRows={positions}
               />
             ),
@@ -132,19 +125,6 @@ export default async function ReferencePage() {
                 canSave={canSave}
                 canDelete={canDelete}
                 initialRows={blacklist}
-              />
-            ),
-          },
-          {
-            label: "ฐานประกันสังคม",
-            content: (
-              <ReferenceTable
-                key="/api/reference/sso-base"
-                apiBase="/api/reference/sso-base"
-                fields={ssoFields}
-                canSave={canSave}
-                canDelete={canDelete}
-                initialRows={ssoBase}
               />
             ),
           },

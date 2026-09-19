@@ -49,6 +49,10 @@ export async function PUT(request: NextRequest, ctx: RouteContext<"/api/sites/[s
   return apiSuccess(updated);
 }
 
+// Hard delete — mst_site is referenced by sys_user/sys_user_permission/
+// mst_employee/trn_worksheet_header/trn_payroll_transaction with NO ACTION
+// FKs, which SQL Server rejects on its own the moment a site is actually
+// referenced; we just surface that cleanly instead of guessing.
 export async function DELETE(_req: NextRequest, ctx: RouteContext<"/api/sites/[siteCode]">) {
   const user = await verifySession();
   if (!user) return apiError(401, "UNAUTHORIZED");
@@ -59,10 +63,12 @@ export async function DELETE(_req: NextRequest, ctx: RouteContext<"/api/sites/[s
   const existing = await prisma.mstSite.findUnique({ where: { SiteCode: siteCode } });
   if (!existing) return apiError(404, "SITE_NOT_FOUND");
 
-  const updated = await prisma.mstSite.update({
-    where: { SiteCode: siteCode },
-    data: { IsActive: false, UpdatedBy: user.userId, UpdatedDate: new Date() },
-  });
-  await logAction(user.userId, "DEACTIVATE_SITE", { targetTable: "mst_site", targetId: siteCode });
-  return apiSuccess(updated);
+  try {
+    await prisma.mstSite.delete({ where: { SiteCode: siteCode } });
+  } catch {
+    return apiError(409, "SITE_IN_USE", "This site is linked to users, employees, or worksheets and cannot be deleted");
+  }
+
+  await logAction(user.userId, "DELETE_SITE", { targetTable: "mst_site", targetId: siteCode });
+  return apiSuccess({ ok: true });
 }

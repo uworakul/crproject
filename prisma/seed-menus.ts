@@ -19,7 +19,8 @@ export const menuSeed = [
   { DocumentType: "PROCESS_LOG", MenuNameTH: "ประวัติการทำรายการ", MenuNameEN: "Process Log", ModuleGroup: "SYSTEM_SETTING" },
   { DocumentType: "CHANGE_EMPLOYEE_NO", MenuNameTH: "เปลี่ยนรหัสพนักงาน", MenuNameEN: "Change Employee No.", ModuleGroup: "SYSTEM_SETTING" },
   { DocumentType: "REFERENCE", MenuNameTH: "รหัสอ้างอิง (ธนาคาร/แผนก/ตำแหน่ง/SSO/Black List)", MenuNameEN: "Reference (Bank/Dept/Position/SSO/Black List)", ModuleGroup: "SYSTEM_SETTING" },
-  { DocumentType: "TAX_RATE", MenuNameTH: "อัตราภาษี/ลดหย่อน", MenuNameEN: "Tax & Rate", ModuleGroup: "SYSTEM_SETTING" },
+  { DocumentType: "TAX_RATE", MenuNameTH: "ภาษี/ค่าลดหย่อน/กองทุนฯ", MenuNameEN: "Tax & Rate & Fund", ModuleGroup: "SYSTEM_SETTING" },
+  { DocumentType: "INCOME_DEDUCTION", MenuNameTH: "รายได้และรายการหัก", MenuNameEN: "Income & Deduction Types", ModuleGroup: "SYSTEM_SETTING" },
 
   // Module 3 — ข้อมูลหลักพนักงาน (BR-010–014)
   { DocumentType: "EMPLOYEE", MenuNameTH: "ทะเบียนพนักงาน", MenuNameEN: "Employee", ModuleGroup: "EMPLOYEE_MASTER" },
