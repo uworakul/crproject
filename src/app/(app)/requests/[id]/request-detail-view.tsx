@@ -3,15 +3,23 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
-interface RequestDetail {
-  RequestID: number;
-  RequestType: string;
+interface DetailRow {
+  RequestDetailID: number;
   EmpCode: string;
-  Employee: { FullName: string };
   Amount: string;
   DeductPerPeriod: string;
+  Employee: { FullName: string; EmployeeStatus: string; StartDate: string };
+}
+
+interface RequestDoc {
+  RequestHeaderID: number;
+  DocumentCode: string;
+  DocumentNo: string | null;
+  RequestDate: string;
+  Remark: string | null;
   Status: string;
   RejectReason: string | null;
+  Details: DetailRow[];
 }
 
 const STATUS_LABEL: Record<string, string> = {
@@ -21,66 +29,112 @@ const STATUS_LABEL: Record<string, string> = {
   REJECTED: "ตีกลับ",
 };
 
+const EMP_STATUS_LABEL: Record<string, string> = {
+  ACTIVE: "ปกติ",
+  PROBATION: "ทดลองงาน",
+  SUSPENDED: "พักงาน",
+  TERMINATED: "เลิกจ้าง",
+  RESIGNED: "ลาออก",
+};
+
+function money(v: string | number) {
+  return Number(v).toLocaleString("th-TH", { minimumFractionDigits: 2 });
+}
+
 export default function RequestDetailView({
   request,
   canSave,
   canApprove,
 }: {
-  request: RequestDetail;
+  request: RequestDoc;
   canSave: boolean;
   canApprove: boolean;
 }) {
   const router = useRouter();
-  const [amount, setAmount] = useState(request.Amount);
-  const [deductPerPeriod, setDeductPerPeriod] = useState(request.DeductPerPeriod);
+  const [remark, setRemark] = useState(request.Remark ?? "");
+  const [newRow, setNewRow] = useState({ empCode: "", amount: "", deductPerPeriod: "" });
+  const [editingId, setEditingId] = useState<number | null>(null);
+  const [editForm, setEditForm] = useState({ amount: "", deductPerPeriod: "" });
   const [rejectReason, setRejectReason] = useState("");
   const [message, setMessage] = useState<string | null>(null);
 
   async function call(path: string, opts?: RequestInit) {
     setMessage(null);
-    const res = await fetch(`/api/requests/${request.RequestID}${path}`, opts);
+    const res = await fetch(`/api/requests/${request.RequestHeaderID}${path}`, opts);
     const body = await res.json().catch(() => ({}));
     if (!res.ok) {
-      setMessage(body.message || `${body.error}${body.quotaRemaining ? ` (คงเหลือ ${body.quotaRemaining})` : ""}`);
+      setMessage(body.message || body.error);
       return false;
     }
     router.refresh();
     return true;
   }
 
-  const isDraft = request.Status === "DRAFT";
-  const isSubmitted = request.Status === "SUBMITTED";
+  async function saveRemark() {
+    await call("", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ remark }) });
+  }
+
+  async function addRow() {
+    if (!newRow.empCode.trim() || !newRow.amount) return;
+    const ok = await call("/details", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(newRow) });
+    if (ok) setNewRow({ empCode: "", amount: "", deductPerPeriod: "" });
+  }
+
+  function startEdit(d: DetailRow) {
+    setEditingId(d.RequestDetailID);
+    setEditForm({ amount: d.Amount, deductPerPeriod: d.DeductPerPeriod });
+  }
+
+  async function saveEdit(detailId: number) {
+    const ok = await call(`/details/${detailId}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(editForm),
+    });
+    if (ok) setEditingId(null);
+  }
+
+  async function deleteRow(detailId: number) {
+    await call(`/details/${detailId}`, { method: "DELETE" });
+  }
+
+  const canEditRows = canSave && request.Status !== "APPROVED";
+  const totalAmount = request.Details.reduce((sum, d) => sum + Number(d.Amount), 0);
 
   return (
     <div className="flex flex-col gap-4">
       <div className="grid grid-cols-2 gap-3 text-sm">
         <div>
-          <div className="text-gray-500">พนักงาน</div>
-          <div>
-            {request.Employee.FullName} ({request.EmpCode})
-          </div>
+          <div className="text-gray-500">รหัสเอกสาร</div>
+          <div>{request.DocumentCode}</div>
+        </div>
+        <div>
+          <div className="text-gray-500">เลขที่เอกสาร</div>
+          <div>{request.DocumentNo ?? "-"}</div>
+        </div>
+        <div>
+          <div className="text-gray-500">วันที่</div>
+          <div>{new Date(request.RequestDate).toLocaleDateString("th-TH")}</div>
         </div>
         <div>
           <div className="text-gray-500">สถานะ</div>
           <div>{STATUS_LABEL[request.Status] ?? request.Status}</div>
         </div>
-        <label className="flex flex-col gap-1">
-          <span className="text-gray-500">ยอดเบิก (บาท)</span>
-          <input
-            disabled={!isDraft || !canSave}
-            value={amount}
-            onChange={(e) => setAmount(e.target.value)}
-            className="rounded border border-gray-300 px-3 py-2 disabled:bg-gray-100"
-          />
-        </label>
-        <label className="flex flex-col gap-1">
-          <span className="text-gray-500">หักต่องวด (บาท)</span>
-          <input
-            disabled={!isDraft || !canSave}
-            value={deductPerPeriod}
-            onChange={(e) => setDeductPerPeriod(e.target.value)}
-            className="rounded border border-gray-300 px-3 py-2 disabled:bg-gray-100"
-          />
+        <label className="col-span-2 flex flex-col gap-1">
+          <span className="text-gray-500">หมายเหตุ</span>
+          <div className="flex gap-2">
+            <input
+              disabled={!canEditRows}
+              value={remark}
+              onChange={(e) => setRemark(e.target.value)}
+              className="flex-1 rounded border border-gray-300 px-3 py-2 disabled:bg-gray-100"
+            />
+            {canEditRows && (
+              <button onClick={saveRemark} className="rounded-md border border-gray-300 px-3 py-2 text-sm hover:bg-gray-50">
+                บันทึก
+              </button>
+            )}
+          </div>
         </label>
       </div>
 
@@ -88,29 +142,133 @@ export default function RequestDetailView({
         <p className="rounded border border-red-200 bg-red-50 p-2 text-sm text-red-700">ถูกตีกลับ: {request.RejectReason}</p>
       )}
 
+      <div className="overflow-x-auto rounded-lg border border-gray-200 bg-white">
+        <table className="w-full border-collapse text-sm">
+          <thead className="border-b border-gray-200 bg-gray-50 text-left text-gray-500">
+            <tr>
+              <th className="px-3 py-2 font-medium">รหัสพนักงาน</th>
+              <th className="px-3 py-2 font-medium">ชื่อพนักงาน</th>
+              <th className="px-3 py-2 font-medium">สถานะพนักงาน</th>
+              <th className="px-3 py-2 font-medium">วันเริ่มงาน</th>
+              <th className="px-3 py-2 font-medium text-right">ยอดเงิน</th>
+              <th className="px-3 py-2 font-medium text-right">หักงวดละ</th>
+              {canEditRows && <th className="px-3 py-2"></th>}
+            </tr>
+          </thead>
+          <tbody>
+            {request.Details.map((d) => {
+              const isEditing = editingId === d.RequestDetailID;
+              return (
+                <tr key={d.RequestDetailID} className="border-t border-gray-100">
+                  <td className="px-3 py-2">{d.EmpCode}</td>
+                  <td className="px-3 py-2">{d.Employee.FullName}</td>
+                  <td className="px-3 py-2 text-gray-500">{EMP_STATUS_LABEL[d.Employee.EmployeeStatus] ?? d.Employee.EmployeeStatus}</td>
+                  <td className="px-3 py-2 text-gray-500">{new Date(d.Employee.StartDate).toLocaleDateString("th-TH")}</td>
+                  <td className="px-3 py-2 text-right">
+                    {isEditing ? (
+                      <input
+                        value={editForm.amount}
+                        onChange={(e) => setEditForm({ ...editForm, amount: e.target.value })}
+                        className="w-24 rounded border border-gray-300 px-2 py-1 text-right text-sm"
+                      />
+                    ) : (
+                      money(d.Amount)
+                    )}
+                  </td>
+                  <td className="px-3 py-2 text-right">
+                    {isEditing ? (
+                      <input
+                        value={editForm.deductPerPeriod}
+                        onChange={(e) => setEditForm({ ...editForm, deductPerPeriod: e.target.value })}
+                        className="w-24 rounded border border-gray-300 px-2 py-1 text-right text-sm"
+                      />
+                    ) : (
+                      money(d.DeductPerPeriod)
+                    )}
+                  </td>
+                  {canEditRows && (
+                    <td className="whitespace-nowrap px-3 py-2 text-right">
+                      {isEditing ? (
+                        <div className="flex justify-end gap-2">
+                          <button onClick={() => saveEdit(d.RequestDetailID)} className="text-gray-900 hover:underline">
+                            บันทึก
+                          </button>
+                          <button onClick={() => setEditingId(null)} className="text-gray-400 hover:underline">
+                            ยกเลิก
+                          </button>
+                        </div>
+                      ) : (
+                        <div className="flex justify-end gap-2">
+                          <button onClick={() => startEdit(d)} className="text-gray-500 hover:text-gray-900 hover:underline">
+                            แก้ไข
+                          </button>
+                          <button onClick={() => deleteRow(d.RequestDetailID)} className="text-red-500 hover:underline">
+                            ลบ
+                          </button>
+                        </div>
+                      )}
+                    </td>
+                  )}
+                </tr>
+              );
+            })}
+            {request.Details.length === 0 && (
+              <tr>
+                <td colSpan={canEditRows ? 7 : 6} className="px-3 py-6 text-center text-gray-400">
+                  ยังไม่มีรายการพนักงาน
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      {canEditRows && (
+        <div className="flex flex-wrap items-end gap-2 rounded-lg border border-dashed border-gray-300 p-3">
+          <label className="flex flex-col gap-1 text-xs text-gray-500">
+            รหัสพนักงาน
+            <input
+              value={newRow.empCode}
+              onChange={(e) => setNewRow({ ...newRow, empCode: e.target.value })}
+              className="w-32 rounded border border-gray-300 px-2 py-1 text-sm text-gray-900"
+            />
+          </label>
+          <label className="flex flex-col gap-1 text-xs text-gray-500">
+            ยอดเงิน
+            <input
+              value={newRow.amount}
+              onChange={(e) => setNewRow({ ...newRow, amount: e.target.value })}
+              className="w-28 rounded border border-gray-300 px-2 py-1 text-sm text-gray-900"
+            />
+          </label>
+          <label className="flex flex-col gap-1 text-xs text-gray-500">
+            หักงวดละ
+            <input
+              value={newRow.deductPerPeriod}
+              onChange={(e) => setNewRow({ ...newRow, deductPerPeriod: e.target.value })}
+              className="w-28 rounded border border-gray-300 px-2 py-1 text-sm text-gray-900"
+            />
+          </label>
+          <button onClick={addRow} className="rounded-md bg-gray-900 px-3 py-1.5 text-sm text-white hover:bg-gray-700">
+            + เพิ่มรายการ
+          </button>
+        </div>
+      )}
+
+      <div className="flex items-center justify-between rounded bg-gray-50 p-3 text-sm">
+        <span>จำนวนรายการทั้งหมด {request.Details.length} รายการ</span>
+        <span className="font-semibold">ยอดเงินรวม {money(totalAmount)} บาท</span>
+      </div>
+
       <div className="flex flex-wrap gap-2">
-        {isDraft && canSave && (
-          <>
-            <button
-              onClick={() => call("", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ amount, deductPerPeriod }) })}
-              className="rounded-md border border-gray-300 px-4 py-2 text-sm hover:bg-gray-50"
-            >
-              บันทึก
-            </button>
-            <button
-              onClick={() => call("/submit", { method: "POST" })}
-              className="rounded-md bg-gray-900 px-4 py-2 text-sm text-white hover:bg-gray-700"
-            >
-              ส่งอนุมัติ
-            </button>
-          </>
+        {request.Status === "DRAFT" && canSave && (
+          <button onClick={() => call("/submit", { method: "POST" })} className="rounded-md bg-blue-600 px-4 py-2 text-sm text-white hover:bg-blue-700">
+            ส่งอนุมัติ
+          </button>
         )}
-        {isSubmitted && canApprove && (
+        {request.Status === "SUBMITTED" && canApprove && (
           <>
-            <button
-              onClick={() => call("/approve", { method: "POST" })}
-              className="rounded-md bg-green-600 px-4 py-2 text-sm text-white hover:bg-green-700"
-            >
+            <button onClick={() => call("/approve", { method: "POST" })} className="rounded-md bg-green-600 px-4 py-2 text-sm text-white hover:bg-green-700">
               อนุมัติ
             </button>
             <div className="flex items-center gap-2">

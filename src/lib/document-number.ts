@@ -57,3 +57,18 @@ export async function findNextFreeEmployeeCode(documentCode: string): Promise<{ 
   }
   return null;
 }
+
+// Simpler sibling of findNextFreeEmployeeCode for documents that don't need
+// collision-scanning against another table (2026-09-19, ใบขออนุมัติ
+// เบิก/กู้/อบรม) — just atomically advances LatestNumber and formats it.
+// Returns null if the DocumentCode is marked "กำหนดเอง" (no sequence to
+// generate from); callers should leave DocumentNo blank in that case.
+export async function consumeDocumentNumber(documentCode: string, description: string): Promise<string | null> {
+  const docNum = await getOrCreateDocumentNumber(documentCode, description);
+  if (docNum.IsCustomNumber) return null;
+
+  const next = docNum.LatestNumber + 1;
+  const code = formatSequenceNumber(next, docNum.UseYearMonthPrefix);
+  await prisma.refDocumentNumber.update({ where: { DocumentNumberID: docNum.DocumentNumberID }, data: { LatestNumber: next } });
+  return code;
+}

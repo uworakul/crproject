@@ -1,7 +1,21 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import Swal from "sweetalert2";
 import { toBuddhistYear, toGregorianYear } from "@/lib/buddhist-year";
+
+async function confirmDialog(html: string, confirmButtonColor = "#dc2626") {
+  const result = await Swal.fire({
+    html,
+    icon: "warning",
+    showCancelButton: true,
+    confirmButtonText: "ยืนยัน",
+    cancelButtonText: "ยกเลิก",
+    confirmButtonColor,
+    cancelButtonColor: "#9ca3af",
+  });
+  return result.isConfirmed;
+}
 
 interface Site {
   SiteCode: string;
@@ -74,6 +88,10 @@ export default function WorksheetView({
   const [message, setMessage] = useState<string | null>(null);
   const [newEmpCode, setNewEmpCode] = useState("");
   const [rejectReasonInput, setRejectReasonInput] = useState("");
+  const [fillFrom, setFillFrom] = useState(1);
+  const [fillTo, setFillTo] = useState(1);
+  const [fillCode, setFillCode] = useState("");
+  const [fillTarget, setFillTarget] = useState("ALL");
 
   async function load(s: string, y: number, m: number) {
     if (!s) return;
@@ -161,6 +179,31 @@ export default function WorksheetView({
     if (res.ok) load(siteCode, year, month);
   }
 
+  async function removeAllEmployees() {
+    if (!data) return;
+    if (!(await confirmDialog(`ยืนยันลบพนักงานทั้งหมด (${data.details.length} คน) ออกจากใบลงเวลานี้?`))) return;
+    const res = await fetch(`/api/worksheets/${data.worksheetId}/employees`, { method: "DELETE" });
+    const body = await res.json().catch(() => ({}));
+    setMessage(res.ok ? null : body.message || body.error);
+    if (res.ok) load(siteCode, year, month);
+  }
+
+  function fillRange() {
+    if (!data) return;
+    const from = Math.min(fillFrom, fillTo);
+    const to = Math.max(fillFrom, fillTo);
+    const code = fillCode || null;
+    setData((prev) => {
+      if (!prev) return prev;
+      const details = prev.details.map((d) => {
+        if (fillTarget !== "ALL" && d.empCode !== fillTarget) return d;
+        const days = d.days.map((day) => (day.day >= from && day.day <= to ? { ...day, attendCode: code } : day));
+        return { ...d, days };
+      });
+      return { ...prev, details };
+    });
+  }
+
   async function submit() {
     if (!data) return;
     const res = await fetch(`/api/worksheets/${data.worksheetId}/submit`, { method: "POST" });
@@ -190,6 +233,15 @@ export default function WorksheetView({
       setRejectReasonInput("");
       load(siteCode, year, month);
     }
+  }
+
+  async function unapprove() {
+    if (!data) return;
+    if (!(await confirmDialog("ยืนยันยกเลิกการอนุมัติ? ใบลงเวลาจะกลับไปเป็นร่างและยอดที่โพสต์เข้าเงินเดือนจะถูกล้างกลับเป็น 0"))) return;
+    const res = await fetch(`/api/worksheets/${data.worksheetId}/unapprove`, { method: "POST" });
+    const body = await res.json().catch(() => ({}));
+    setMessage(res.ok ? "ยกเลิกการอนุมัติแล้ว" : body.message || `${body.error}${body.empCode ? ` (${body.empCode})` : ""}`);
+    if (res.ok) load(siteCode, year, month);
   }
 
   const grandTotal = data?.details.reduce((sum, d) => sum + Number(d.total), 0) ?? 0;
@@ -259,6 +311,47 @@ export default function WorksheetView({
               </span>
             ))}
           </div>
+
+          {/* Bulk fill a date range with one code, for one or all employees — local edit only, click บันทึก to save */}
+          {data.canSave && data.status === "DRAFT" && (
+            <div className="flex flex-wrap items-center gap-2 rounded border border-dashed border-gray-300 p-2 text-sm">
+              <span className="text-gray-500">ใส่ช่วงวันที่:</span>
+              <select value={fillFrom} onChange={(e) => setFillFrom(Number(e.target.value))} className="rounded border border-gray-300 px-1.5 py-1 text-sm">
+                {Array.from({ length: daysInMonth }, (_, i) => i + 1).map((d) => (
+                  <option key={d} value={d}>
+                    {d}
+                  </option>
+                ))}
+              </select>
+              <span className="text-gray-400">ถึง</span>
+              <select value={fillTo} onChange={(e) => setFillTo(Number(e.target.value))} className="rounded border border-gray-300 px-1.5 py-1 text-sm">
+                {Array.from({ length: daysInMonth }, (_, i) => i + 1).map((d) => (
+                  <option key={d} value={d}>
+                    {d}
+                  </option>
+                ))}
+              </select>
+              <select value={fillCode} onChange={(e) => setFillCode(e.target.value)} className="rounded border border-gray-300 px-1.5 py-1 text-sm">
+                <option value="">- ว่าง -</option>
+                {data.attendanceCodes.map((c) => (
+                  <option key={c.Code} value={c.Code}>
+                    {c.Code}
+                  </option>
+                ))}
+              </select>
+              <select value={fillTarget} onChange={(e) => setFillTarget(e.target.value)} className="rounded border border-gray-300 px-1.5 py-1 text-sm">
+                <option value="ALL">ทุกคน</option>
+                {data.details.map((d) => (
+                  <option key={d.empCode} value={d.empCode}>
+                    {d.empName}
+                  </option>
+                ))}
+              </select>
+              <button onClick={fillRange} className="rounded border border-gray-300 px-3 py-1 text-sm text-gray-700 hover:bg-gray-50">
+                ใส่ช่วงวันที่
+              </button>
+            </div>
+          )}
 
           {/* Grid */}
           <div className="overflow-x-auto">
@@ -331,6 +424,11 @@ export default function WorksheetView({
               <button onClick={addEmployee} className="rounded border border-dashed border-gray-300 px-3 py-1 text-sm text-gray-600">
                 + เพิ่มพนักงานสแปร์
               </button>
+              {data.details.length > 0 && (
+                <button onClick={removeAllEmployees} className="rounded border border-dashed border-red-300 px-3 py-1 text-sm text-red-600">
+                  ลบพนักงานทั้งหมด
+                </button>
+              )}
             </div>
           )}
 
@@ -375,7 +473,14 @@ export default function WorksheetView({
               </>
             )}
             {data.status === "APPROVED" && (
-              <p className="text-sm text-gray-500">ข้อมูลถูกล็อก ไม่สามารถแก้ไขได้หลังอนุมัติ</p>
+              <>
+                <p className="text-sm text-gray-500">ข้อมูลถูกล็อก ไม่สามารถแก้ไขได้หลังอนุมัติ</p>
+                {data.canApprove && (
+                  <button onClick={unapprove} className="rounded border border-red-300 px-4 py-2 text-sm text-red-600">
+                    ยกเลิกการอนุมัติ
+                  </button>
+                )}
+              </>
             )}
           </div>
         </>

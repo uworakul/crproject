@@ -2,7 +2,7 @@ import { redirect } from "next/navigation";
 import { verifySession } from "@/lib/dal";
 import { hasPermission } from "@/lib/authorize";
 import { prisma } from "@/lib/prisma";
-import { REQUEST_TYPE_VALUES, REQUEST_TYPE_DOCTYPE } from "@/lib/request";
+import { REQUEST_PERMISSION_GROUPS } from "@/lib/request";
 import Sidebar from "./sidebar";
 import LogoutButton from "./logout-button";
 
@@ -16,6 +16,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
 
   const [
     canViewUsers,
+    canViewAuditLog,
     canViewReference,
     canViewTax,
     canViewIncomeDeduction,
@@ -38,13 +39,14 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     company,
   ] = await Promise.all([
     hasPermission(user, "USER", "read"),
+    hasPermission(user, "PROCESS_LOG", "read"),
     hasPermission(user, "REFERENCE", "read"),
     hasPermission(user, "TAX_RATE", "read"),
     hasPermission(user, "INCOME_DEDUCTION", "read"),
     hasPermission(user, "EMPLOYEE", "read"),
     hasPermission(user, "PERIOD", "read"),
     hasPermission(user, "DRAFT_LIST", "read"),
-    Promise.all(REQUEST_TYPE_VALUES.map((t) => hasPermission(user, REQUEST_TYPE_DOCTYPE[t], "read"))).then((r) => r.some(Boolean)),
+    Promise.all(REQUEST_PERMISSION_GROUPS.map((g) => hasPermission(user, g.docType, "read"))).then((r) => r.some(Boolean)),
     hasPermission(user, "SUPPLIER", "read"),
     hasPermission(user, "WAREHOUSE", "read"),
     hasPermission(user, "PRODUCT", "read"),
@@ -71,7 +73,10 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     {
       label: "ผู้ใช้งานและสิทธิ์",
       icon: "users" as const,
-      items: canViewUsers ? [{ href: "/users", label: "ผู้ใช้งาน" }] : [],
+      items: [
+        ...(canViewUsers ? [{ href: "/users", label: "ผู้ใช้งาน" }] : []),
+        ...(canViewAuditLog ? [{ href: "/audit-log", label: "Audit Log" }] : []),
+      ],
     },
     {
       label: "ตั้งค่าระบบ/รหัสอ้างอิง",
@@ -93,7 +98,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       label: "การขออนุมัติ",
       icon: "approve" as const,
       items: [
-        ...(canViewAnyRequest ? [{ href: "/requests", label: "คำขอเบิก/กู้/อบรม" }] : []),
+        ...(canViewAnyRequest ? [{ href: "/requests", label: "เบิกล่วงหน้า/เงินกู้/ค่าอบรม" }] : []),
         ...(canViewDraftList ? [{ href: "/requests/draft-list", label: "รายการรออนุมัติ" }] : []),
       ],
     },

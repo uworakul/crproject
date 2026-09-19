@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { EMPLOYEE_TYPE_VALUES, EMPLOYEE_TYPE_LABELS, EMPLOYEE_STATUS_VALUES, EMPLOYEE_STATUS_LABELS } from "@/lib/validation";
 import SearchableSelect from "./searchable-select";
+import { confirmDeleteEmployee } from "../confirm-delete-employee";
 
 interface Employee {
   EmpCode: string;
@@ -111,12 +112,21 @@ export default function EmployeeInfoTab({
     }
   }
 
-  async function resign() {
+  async function handleDelete() {
+    const reason = await confirmDeleteEmployee(employee.EmpCode, form.fullName || employee.FullName);
+    if (!reason) return;
     setMessage(null);
-    const res = await fetch(`/api/employees/${employee.EmpCode}/resign`, { method: "POST" });
+    const res = await fetch(`/api/employees/${employee.EmpCode}`, {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ reason }),
+    });
     const body = await res.json().catch(() => ({}));
-    setMessage(res.ok ? "บันทึกการลาออกแล้ว" : body.message || body.error);
-    if (res.ok) router.refresh();
+    if (!res.ok) {
+      setMessage(body.message || body.error);
+      return;
+    }
+    router.push("/employees");
   }
 
   const isResigned = employee.EmployeeStatus === "RESIGNED";
@@ -127,6 +137,29 @@ export default function EmployeeInfoTab({
         <Field label="รหัสพนักงาน">
           <input disabled value={employee.EmpCode} className={inputCls} />
         </Field>
+        <Field label="คำนำหน้า">
+          <input disabled={!canSave} value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} className={inputCls} placeholder="นาย/นาง/นางสาว" />
+        </Field>
+        <Field label="ชื่อ">
+          <input disabled={!canSave} value={form.firstName} onChange={(e) => setForm({ ...form, firstName: e.target.value })} className={inputCls} />
+        </Field>
+        <Field label="นามสกุล">
+          <input disabled={!canSave} value={form.lastName} onChange={(e) => setForm({ ...form, lastName: e.target.value })} className={inputCls} />
+        </Field>
+        <Field label="สถานะพนักงาน">
+          <select
+            disabled={!canSave || isResigned}
+            value={form.employeeStatus}
+            onChange={(e) => setForm({ ...form, employeeStatus: e.target.value })}
+            className={inputCls}
+          >
+            {EMPLOYEE_STATUS_VALUES.filter((s) => s !== "RESIGNED" || isResigned).map((s) => (
+              <option key={s} value={s}>
+                {EMPLOYEE_STATUS_LABELS[s]}
+              </option>
+            ))}
+          </select>
+        </Field>
         <Field label="บริษัท">
           <select disabled={!canSave} value={form.companyCode} onChange={(e) => setForm({ ...form, companyCode: e.target.value })} className={inputCls}>
             <option value="">- ไม่ระบุ -</option>
@@ -136,15 +169,6 @@ export default function EmployeeInfoTab({
               </option>
             ))}
           </select>
-        </Field>
-        <Field label="คำนำหน้า">
-          <input disabled={!canSave} value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} className={inputCls} placeholder="นาย/นาง/นางสาว" />
-        </Field>
-        <Field label="ชื่อ">
-          <input disabled={!canSave} value={form.firstName} onChange={(e) => setForm({ ...form, firstName: e.target.value })} className={inputCls} />
-        </Field>
-        <Field label="นามสกุล">
-          <input disabled={!canSave} value={form.lastName} onChange={(e) => setForm({ ...form, lastName: e.target.value })} className={inputCls} />
         </Field>
         <Field label="แผนก">
           <select disabled={!canSave} value={form.deptCode} onChange={(e) => setForm({ ...form, deptCode: e.target.value })} className={inputCls}>
@@ -190,6 +214,22 @@ export default function EmployeeInfoTab({
         <Field label="วันที่ผ่านงาน">
           <input disabled={!canSave} type="date" value={form.probationPassDate} onChange={(e) => setForm({ ...form, probationPassDate: e.target.value })} className={inputCls} />
         </Field>
+        <Field label="วันที่ลาออก">
+          <input disabled={!canSave} type="date" value={form.resignDate} onChange={(e) => setForm({ ...form, resignDate: e.target.value })} className={inputCls} />
+        </Field>
+        <Field label="รหัสแบล็คลิส">
+          <select disabled={!canSave} value={form.blacklistCode} onChange={(e) => setForm({ ...form, blacklistCode: e.target.value })} className={inputCls}>
+            <option value="">- ไม่ระบุ -</option>
+            {blacklist.map((b) => (
+              <option key={b.IDCardNo} value={b.IDCardNo}>
+                {b.IDCardNo} — {b.FullName}
+              </option>
+            ))}
+          </select>
+        </Field>
+        <Field label="เลขที่ประกาศพ้นหน้าที่">
+          <input disabled={!canSave} value={form.certificateNo} onChange={(e) => setForm({ ...form, certificateNo: e.target.value })} className={inputCls} />
+        </Field>
         <Field label="เลขที่ใบอนุญาต ธภ.6">
           <input disabled={!canSave} value={form.licenseNo6} onChange={(e) => setForm({ ...form, licenseNo6: e.target.value })} className={inputCls} />
         </Field>
@@ -202,38 +242,8 @@ export default function EmployeeInfoTab({
         <Field label="ลงวันที่ ธภ.7">
           <input disabled={!canSave} type="date" value={form.licenseDate7} onChange={(e) => setForm({ ...form, licenseDate7: e.target.value })} className={inputCls} />
         </Field>
-        <Field label="สถานะพนักงาน">
-          <select
-            disabled={!canSave || isResigned}
-            value={form.employeeStatus}
-            onChange={(e) => setForm({ ...form, employeeStatus: e.target.value })}
-            className={inputCls}
-          >
-            {EMPLOYEE_STATUS_VALUES.filter((s) => s !== "RESIGNED" || isResigned).map((s) => (
-              <option key={s} value={s}>
-                {EMPLOYEE_STATUS_LABELS[s]}
-              </option>
-            ))}
-          </select>
-        </Field>
-        <Field label="วันที่ลาออก">
-          <input disabled={!canSave} type="date" value={form.resignDate} onChange={(e) => setForm({ ...form, resignDate: e.target.value })} className={inputCls} />
-        </Field>
-        <Field label="เลขที่ประกาศพ้นหน้าที่">
-          <input disabled={!canSave} value={form.certificateNo} onChange={(e) => setForm({ ...form, certificateNo: e.target.value })} className={inputCls} />
-        </Field>
         <Field label="รหัสคนแนะนำ">
           <input disabled={!canSave} value={form.referrerEmpCode} onChange={(e) => setForm({ ...form, referrerEmpCode: e.target.value })} className={inputCls} />
-        </Field>
-        <Field label="รหัสแบล็คลิส">
-          <select disabled={!canSave} value={form.blacklistCode} onChange={(e) => setForm({ ...form, blacklistCode: e.target.value })} className={inputCls}>
-            <option value="">- ไม่ระบุ -</option>
-            {blacklist.map((b) => (
-              <option key={b.IDCardNo} value={b.IDCardNo}>
-                {b.IDCardNo} — {b.FullName}
-              </option>
-            ))}
-          </select>
         </Field>
       </div>
 
@@ -249,11 +259,9 @@ export default function EmployeeInfoTab({
           <button onClick={save} disabled={pending} className="rounded-md bg-gray-900 px-4 py-2 text-sm text-white hover:bg-gray-700 disabled:opacity-50">
             {pending ? "กำลังบันทึก..." : "บันทึก"}
           </button>
-          {!isResigned && (
-            <button onClick={resign} className="rounded-md border border-red-300 px-4 py-2 text-sm text-red-600 hover:bg-red-50">
-              บันทึกลาออก
-            </button>
-          )}
+          <button onClick={handleDelete} className="rounded-md border border-red-300 px-4 py-2 text-sm text-red-600 hover:bg-red-50">
+            ลบออกจากระบบ
+          </button>
           {isResigned && (
             <span className="text-sm text-gray-500">
               ลาออกแล้วเมื่อ {employee.ResignDate ? new Date(employee.ResignDate).toLocaleDateString("th-TH") : "-"}

@@ -56,16 +56,16 @@ export default function IncomeTab({
   return (
     <div className="flex flex-col gap-6">
       <div className="grid grid-cols-2 gap-3">
-        <Field label="ค่าแรงต่อวัน (บาท)">
+        <Field label="ค่าแรงต่อวัน">
           <input disabled={!canSave} type="number" step="0.01" value={form.dailyRate} onChange={(e) => setForm({ ...form, dailyRate: e.target.value })} className={inputCls} />
         </Field>
-        <Field label="ค่า OT ต่อวัน (บาท)">
+        <Field label="ค่า OT ต่อวัน">
           <input disabled={!canSave} type="number" step="0.01" value={form.otRatePerDay} onChange={(e) => setForm({ ...form, otRatePerDay: e.target.value })} className={inputCls} />
         </Field>
-        <Field label="เงินเดือน (บาท)">
+        <Field label="เงินเดือน">
           <input disabled={!canSave} type="number" step="0.01" value={form.monthlySalary} onChange={(e) => setForm({ ...form, monthlySalary: e.target.value })} className={inputCls} />
         </Field>
-        <Field label="ค่าตำแหน่ง (บาท)">
+        <Field label="ค่าตำแหน่ง">
           <input
             disabled={!canSave}
             type="number"

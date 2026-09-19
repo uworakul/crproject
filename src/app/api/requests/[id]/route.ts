@@ -4,7 +4,7 @@ import { verifySession } from "@/lib/dal";
 import { requirePermission } from "@/lib/authorize";
 import { logAction } from "@/lib/audit-log";
 import { apiError, apiSuccess } from "@/lib/api-response";
-import { REQUEST_TYPE_DOCTYPE, type RequestType } from "@/lib/request";
+import { REQUEST_DOCUMENT_DOCTYPE, type RequestDocumentCode } from "@/lib/request";
 
 export async function GET(_req: NextRequest, ctx: RouteContext<"/api/requests/[id]">) {
   const user = await verifySession();
@@ -14,18 +14,20 @@ export async function GET(_req: NextRequest, ctx: RouteContext<"/api/requests/[i
   const requestId = Number(id);
   if (!Number.isInteger(requestId)) return apiError(400, "INVALID_PARAMS");
 
-  const req = await prisma.trnRequest.findUnique({
-    where: { RequestID: requestId },
-    include: { Employee: { select: { FullName: true } } },
+  const header = await prisma.trnRequestHeader.findUnique({
+    where: { RequestHeaderID: requestId },
+    include: { Details: { include: { Employee: { select: { FullName: true, EmployeeStatus: true, StartDate: true } } } } },
   });
-  if (!req) return apiError(404, "REQUEST_NOT_FOUND");
+  if (!header) return apiError(404, "REQUEST_NOT_FOUND");
 
-  const denied = await requirePermission(user, REQUEST_TYPE_DOCTYPE[req.RequestType as RequestType], "read");
+  const denied = await requirePermission(user, REQUEST_DOCUMENT_DOCTYPE[header.DocumentCode as RequestDocumentCode], "read");
   if (denied) return denied;
 
-  return apiSuccess(req);
+  return apiSuccess(header);
 }
 
+// Header fields (requestDate/remark) are editable until APPROVED — line
+// items have their own endpoint (details/route.ts) with the same rule.
 export async function PUT(request: NextRequest, ctx: RouteContext<"/api/requests/[id]">) {
   const user = await verifySession();
   if (!user) return apiError(401, "UNAUTHORIZED");
@@ -34,43 +36,40 @@ export async function PUT(request: NextRequest, ctx: RouteContext<"/api/requests
   const requestId = Number(id);
   if (!Number.isInteger(requestId)) return apiError(400, "INVALID_PARAMS");
 
-  const existing = await prisma.trnRequest.findUnique({ where: { RequestID: requestId } });
+  const existing = await prisma.trnRequestHeader.findUnique({ where: { RequestHeaderID: requestId } });
   if (!existing) return apiError(404, "REQUEST_NOT_FOUND");
 
-  const denied = await requirePermission(user, REQUEST_TYPE_DOCTYPE[existing.RequestType as RequestType], "save");
+  const denied = await requirePermission(user, REQUEST_DOCUMENT_DOCTYPE[existing.DocumentCode as RequestDocumentCode], "save");
   if (denied) return denied;
 
-  if (existing.Status !== "DRAFT") {
-    return apiError(409, "REQUEST_LOCKED", "Only a DRAFT request can be edited", { status: existing.Status });
+  if (existing.Status === "APPROVED") {
+    return apiError(409, "REQUEST_LOCKED", "An APPROVED request can no longer be edited", { status: existing.Status });
   }
 
-  let body: { amount?: unknown; deductPerPeriod?: unknown };
+  let body: { requestDate?: unknown; remark?: unknown };
   try {
     body = await request.json();
   } catch {
     return apiError(400, "INVALID_PARAMS", "Request body must be JSON");
   }
 
-  if (body.amount !== undefined) {
-    const n = Number(body.amount);
-    if (!Number.isFinite(n) || n <= 0) return apiError(400, "VALIDATION_FAILED", "amount must be greater than 0");
-  }
-  if (body.deductPerPeriod !== undefined) {
-    const n = Number(body.deductPerPeriod);
-    if (!Number.isFinite(n) || n < 0) return apiError(400, "VALIDATION_FAILED", "deductPerPeriod must be non-negative");
+  let requestDate: Date | undefined;
+  if (typeof body.requestDate === "string" && body.requestDate) {
+    requestDate = new Date(body.requestDate);
+    if (Number.isNaN(requestDate.getTime())) return apiError(400, "VALIDATION_FAILED", "requestDate is invalid");
   }
 
-  const updated = await prisma.trnRequest.update({
-    where: { RequestID: requestId },
+  const updated = await prisma.trnRequestHeader.update({
+    where: { RequestHeaderID: requestId },
     data: {
-      Amount: body.amount !== undefined ? Number(body.amount) : undefined,
-      DeductPerPeriod: body.deductPerPeriod !== undefined ? Number(body.deductPerPeriod) : undefined,
+      RequestDate: requestDate,
+      Remark: body.remark === null ? null : typeof body.remark === "string" ? body.remark.trim() || null : undefined,
       UpdatedBy: user.userId,
       UpdatedDate: new Date(),
     },
   });
 
-  await logAction(user.userId, "UPDATE_REQUEST", { targetTable: "trn_request", targetId: id });
+  await logAction(user.userId, "UPDATE_REQUEST", { targetTable: "trn_request_header", targetId: id });
   return apiSuccess(updated);
 }
 
@@ -82,17 +81,20 @@ export async function DELETE(_req: NextRequest, ctx: RouteContext<"/api/requests
   const requestId = Number(id);
   if (!Number.isInteger(requestId)) return apiError(400, "INVALID_PARAMS");
 
-  const existing = await prisma.trnRequest.findUnique({ where: { RequestID: requestId } });
+  const existing = await prisma.trnRequestHeader.findUnique({ where: { RequestHeaderID: requestId } });
   if (!existing) return apiError(404, "REQUEST_NOT_FOUND");
 
-  const denied = await requirePermission(user, REQUEST_TYPE_DOCTYPE[existing.RequestType as RequestType], "delete");
+  const denied = await requirePermission(user, REQUEST_DOCUMENT_DOCTYPE[existing.DocumentCode as RequestDocumentCode], "delete");
   if (denied) return denied;
 
   if (existing.Status !== "DRAFT") {
     return apiError(409, "REQUEST_LOCKED", "Only a DRAFT request can be deleted", { status: existing.Status });
   }
 
-  await prisma.trnRequest.delete({ where: { RequestID: requestId } });
-  await logAction(user.userId, "DELETE_REQUEST", { targetTable: "trn_request", targetId: id });
+  await prisma.$transaction([
+    prisma.trnRequestDetail.deleteMany({ where: { RequestHeaderID: requestId } }),
+    prisma.trnRequestHeader.delete({ where: { RequestHeaderID: requestId } }),
+  ]);
+  await logAction(user.userId, "DELETE_REQUEST", { targetTable: "trn_request_header", targetId: id });
   return apiSuccess({ ok: true });
 }

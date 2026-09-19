@@ -6,9 +6,9 @@ import { logAction } from "@/lib/audit-log";
 import { apiError, apiSuccess } from "@/lib/api-response";
 import { isValidMemoType } from "@/lib/validation";
 
-// Append-only memo log (BR-013) — no edit/delete, matching the legacy
-// system's "history" concept: a record of what was noted and when, not a
-// mutable field.
+// Originally append-only per BR-013 — delete support added 2026-09-19
+// (see [id]/route.ts) at the user's explicit request. Still no edit: a note
+// is either right or gets removed, not rewritten.
 export async function GET(_req: NextRequest, ctx: RouteContext<"/api/employees/[empCode]/history">) {
   const user = await verifySession();
   if (!user) return apiError(401, "UNAUTHORIZED");

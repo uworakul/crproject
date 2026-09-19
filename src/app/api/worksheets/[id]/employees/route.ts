@@ -71,3 +71,40 @@ export async function POST(request: NextRequest, ctx: RouteContext<"/api/workshe
 
   return apiSuccess({ worksheetDetailId }, 201);
 }
+
+// Remove every employee row at once (2026-09-19) — same DRAFT-only rule as
+// removing one, just applied to the whole worksheet.
+export async function DELETE(_req: Request, ctx: RouteContext<"/api/worksheets/[id]/employees">) {
+  const user = await verifySession();
+  if (!user) return apiError(401, "UNAUTHORIZED");
+
+  const { id } = await ctx.params;
+  const worksheetId = Number(id);
+  if (!Number.isInteger(worksheetId)) return apiError(400, "INVALID_PARAMS");
+
+  const header = await prisma.trnWorksheetHeader.findUnique({ where: { WorksheetID: worksheetId } });
+  if (!header) return apiError(404, "WORKSHEET_NOT_FOUND");
+
+  const denied = !(await hasPermission(user, "WORKSHEET", "save", header.SiteCode));
+  if (denied) return apiError(403, "FORBIDDEN", "Missing 'save' permission on 'WORKSHEET' for this site");
+
+  if (header.Status !== "DRAFT") {
+    return apiError(409, "WORKSHEET_LOCKED", "Only a DRAFT worksheet can be edited", { status: header.Status });
+  }
+
+  const details = await prisma.trnWorksheetDetail.findMany({ where: { WorksheetID: worksheetId }, select: { WorksheetDetailID: true } });
+  const detailIds = details.map((d) => d.WorksheetDetailID);
+
+  await prisma.$transaction([
+    prisma.trnWorksheetDaily.deleteMany({ where: { WorksheetDetailID: { in: detailIds } } }),
+    prisma.trnWorksheetDetail.deleteMany({ where: { WorksheetID: worksheetId } }),
+  ]);
+
+  await logAction(user.userId, "REMOVE_ALL_WORKSHEET_EMPLOYEES", {
+    targetTable: "trn_worksheet_detail",
+    targetId: String(worksheetId),
+    detail: `Removed ${detailIds.length} employee row(s)`,
+  });
+
+  return apiSuccess({ ok: true, removed: detailIds.length });
+}

@@ -130,11 +130,11 @@ export default async function EmployeeDetailPage({ params }: { params: Promise<{
       content: <PersonalInfoTab employee={employee} canSave={canSaveEmployee} />,
     },
     {
-      label: "ประสบการณ์ทำงาน",
+      label: "ประวัติการทำงาน",
       content: <WorkExperienceTab empCode={empCode} initialRows={workExperience} canSave={canSaveEmployee} />,
     },
     {
-      label: "ประสบการณ์ฝึกอบรม",
+      label: "ประวัติการฝึกอบรม",
       content: <TrainingExperienceTab empCode={empCode} initialRows={trainingExperience} canSave={canSaveEmployee} />,
     },
     {
@@ -158,11 +158,11 @@ export default async function EmployeeDetailPage({ params }: { params: Promise<{
     },
   ];
 
-  if (canReadHistory) {
-    tabs.push({ label: "Note", content: <HistoryTab empCode={empCode} initialHistory={history} canSave={canSaveHistory} /> });
-  }
   if (canReadPayroll) {
     tabs.push({ label: "ประวัติการจ่าย", content: <PayrollHistoryTab rows={payrollHistory} /> });
+  }
+  if (canReadHistory) {
+    tabs.push({ label: "Note", content: <HistoryTab empCode={empCode} initialHistory={history} canSave={canSaveHistory} /> });
   }
 
   return (

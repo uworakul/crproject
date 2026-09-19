@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Swal from "sweetalert2";
 
 interface Debt {
   DebtID: number;
@@ -19,6 +20,19 @@ function money(v: string) {
   return Number(v).toLocaleString("th-TH", { minimumFractionDigits: 2 });
 }
 
+async function confirmDeleteDebt(): Promise<boolean> {
+  const result = await Swal.fire({
+    html: "ยืนยันการลบรายการหักต่องวดนี้?",
+    icon: "warning",
+    showCancelButton: true,
+    confirmButtonText: "ยืนยัน",
+    cancelButtonText: "ยกเลิก",
+    confirmButtonColor: "#dc2626",
+    cancelButtonColor: "#9ca3af",
+  });
+  return result.isConfirmed;
+}
+
 export default function InstallmentDeductionTab({
   empCode,
   initialRows,
@@ -32,6 +46,8 @@ export default function InstallmentDeductionTab({
 }) {
   const [rows, setRows] = useState(initialRows);
   const [form, setForm] = useState({ deductionCode: "", totalAmount: "", deductPerPeriod: "", description: "" });
+  const [editingId, setEditingId] = useState<number | null>(null);
+  const [editForm, setEditForm] = useState({ description: "", deductPerPeriod: "", remainingAmount: "" });
   const [message, setMessage] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
 
@@ -61,15 +77,40 @@ export default function InstallmentDeductionTab({
     }
   }
 
-  async function toggleStatus(r: Debt) {
+  function startEdit(r: Debt) {
+    setEditingId(r.DebtID);
+    setEditForm({
+      description: r.Description ?? "",
+      deductPerPeriod: r.DeductPerPeriod ?? "",
+      remainingAmount: r.RemainingAmount,
+    });
+  }
+
+  async function saveEdit(debtId: number) {
     setMessage(null);
-    const res = await fetch(`/api/employees/${empCode}/installment-deductions/${r.DebtID}`, {
+    const res = await fetch(`/api/employees/${empCode}/installment-deductions/${debtId}`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ status: r.Status === "OPEN" ? "CLOSED" : "OPEN" }),
+      body: JSON.stringify(editForm),
     });
     const body = await res.json().catch(() => ({}));
-    if (!res.ok) setMessage(body.message || body.error);
+    if (!res.ok) {
+      setMessage(body.message || body.error);
+      return;
+    }
+    setEditingId(null);
+    await refresh();
+  }
+
+  async function handleDelete(debtId: number) {
+    if (!(await confirmDeleteDebt())) return;
+    setMessage(null);
+    const res = await fetch(`/api/employees/${empCode}/installment-deductions/${debtId}`, { method: "DELETE" });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      setMessage(body.message || body.error);
+      return;
+    }
     await refresh();
   }
 
@@ -89,25 +130,76 @@ export default function InstallmentDeductionTab({
             </tr>
           </thead>
           <tbody>
-            {rows.map((r) => (
-              <tr key={r.DebtID} className="border-t border-gray-100">
-                <td className="px-3 py-2">{r.DeductionType?.DeductionName ?? (r.MovementID ? "เบิกเครื่องแบบ/สินค้า" : "-")}</td>
-                <td className="px-3 py-2 text-gray-500">{r.Description ?? "-"}</td>
-                <td className="px-3 py-2 text-right">{money(r.TotalAmount)}</td>
-                <td className="px-3 py-2 text-right">{r.DeductPerPeriod ? money(r.DeductPerPeriod) : "-"}</td>
-                <td className="px-3 py-2 text-right font-medium">{money(r.RemainingAmount)}</td>
-                <td className="px-3 py-2">
-                  {r.Status === "OPEN" ? <span className="text-amber-600">เปิด</span> : <span className="text-gray-400">ปิดแล้ว</span>}
-                </td>
-                {canSave && (
-                  <td className="whitespace-nowrap px-3 py-2 text-right">
-                    <button onClick={() => toggleStatus(r)} className="text-gray-500 hover:text-gray-900 hover:underline">
-                      {r.Status === "OPEN" ? "ปิดรายการ" : "เปิดใหม่"}
-                    </button>
+            {rows.map((r) => {
+              const isEditing = editingId === r.DebtID;
+              return (
+                <tr key={r.DebtID} className="border-t border-gray-100">
+                  <td className="px-3 py-2">{r.DeductionType?.DeductionName ?? (r.MovementID ? "เบิกเครื่องแบบ/สินค้า" : "-")}</td>
+                  <td className="px-3 py-2 text-gray-500">
+                    {isEditing ? (
+                      <input
+                        value={editForm.description}
+                        onChange={(e) => setEditForm({ ...editForm, description: e.target.value })}
+                        className="w-32 rounded border border-gray-300 px-2 py-1 text-sm text-gray-900"
+                      />
+                    ) : (
+                      (r.Description ?? "-")
+                    )}
                   </td>
-                )}
-              </tr>
-            ))}
+                  <td className="px-3 py-2 text-right">{money(r.TotalAmount)}</td>
+                  <td className="px-3 py-2 text-right">
+                    {isEditing ? (
+                      <input
+                        value={editForm.deductPerPeriod}
+                        onChange={(e) => setEditForm({ ...editForm, deductPerPeriod: e.target.value })}
+                        className="w-24 rounded border border-gray-300 px-2 py-1 text-right text-sm text-gray-900"
+                      />
+                    ) : r.DeductPerPeriod ? (
+                      money(r.DeductPerPeriod)
+                    ) : (
+                      "-"
+                    )}
+                  </td>
+                  <td className="px-3 py-2 text-right font-medium">
+                    {isEditing ? (
+                      <input
+                        value={editForm.remainingAmount}
+                        onChange={(e) => setEditForm({ ...editForm, remainingAmount: e.target.value })}
+                        className="w-24 rounded border border-gray-300 px-2 py-1 text-right text-sm text-gray-900"
+                      />
+                    ) : (
+                      money(r.RemainingAmount)
+                    )}
+                  </td>
+                  <td className="px-3 py-2">
+                    {r.Status === "OPEN" ? <span className="text-amber-600">เปิด</span> : <span className="text-gray-400">ปิดแล้ว</span>}
+                  </td>
+                  {canSave && (
+                    <td className="whitespace-nowrap px-3 py-2 text-right">
+                      {isEditing ? (
+                        <div className="flex justify-end gap-2">
+                          <button onClick={() => saveEdit(r.DebtID)} className="text-gray-900 hover:underline">
+                            บันทึก
+                          </button>
+                          <button onClick={() => setEditingId(null)} className="text-gray-400 hover:underline">
+                            ยกเลิก
+                          </button>
+                        </div>
+                      ) : (
+                        <div className="flex justify-end gap-2">
+                          <button onClick={() => startEdit(r)} className="text-gray-500 hover:text-gray-900 hover:underline">
+                            แก้ไข
+                          </button>
+                          <button onClick={() => handleDelete(r.DebtID)} className="text-red-500 hover:underline">
+                            ลบ
+                          </button>
+                        </div>
+                      )}
+                    </td>
+                  )}
+                </tr>
+              );
+            })}
             {rows.length === 0 && (
               <tr>
                 <td colSpan={7} className="px-3 py-6 text-center text-gray-400">

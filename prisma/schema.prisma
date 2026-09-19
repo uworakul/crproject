@@ -296,9 +296,9 @@ model SysUser {
   ProcessLogs             SysProcessLog[]
   Sessions                SysSession[]
   RecordedEmployeeHistory MstEmployeeHistory[]
-  CreatedRequests         TrnRequest[]             @relation("RequestCreatedBy")
-  ApprovedRequests        TrnRequest[]             @relation("RequestApprovedBy")
-  RejectedRequests        TrnRequest[]             @relation("RequestRejectedBy")
+  CreatedRequestHeaders   TrnRequestHeader[]       @relation("RequestHeaderCreatedBy")
+  ApprovedRequestHeaders  TrnRequestHeader[]       @relation("RequestHeaderApprovedBy")
+  RejectedRequestHeaders  TrnRequestHeader[]       @relation("RequestHeaderRejectedBy")
   CreatedStockMovements   InvStockMovement[]
   CreatedWorksheetHeaders TrnWorksheetHeader[]
   CalculatedPayrollLogs   TrnPayrollCalculateLog[]
@@ -364,6 +364,7 @@ model SysProcessLog {
   TargetID    String?   @db.VarChar(50)
   ActionDate  DateTime  @default(now()) @db.DateTime
   Detail      String?   @db.NVarChar(500)
+  Changes     String?   @db.NVarChar(Max) // JSON: {"FieldName": {"old": ..., "new": ...}, ...} — old/new value diff for UPDATE actions (see computeDiff() in src/lib/audit-log.ts). Started with the Employee module 2026-09-19, rolling out to other modules next.
   CreatedDate DateTime? @default(now()) @db.DateTime
   CreatedBy   String?   @db.VarChar(20)
   UpdatedDate DateTime? @db.DateTime
@@ -496,7 +497,7 @@ model MstEmployee {
 
   Quotas              MstEmployeeQuota[]
   History             MstEmployeeHistory[]
-  Requests            TrnRequest[]
+  RequestDetails      TrnRequestDetail[]
   StockMovements      InvStockMovement[]
   Debts               InvEmployeeDebt[]
   WorksheetDetails    TrnWorksheetDetail[]
@@ -591,14 +592,20 @@ model MstEmployeeHistory {
 
 // ============================================================
 // โมดูล 4: การขออนุมัติ (Request & Approve)
-// รวม Advance / Loan / Training ไว้ในตารางเดียว แยกด้วย RequestType
+// แยกเป็น header (1 เอกสาร) + detail (หลายพนักงานต่อเอกสาร) ตั้งแต่ 2026-09-19
+// (เดิมเป็นตารางเดียวแบน 1 แถวต่อ 1 พนักงาน) — DocumentCode มาจาก
+// REQUEST_DOCUMENT_CODE_VALUES (src/lib/request.ts), DocumentNo มาจากระบบ
+// เลขที่เอกสาร (ref_document_number, ดู consumeDocumentNumber ใน
+// src/lib/document-number.ts) — ไม่ผูก mst_employee_quota อีกต่อไป (ผู้ใช้
+// ยกเลิก design เดิม 2026-09-19) อนุมัติแล้วสร้างแถว inv_employee_debt ต่อ
+// รายการพนักงานแทน (เข้าไปอยู่ในแท็บ "รายการหักต่องวด" ของพนักงานคนนั้นเลย)
 // ============================================================
-model TrnRequest {
-  RequestID       Int       @id(map: "PK_trn_request") @default(autoincrement())
-  RequestType     String    @db.VarChar(10) // CHECK: ADVANCE | LOAN | TRAINING
-  EmpCode         String    @db.VarChar(15)
-  Amount          Decimal   @db.Decimal(12, 2)
-  DeductPerPeriod Decimal   @db.Decimal(12, 2)
+model TrnRequestHeader {
+  RequestHeaderID Int       @id(map: "PK_trn_request_header") @default(autoincrement())
+  DocumentCode    String    @db.VarChar(20) // ADVANCE | ADVANCEN | ADVANCEU | LOAN | TRAINING
+  DocumentNo      String?   @db.VarChar(20)
+  RequestDate     DateTime  @db.Date
+  Remark          String?   @db.NVarChar(300)
   Status          String    @default("DRAFT") @db.VarChar(15) // CHECK: DRAFT | SUBMITTED | APPROVED | REJECTED
   CreatedBy       String    @db.VarChar(20)
   CreatedDate     DateTime  @default(now()) @db.DateTime
@@ -611,13 +618,31 @@ model TrnRequest {
   UpdatedDate     DateTime? @db.DateTime
   UpdatedBy       String?   @db.VarChar(20)
 
-  Employee MstEmployee @relation(fields: [EmpCode], references: [EmpCode], map: "FK_trn_request_mst_employee", onUpdate: NoAction, onDelete: NoAction)
-  Creator  SysUser     @relation("RequestCreatedBy", fields: [CreatedBy], references: [UserID], map: "FK_trn_request_sys_user_created", onUpdate: NoAction, onDelete: NoAction)
-  Approver SysUser?    @relation("RequestApprovedBy", fields: [ApprovedBy], references: [UserID], map: "FK_trn_request_sys_user_approved", onUpdate: NoAction, onDelete: NoAction)
-  Rejecter SysUser?    @relation("RequestRejectedBy", fields: [RejectedBy], references: [UserID], map: "FK_trn_request_sys_user_rejected", onUpdate: NoAction, onDelete: NoAction)
+  Details  TrnRequestDetail[]
+  Creator  SysUser  @relation("RequestHeaderCreatedBy", fields: [CreatedBy], references: [UserID], map: "FK_trn_request_header_sys_user_created", onUpdate: NoAction, onDelete: NoAction)
+  Approver SysUser? @relation("RequestHeaderApprovedBy", fields: [ApprovedBy], references: [UserID], map: "FK_trn_request_header_sys_user_approved", onUpdate: NoAction, onDelete: NoAction)
+  Rejecter SysUser? @relation("RequestHeaderRejectedBy", fields: [RejectedBy], references: [UserID], map: "FK_trn_request_header_sys_user_rejected", onUpdate: NoAction, onDelete: NoAction)
 
-  @@index([EmpCode], map: "IX_trn_request_EmpCode")
-  @@map("trn_request")
+  @@map("trn_request_header")
+}
+
+model TrnRequestDetail {
+  RequestDetailID Int       @id(map: "PK_trn_request_detail") @default(autoincrement())
+  RequestHeaderID Int
+  EmpCode         String    @db.VarChar(15)
+  Amount          Decimal   @db.Decimal(12, 2)
+  DeductPerPeriod Decimal   @db.Decimal(12, 2)
+  CreatedDate     DateTime? @default(now()) @db.DateTime
+  CreatedBy       String?   @db.VarChar(20)
+  UpdatedDate     DateTime? @db.DateTime
+  UpdatedBy       String?   @db.VarChar(20)
+
+  Header   TrnRequestHeader @relation(fields: [RequestHeaderID], references: [RequestHeaderID], map: "FK_trn_request_detail_header", onUpdate: NoAction, onDelete: NoAction)
+  Employee MstEmployee      @relation(fields: [EmpCode], references: [EmpCode], map: "FK_trn_request_detail_mst_employee", onUpdate: NoAction, onDelete: NoAction)
+
+  @@index([EmpCode], map: "IX_trn_request_detail_EmpCode")
+  @@index([RequestHeaderID], map: "IX_trn_request_detail_RequestHeaderID")
+  @@map("trn_request_detail")
 }
 
 // ============================================================

@@ -12,7 +12,7 @@ export default async function EmployeesPage() {
   const canRead = await hasPermission(user, "EMPLOYEE", "read");
   if (!canRead) redirect("/");
 
-  const [employeesRaw, departments, sites, canCreate] = await Promise.all([
+  const [employeesRaw, departments, sites, canCreate, canDelete] = await Promise.all([
     prisma.mstEmployee.findMany({
       select: {
         EmpCode: true,
@@ -31,6 +31,7 @@ export default async function EmployeesPage() {
     prisma.refDepartment.findMany({ where: { IsActive: true }, orderBy: { DeptCode: "asc" } }),
     prisma.mstSite.findMany({ where: { IsActive: true }, orderBy: { SiteCode: "asc" } }),
     hasPermission(user, "EMPLOYEE", "save"),
+    hasPermission(user, "EMPLOYEE", "delete"),
   ]);
 
   const employees = employeesRaw.map((e) => ({
@@ -57,7 +58,7 @@ export default async function EmployeesPage() {
         )}
       </div>
 
-      <EmployeesTable employees={employees} departments={departments} sites={sites} />
+      <EmployeesTable employees={employees} departments={departments} sites={sites} canDelete={canDelete} />
     </div>
   );
 }

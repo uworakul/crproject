@@ -310,3 +310,68 @@ export async function approveWorksheet(
 
   return { ok: true };
 }
+
+/**
+ * Cancel an approval (2026-09-19) — the reverse of approveWorksheet(): zero
+ * out every (employee, period) posting this worksheet made (WorkDays/
+ * DoubleShiftDays/HolidayDays/GrossWage/TaxWithheld/SSOAmount -> 0, NetPay
+ * recomputed from whatever manually-entered fields survive), same
+ * "zero rather than delete" convention approveWorksheet() already uses for
+ * stale postings — a Payroll Calculate may have already touched allowances/
+ * OT/manual deductions on that row, and those aren't this function's to
+ * discard. Header goes back to DRAFT (same destination as reject) so the
+ * grid is immediately editable again — re-approving means walking the full
+ * DRAFT -> SUBMITTED -> APPROVED cycle again, same as any other correction.
+ * Blocked (whole thing, atomically) if any affected period is already
+ * locked, mirroring the same rule approveWorksheet() enforces.
+ */
+export async function unapproveWorksheet(worksheetId: number, unapprovedBy: string): Promise<{ ok: true } | { ok: false; error: ApproveFailure }> {
+  const header = await prisma.trnWorksheetHeader.findUnique({ where: { WorksheetID: worksheetId } });
+  if (!header) return { ok: false, error: { reason: "WORKSHEET_NOT_FOUND" } };
+  if (header.Status !== "APPROVED") {
+    return { ok: false, error: { reason: "INVALID_STATUS_TRANSITION" } };
+  }
+
+  const postings = await prisma.trnPayrollTransaction.findMany({ where: { SourceWorksheetID: worksheetId } });
+
+  for (const p of postings) {
+    const lock = await prisma.trnPayrollLock.findFirst({ where: { PeriodID: p.PeriodID, IsLocked: true } });
+    if (lock) {
+      return { ok: false, error: { reason: "PERIOD_LOCKED", empCode: p.EmpCode } };
+    }
+  }
+
+  await prisma.$transaction(async (tx) => {
+    for (const p of postings) {
+      const netPay = new Prisma.Decimal(0)
+        .sub(p.AdvanceDeduct)
+        .sub(p.LoanDeduct)
+        .sub(p.TrainingDeduct)
+        .sub(p.UniformDeduct)
+        .add(p.OtherIncome)
+        .sub(p.OtherDeduction);
+
+      await tx.trnPayrollTransaction.update({
+        where: { EmpCode_PeriodID: { EmpCode: p.EmpCode, PeriodID: p.PeriodID } },
+        data: {
+          WorkDays: 0,
+          DoubleShiftDays: 0,
+          HolidayDays: 0,
+          GrossWage: 0,
+          TaxWithheld: 0,
+          SSOAmount: 0,
+          NetPay: netPay,
+          UpdatedBy: unapprovedBy,
+          UpdatedDate: new Date(),
+        },
+      });
+    }
+
+    await tx.trnWorksheetHeader.update({
+      where: { WorksheetID: worksheetId },
+      data: { Status: "DRAFT", ApprovedBy: null, ApprovedDate: null, UpdatedBy: unapprovedBy, UpdatedDate: new Date() },
+    });
+  });
+
+  return { ok: true };
+}

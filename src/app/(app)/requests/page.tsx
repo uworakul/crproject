@@ -3,44 +3,50 @@ import { verifySession } from "@/lib/dal";
 import { hasPermission } from "@/lib/authorize";
 import { prisma } from "@/lib/prisma";
 import Tabs from "../reference/tabs";
-import RequestTypeView from "./request-type-view";
-import { REQUEST_TYPE_VALUES, REQUEST_TYPE_DOCTYPE, type RequestType } from "@/lib/request";
-
-const TYPE_LABELS: Record<RequestType, string> = { ADVANCE: "เบิกล่วงหน้า", LOAN: "เงินกู้", TRAINING: "ค่าอบรม" };
+import RequestGroupView from "./request-group-view";
+import { REQUEST_PERMISSION_GROUPS } from "@/lib/request";
 
 export default async function RequestsPage() {
   const user = await verifySession();
   if (!user) redirect("/login");
 
   const visibility = await Promise.all(
-    REQUEST_TYPE_VALUES.map(async (t) => ({
-      type: t,
-      canRead: await hasPermission(user, REQUEST_TYPE_DOCTYPE[t], "read"),
-      canSave: await hasPermission(user, REQUEST_TYPE_DOCTYPE[t], "save"),
+    REQUEST_PERMISSION_GROUPS.map(async (g) => ({
+      group: g,
+      canRead: await hasPermission(user, g.docType, "read"),
+      canSave: await hasPermission(user, g.docType, "save"),
     })),
   );
 
-  const visibleTypes = visibility.filter((v) => v.canRead);
-  if (visibleTypes.length === 0) redirect("/");
+  const visibleGroups = visibility.filter((v) => v.canRead);
+  if (visibleGroups.length === 0) redirect("/");
 
-  const rowsByType = await Promise.all(
-    visibleTypes.map((v) =>
-      prisma.trnRequest.findMany({
-        where: { RequestType: v.type },
-        include: { Employee: { select: { FullName: true } } },
+  const headersByGroup = await Promise.all(
+    visibleGroups.map((v) =>
+      prisma.trnRequestHeader.findMany({
+        where: { DocumentCode: { in: v.group.documentCodes } },
+        include: { Details: true },
         orderBy: { CreatedDate: "desc" },
       }),
     ),
   );
-  const safeRows = JSON.parse(JSON.stringify(rowsByType));
+  const safeHeaders = JSON.parse(JSON.stringify(headersByGroup));
 
   return (
     <div className="mx-auto max-w-4xl p-8">
       <h1 className="mb-6 text-lg font-semibold text-gray-900">การขออนุมัติ</h1>
       <Tabs
-        tabs={visibleTypes.map((v, i) => ({
-          label: TYPE_LABELS[v.type],
-          content: <RequestTypeView key={v.type} type={v.type} initialRows={safeRows[i]} canSave={v.canSave} />,
+        tabs={visibleGroups.map((v, i) => ({
+          label: v.group.label,
+          content: (
+            <RequestGroupView
+              key={v.group.docType}
+              docType={v.group.docType}
+              documentCodes={v.group.documentCodes}
+              initialRows={safeHeaders[i]}
+              canSave={v.canSave}
+            />
+          ),
         }))}
       />
     </div>

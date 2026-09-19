@@ -2,7 +2,7 @@ import { NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { verifySession } from "@/lib/dal";
 import { requirePermission } from "@/lib/authorize";
-import { logAction } from "@/lib/audit-log";
+import { logAction, computeDiff } from "@/lib/audit-log";
 import { apiError, apiSuccess } from "@/lib/api-response";
 import { isValidEmployeeType, isValidEmployeeStatus } from "@/lib/validation";
 
@@ -241,14 +241,29 @@ export async function PUT(request: NextRequest, ctx: RouteContext<"/api/employee
     },
   });
 
-  await logAction(user.userId, "UPDATE_EMPLOYEE", { targetTable: "mst_employee", targetId: empCode });
+  await logAction(user.userId, "UPDATE_EMPLOYEE", {
+    targetTable: "mst_employee",
+    targetId: empCode,
+    changes: computeDiff(existing, updated),
+  });
   return apiSuccess(updated);
 }
 
-// Soft delete — administrative correction only. Normal offboarding is the
-// "resign" action (separate endpoint), which keeps EmployeeStatus/ResignDate
-// as the real record and leaves IsActive untouched.
-export async function DELETE(_req: NextRequest, ctx: RouteContext<"/api/employees/[empCode]">) {
+// Hard delete (2026-09-19, replaces the earlier soft-delete/IsActive=false
+// design at the user's explicit request — a "deleted" employee showing up
+// as "ระงับ" in the list wasn't acceptable). A reason is still required and
+// is recorded in sys_process_log (Detail + a full-row Changes diff, since
+// this is the only surviving record of the row's data once it's gone —
+// sys_process_log has no FK to mst_employee, so it isn't affected by the
+// delete). Normal offboarding is still the separate "resign" action
+// (EmployeeStatus=RESIGNED + ResignDate), which this does not replace.
+//
+// Only rows fully "owned" by the employee (quota, work/training
+// experience, notes) are cascade-deleted alongside it — real transactional
+// history (worksheet, payroll, leave, requests, inventory movements/debt)
+// still has a NO ACTION FK and blocks the delete, caught below and
+// surfaced as 409 EMPLOYEE_IN_USE rather than a raw 500.
+export async function DELETE(request: NextRequest, ctx: RouteContext<"/api/employees/[empCode]">) {
   const user = await verifySession();
   if (!user) return apiError(401, "UNAUTHORIZED");
   const denied = await requirePermission(user, "EMPLOYEE", "delete");
@@ -258,10 +273,36 @@ export async function DELETE(_req: NextRequest, ctx: RouteContext<"/api/employee
   const existing = await prisma.mstEmployee.findUnique({ where: { EmpCode: empCode } });
   if (!existing) return apiError(404, "EMPLOYEE_NOT_FOUND");
 
-  await prisma.mstEmployee.update({
-    where: { EmpCode: empCode },
-    data: { IsActive: false, UpdatedBy: user.userId, UpdatedDate: new Date() },
+  let body: { reason?: unknown };
+  try {
+    body = await request.json();
+  } catch {
+    return apiError(400, "INVALID_PARAMS", "Request body must be JSON");
+  }
+  const reason = typeof body.reason === "string" ? body.reason.trim() : "";
+  if (!reason) return apiError(400, "INVALID_PARAMS", "reason is required");
+
+  try {
+    await prisma.$transaction([
+      prisma.mstEmployeeQuota.deleteMany({ where: { EmpCode: empCode } }),
+      prisma.mstEmployeeWorkExperience.deleteMany({ where: { EmpCode: empCode } }),
+      prisma.mstEmployeeTrainingExperience.deleteMany({ where: { EmpCode: empCode } }),
+      prisma.mstEmployeeHistory.deleteMany({ where: { EmpCode: empCode } }),
+      prisma.mstEmployee.delete({ where: { EmpCode: empCode } }),
+    ]);
+  } catch {
+    return apiError(
+      409,
+      "EMPLOYEE_IN_USE",
+      "พนักงานคนนี้มีประวัติการทำงาน/ใบลงเวลา/เงินเดือน/การลา/คำขอ ที่เกี่ยวข้องอยู่ในระบบ ไม่สามารถลบได้",
+    );
+  }
+
+  await logAction(user.userId, "DELETE_EMPLOYEE", {
+    targetTable: "mst_employee",
+    targetId: empCode,
+    detail: reason,
+    changes: computeDiff(existing, {}),
   });
-  await logAction(user.userId, "DEACTIVATE_EMPLOYEE", { targetTable: "mst_employee", targetId: empCode });
   return apiSuccess({ ok: true });
 }
