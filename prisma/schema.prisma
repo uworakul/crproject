@@ -149,6 +149,7 @@ model RefWelfareFund {
 model RefCompany {
   CompanyCode  String    @id(map: "PK_ref_company") @db.VarChar(10)
   CompanyName  String    @db.NVarChar(150)
+  ShortName    String?   @db.NVarChar(50) // ชื่อย่อ — shown in the app brand footer/title in place of the hardcoded "ABC CO., LTD."
   Address      String?   @db.NVarChar(300)
   TaxID        String?   @db.VarChar(20)
   SSORegistNo  String?   @db.VarChar(20)
@@ -158,7 +159,29 @@ model RefCompany {
   UpdatedDate  DateTime? @db.DateTime
   UpdatedBy    String?   @db.VarChar(20)
 
+  Employees MstEmployee[]
+
   @@map("ref_company")
+}
+
+// Running document-number sequences (e.g. for future auto-numbered
+// documents) — a new reference table, not part of the original 34-table
+// DDL. NextNumber isn't a stored column: it's derived from LatestNumber +
+// UseYearMonthPrefix and computed server-side on every read (see
+// src/app/api/reference/document-numbers/route.ts).
+model RefDocumentNumber {
+  DocumentNumberID   Int       @id(map: "PK_ref_document_number") @default(autoincrement())
+  DocumentCode       String    @unique(map: "UQ_ref_document_number_DocumentCode") @db.VarChar(30)
+  Description        String?   @db.NVarChar(200)
+  IsCustomNumber     Boolean   @default(false) // กำหนดเอง — when true, numbering isn't auto-generated (UseYearMonthPrefix/LatestNumber/NextNumber don't apply, hidden in the UI)
+  UseYearMonthPrefix Boolean   @default(false)
+  LatestNumber       Int       @default(0)
+  CreatedDate        DateTime? @default(now()) @db.DateTime
+  CreatedBy          String?   @db.VarChar(20)
+  UpdatedDate        DateTime? @db.DateTime
+  UpdatedBy          String?   @db.VarChar(20)
+
+  @@map("ref_document_number")
 }
 
 model RefBlackList {
@@ -228,6 +251,8 @@ model RefDeductionType {
   CreatedBy     String?   @db.VarChar(20)
   UpdatedDate   DateTime? @db.DateTime
   UpdatedBy     String?   @db.VarChar(20)
+
+  InstallmentDebts InvEmployeeDebt[]
 
   @@map("ref_deduction_type")
 }
@@ -379,10 +404,15 @@ model SysSession {
 // ============================================================
 model MstEmployee {
   EmpCode         String    @id(map: "PK_mst_employee") @db.VarChar(15)
-  IDCardNo        String    @unique(map: "UQ_mst_employee_IDCardNo") @db.VarChar(20)
+  // UNIQUE constraint intentionally dropped 2026-09-19 (was
+  // UQ_mst_employee_IDCardNo) — approved re-hire design allows a person to
+  // have more than one mst_employee row over separate employment stints,
+  // each under its own EmpCode. See CLAUDE.md for the alternative that was
+  // NOT chosen (reactivating the old EmpCode instead of a new row).
+  IDCardNo        String    @db.VarChar(20)
   FullName        String    @db.NVarChar(150)
   Address         String?   @db.NVarChar(300)
-  EmployeeStatus  String    @default("ACTIVE") @db.VarChar(10) // CHECK: ACTIVE | RESIGNED
+  EmployeeStatus  String    @default("ACTIVE") @db.VarChar(10) // CHECK: ACTIVE | RESIGNED | PROBATION | SUSPENDED | TERMINATED (expanded 2026-09-19 — "ACTIVE" is the DB value for "ปกติ", kept as-is since 4 existing pages filter on it)
   StartDate       DateTime  @db.Date
   ResignDate      DateTime? @db.Date
   DeptCode        String?   @db.VarChar(10)
@@ -399,10 +429,70 @@ model MstEmployee {
   UpdatedDate     DateTime? @db.DateTime
   UpdatedBy       String?   @db.VarChar(20)
 
+  // Added 2026-09-19 — ทะเบียนประวัติพนักงาน overhaul (see CLAUDE.md).
+  // All nullable: existing rows have none of this data, and it's filled in
+  // gradually by HR through the employee detail page after creation, same
+  // pattern already established for DailyRate/PhotoPath.
+  Title              String?   @db.NVarChar(20)
+  FirstName          String?   @db.NVarChar(100)
+  LastName           String?   @db.NVarChar(100)
+  BirthDate          DateTime? @db.Date
+  CompanyCode        String?   @db.VarChar(10)
+  ProbationPassDate  DateTime? @db.Date
+  CertificateNo      String?   @db.VarChar(50)
+  IDCardIssuedBy     String?   @db.NVarChar(100)
+  IDCardIssueDate    DateTime? @db.Date
+  IDCardExpiryDate   DateTime? @db.Date
+  IDCardAddress      String?   @db.NVarChar(300)
+  PhoneNo            String?   @db.VarChar(20)
+  EmergencyContactName  String? @db.NVarChar(150)
+  EmergencyContactPhone String? @db.VarChar(20)
+  GuarantorName      String?   @db.NVarChar(150)
+  // Deliberately stored only, not wired into calculateTaxWithheld() — the
+  // approved payroll tax design uses a single flat PERSONAL deduction only
+  // (see CLAUDE.md, Payroll module). Confirmed with the user 2026-09-19.
+  MaritalStatus      String?   @db.VarChar(10) // suggested: SINGLE | MARRIED | DIVORCED | WIDOWED — no DB CHECK, informational
+  ChildrenCount       Int?     @default(0)
+  ParentSupportAmount        Decimal? @db.Decimal(12, 2) // อุปการะบิดามารดา
+  LifeInsurancePremium       Decimal? @db.Decimal(12, 2) // เบี้ยประกันชีวิต
+  HealthInsurancePremium     Decimal? @db.Decimal(12, 2) // เบี้ยประกันสุขภาพ
+  ParentHealthInsurancePremium Decimal? @db.Decimal(12, 2) // เบี้ยประกันสุขภาพบิดามารดา
+  RMFPurchaseAmount          Decimal? @db.Decimal(12, 2) // ยอดซื้อกองทุน RMF ในปี
+  HomeLoanInterestAmount     Decimal? @db.Decimal(12, 2) // ยอดดอกเบี้ยบ้าน
+  DonationAmount             Decimal? @db.Decimal(12, 2) // ยอดเงินบริจาค
+  // Free-text cross-reference codes, not enforced FKs — same rationale as
+  // CreatedBy/UpdatedBy elsewhere: a strict FK to mst_employee (self) or
+  // ref_black_list would add relation complexity disproportionate to what's
+  // essentially a lookup note.
+  ReferrerEmpCode    String?   @db.VarChar(15) // รหัสคนแนะนำ
+  BlacklistCode      String?   @db.VarChar(20) // รหัสแบล็คลิส (ref_black_list.IDCardNo, cross-referenced manually)
+  BloodType          String?   @db.VarChar(5)
+  Height             Decimal?  @db.Decimal(5, 1) // cm
+  Weight             Decimal?  @db.Decimal(5, 1) // kg
+  BodyType           String?   @db.NVarChar(50)
+  DistinguishingMarks String?  @db.NVarChar(200) // ตำหนิ
+  Gender             String?   @db.VarChar(10) // suggested: MALE | FEMALE | OTHER — no DB CHECK, informational
+  Religion           String?   @db.NVarChar(50)
+  Ethnicity          String?   @db.NVarChar(50) // เชื้อชาติ
+  Nationality        String?   @db.NVarChar(50) // สัญชาติ
+  Education          String?   @db.VarChar(20) // วุฒิการศึกษา — see EDUCATION_LEVEL_VALUES, no DB CHECK, informational
+  // ใบอนุญาตตาม พ.ร.บ.ธุรกิจรักษาความปลอดภัย (เฉพาะธุรกิจ รปภ. ของบริษัทนี้)
+  LicenseNo6         String?   @db.VarChar(50) // เลขที่ใบอนุญาต ธภ.6
+  LicenseDate6       DateTime? @db.Date // ลงวันที่ ธภ.6
+  LicenseNo7         String?   @db.VarChar(50) // เลขที่ใบอนุญาต ธภ.7
+  LicenseDate7       DateTime? @db.Date // ลงวันที่ ธภ.7
+  // รายได้ — DailyRate already existed; these are new. None of these feed
+  // Worksheet/Payroll calculation yet (DailyRate is still the only rate
+  // Worksheet snapshots per approved design) — stored for reference only.
+  OTRatePerDay       Decimal?  @db.Decimal(10, 2)
+  MonthlySalary      Decimal?  @db.Decimal(12, 2)
+  EmployeePositionAllowance Decimal? @db.Decimal(10, 2) // per-employee override, distinct from ref_position.PositionAllowance
+
   Department RefDepartment? @relation(fields: [DeptCode], references: [DeptCode], map: "FK_mst_employee_ref_department", onUpdate: NoAction, onDelete: NoAction)
   Position   RefPosition?   @relation(fields: [PositionCode], references: [PositionCode], map: "FK_mst_employee_ref_position", onUpdate: NoAction, onDelete: NoAction)
   Site       MstSite?       @relation(fields: [DefaultSiteCode], references: [SiteCode], map: "FK_mst_employee_mst_site", onUpdate: NoAction, onDelete: NoAction)
   Bank       RefBank?       @relation(fields: [BankCode], references: [BankCode], map: "FK_mst_employee_ref_bank", onUpdate: NoAction, onDelete: NoAction)
+  Company    RefCompany?    @relation(fields: [CompanyCode], references: [CompanyCode], map: "FK_mst_employee_ref_company", onUpdate: NoAction, onDelete: NoAction)
 
   Quotas              MstEmployeeQuota[]
   History             MstEmployeeHistory[]
@@ -413,9 +503,54 @@ model MstEmployee {
   PayrollTransactions TrnPayrollTransaction[]
   LeaveRequests       TrnLeaveRequest[]
   LeaveBalances       MstEmployeeLeaveBalance[]
+  WorkExperiences     MstEmployeeWorkExperience[]
+  TrainingExperiences MstEmployeeTrainingExperience[]
 
   @@index([DeptCode], map: "IX_mst_employee_DeptCode")
   @@map("mst_employee")
+}
+
+// Added 2026-09-19 — ประสบการณ์การทำงาน (repeatable, full CRUD, not
+// append-only like mst_employee_history's Note tab).
+model MstEmployeeWorkExperience {
+  WorkExperienceID Int       @id(map: "PK_mst_employee_work_experience") @default(autoincrement())
+  EmpCode          String    @db.VarChar(15)
+  CompanyName      String    @db.NVarChar(150)
+  PositionName     String?   @db.NVarChar(100)
+  Location         String?   @db.NVarChar(200)
+  Responsibility   String?   @db.NVarChar(500)
+  StartDate        DateTime? @db.Date
+  EndDate          DateTime? @db.Date
+  ResignReason     String?   @db.NVarChar(300)
+  CreatedDate      DateTime? @default(now()) @db.DateTime
+  CreatedBy        String?   @db.VarChar(20)
+  UpdatedDate      DateTime? @db.DateTime
+  UpdatedBy        String?   @db.VarChar(20)
+
+  Employee MstEmployee @relation(fields: [EmpCode], references: [EmpCode], map: "FK_mst_employee_work_experience_employee", onUpdate: NoAction, onDelete: NoAction)
+
+  @@map("mst_employee_work_experience")
+}
+
+// Added 2026-09-19 — ประสบการณ์การฝึกอบรม (repeatable, full CRUD).
+model MstEmployeeTrainingExperience {
+  TrainingExperienceID Int       @id(map: "PK_mst_employee_training_experience") @default(autoincrement())
+  EmpCode              String    @db.VarChar(15)
+  Organization         String    @db.NVarChar(150)
+  Location             String?   @db.NVarChar(200)
+  Duration             String?   @db.NVarChar(100)
+  Topic                String?   @db.NVarChar(300)
+  StartDate            DateTime? @db.Date
+  EndDate              DateTime? @db.Date
+  CertificateNo        String?   @db.VarChar(50)
+  CreatedDate          DateTime? @default(now()) @db.DateTime
+  CreatedBy            String?   @db.VarChar(20)
+  UpdatedDate          DateTime? @db.DateTime
+  UpdatedBy            String?   @db.VarChar(20)
+
+  Employee MstEmployee @relation(fields: [EmpCode], references: [EmpCode], map: "FK_mst_employee_training_experience_employee", onUpdate: NoAction, onDelete: NoAction)
+
+  @@map("mst_employee_training_experience")
 }
 
 model MstEmployeeQuota {
@@ -585,18 +720,29 @@ model InvStockMovementDetail {
 model InvEmployeeDebt {
   DebtID          Int       @id(map: "PK_inv_employee_debt") @default(autoincrement())
   EmpCode         String    @db.VarChar(15)
-  MovementID      Int
+  // Nullable as of 2026-09-19 — originally every debt row came from an
+  // inventory ISSUE confirm. Now "รายการหักต่องวด" on the employee page can
+  // also create a debt directly (loans, advances, etc. per
+  // ref_deduction_type.IsInstallment) with no underlying stock movement, so
+  // exactly one of MovementID / DeductionCode is set depending on origin —
+  // enforced in application code, not a DB CHECK (no such constraint exists
+  // in the approved DDL for this table to extend).
+  MovementID      Int?
+  DeductionCode   String?   @db.VarChar(10)
+  Description     String?   @db.NVarChar(200) // free-text note for manually-created (DeductionCode-origin) debts
   TotalAmount     Decimal   @default(0) @db.Decimal(12, 2)
   PaidAmount      Decimal   @default(0) @db.Decimal(12, 2)
   RemainingAmount Decimal   @default(0) @db.Decimal(12, 2)
+  DeductPerPeriod Decimal?  @db.Decimal(12, 2) // "ยอดหักต่องวด" — tracked here only, not yet auto-applied by Payroll Calculate
   Status          String    @default("OPEN") @db.VarChar(10) // CHECK: OPEN | CLOSED
   CreatedDate     DateTime? @default(now()) @db.DateTime
   CreatedBy       String?   @db.VarChar(20)
   UpdatedDate     DateTime? @db.DateTime
   UpdatedBy       String?   @db.VarChar(20)
 
-  Employee MstEmployee      @relation(fields: [EmpCode], references: [EmpCode], map: "FK_inv_employee_debt_employee", onUpdate: NoAction, onDelete: NoAction)
-  Movement InvStockMovement @relation(fields: [MovementID], references: [MovementID], map: "FK_inv_employee_debt_movement", onUpdate: NoAction, onDelete: NoAction)
+  Employee      MstEmployee       @relation(fields: [EmpCode], references: [EmpCode], map: "FK_inv_employee_debt_employee", onUpdate: NoAction, onDelete: NoAction)
+  Movement      InvStockMovement? @relation(fields: [MovementID], references: [MovementID], map: "FK_inv_employee_debt_movement", onUpdate: NoAction, onDelete: NoAction)
+  DeductionType RefDeductionType? @relation(fields: [DeductionCode], references: [DeductionCode], map: "FK_inv_employee_debt_deduction_type", onUpdate: NoAction, onDelete: NoAction)
 
   @@map("inv_employee_debt")
 }

@@ -1,9 +1,14 @@
 import { redirect } from "next/navigation";
 import { verifySession } from "@/lib/dal";
 import { hasPermission } from "@/lib/authorize";
+import { prisma } from "@/lib/prisma";
 import { REQUEST_TYPE_VALUES, REQUEST_TYPE_DOCTYPE } from "@/lib/request";
 import Sidebar from "./sidebar";
 import LogoutButton from "./logout-button";
+
+// Fallback used whenever ref_company has no row yet, or the first row has no
+// ShortName filled in — keeps the brand line non-empty either way.
+const DEFAULT_COMPANY_LABEL = "ABC CO., LTD.";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const user = await verifySession();
@@ -30,6 +35,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     canViewPayrollWorkspace,
     canViewLeaveRequest,
     canViewLeaveReport,
+    company,
   ] = await Promise.all([
     hasPermission(user, "USER", "read"),
     hasPermission(user, "REFERENCE", "read"),
@@ -56,8 +62,10 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     ]).then((r) => r.some(Boolean)),
     hasPermission(user, "LEAVE_REQUEST", "read"),
     hasPermission(user, "LEAVE_REPORT", "read"),
+    prisma.refCompany.findFirst({ orderBy: { CompanyCode: "asc" } }),
   ]);
   const canViewInventoryMaster = canViewSupplier || canViewWarehouse || canViewProduct;
+  const companyShortName = company?.ShortName || DEFAULT_COMPANY_LABEL;
 
   const groups = [
     {
@@ -129,7 +137,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
 
   return (
     <div className="flex min-h-screen">
-      <Sidebar groups={groups} />
+      <Sidebar groups={groups} companyShortName={companyShortName} />
       <div className="flex flex-1 flex-col">
         <header className="flex items-center justify-end gap-4 border-b border-gray-200 bg-white px-6 py-3">
           <span className="text-sm text-gray-600">

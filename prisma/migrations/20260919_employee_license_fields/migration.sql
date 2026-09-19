@@ -1,0 +1,22 @@
+BEGIN TRY
+
+BEGIN TRAN;
+
+-- AlterTable
+ALTER TABLE [dbo].[mst_employee] ADD [LicenseDate6] DATE,
+[LicenseDate7] DATE,
+[LicenseNo6] VARCHAR(50),
+[LicenseNo7] VARCHAR(50);
+
+COMMIT TRAN;
+
+END TRY
+BEGIN CATCH
+
+IF @@TRANCOUNT > 0
+BEGIN
+    ROLLBACK TRAN;
+END;
+THROW
+
+END CATCH

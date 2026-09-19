@@ -3,35 +3,105 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { EMPLOYEE_TYPE_VALUES, EMPLOYEE_TYPE_LABELS } from "@/lib/validation";
+import Swal from "sweetalert2";
+import { EMPLOYEE_TYPE_VALUES, EMPLOYEE_TYPE_LABELS, EMPLOYEE_STATUS_LABELS } from "@/lib/validation";
 
 interface Option {
   code: string;
   name: string;
 }
 
+interface DuplicateMatch {
+  EmpCode: string;
+  FullName: string;
+  EmployeeStatus: string;
+  ResignDate: string | null;
+}
+
+interface BlacklistEntry {
+  IDCardNo: string;
+  FullName: string;
+  Reason: string | null;
+  AddedDate: string;
+}
+
+// Shows the prior record(s) found under the same ID card, plus blacklist
+// details if any, and asks whether to proceed with a brand-new EmpCode
+// anyway (mst_employee.IDCardNo is no longer UNIQUE — re-hires get their
+// own row under a new EmpCode instead of reactivating the old one).
+async function confirmDuplicateIdCard(matches: DuplicateMatch[], blacklist: BlacklistEntry | null): Promise<boolean> {
+  const lines = [
+    "<b>พบเลขบัตรประชาชนนี้ในทะเบียนพนักงานแล้ว</b>",
+    ...matches.map((m) => {
+      const status = EMPLOYEE_STATUS_LABELS[m.EmployeeStatus as keyof typeof EMPLOYEE_STATUS_LABELS] ?? m.EmployeeStatus;
+      const resign = m.ResignDate ? new Date(m.ResignDate).toLocaleDateString("th-TH") : "-";
+      return `รหัสพนักงานเดิม: <b>${m.EmpCode}</b> (${m.FullName}) — สถานะ: ${status}, วันที่ลาออก: ${resign}`;
+    }),
+    blacklist
+      ? `<b style="color:#dc2626">พบในบัญชีดำ:</b> ${blacklist.FullName}${blacklist.Reason ? ` — เหตุผล: ${blacklist.Reason}` : ""} (เพิ่มเมื่อ ${new Date(blacklist.AddedDate).toLocaleDateString("th-TH")})`
+      : "",
+    "<br>ต้องการเพิ่มพนักงานใหม่ (คนละแถวกับข้อมูลเดิม) หรือไม่?",
+  ];
+  const result = await Swal.fire({
+    html: lines.filter(Boolean).join("<br>"),
+    icon: "warning",
+    showCancelButton: true,
+    confirmButtonText: "ยืนยันเพิ่มเข้าใหม่",
+    cancelButtonText: "ยกเลิก",
+    confirmButtonColor: "#111827",
+    cancelButtonColor: "#9ca3af",
+  });
+  return result.isConfirmed;
+}
+
+function tomorrowDateInputValue(): string {
+  const d = new Date();
+  d.setDate(d.getDate() + 1);
+  return d.toISOString().slice(0, 10);
+}
+
 export default function NewEmployeePage() {
   const router = useRouter();
   const [departments, setDepartments] = useState<Option[]>([]);
   const [positions, setPositions] = useState<Option[]>([]);
-  const [banks, setBanks] = useState<Option[]>([]);
-  const [sites, setSites] = useState<Option[]>([]);
   const [form, setForm] = useState({
     empCode: "",
     idCardNo: "",
-    fullName: "",
-    address: "",
-    startDate: "",
-    employeeType: "" as string,
+    title: "",
+    firstName: "",
+    lastName: "",
     deptCode: "",
     positionCode: "",
-    defaultSiteCode: "",
-    bankCode: "",
-    bankAccountNo: "",
-    dailyRate: "",
+    employeeType: "" as string,
+    startDate: tomorrowDateInputValue(),
+    referrerEmpCode: "",
   });
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
+  const [referrerName, setReferrerName] = useState<string | null>(null);
+  const [referrerLookupPending, setReferrerLookupPending] = useState(false);
+
+  async function lookupReferrer(code: string) {
+    const trimmed = code.trim();
+    if (!trimmed) {
+      setReferrerName(null);
+      return;
+    }
+    setReferrerLookupPending(true);
+    try {
+      const res = await fetch(`/api/employees/${trimmed}`);
+      if (!res.ok) {
+        setReferrerName("ไม่พบรหัสพนักงานนี้");
+        return;
+      }
+      const employee = await res.json();
+      setReferrerName(employee.FullName);
+    } catch {
+      setReferrerName(null);
+    } finally {
+      setReferrerLookupPending(false);
+    }
+  }
 
   useEffect(() => {
     fetch("/api/reference/departments")
@@ -44,39 +114,66 @@ export default function NewEmployeePage() {
         setPositions(rows.map((p: { PositionCode: string; PositionName: string }) => ({ code: p.PositionCode, name: p.PositionName }))),
       )
       .catch(() => {});
-    fetch("/api/reference/banks")
+    // Prefill EmpCode from the "NEW_EMPNO" running-number sequence (see
+    // /reference "เลขที่เอกสาร") — still just a suggestion, stays editable.
+    // No-op if that DocumentCode isn't configured (code comes back null).
+    fetch("/api/employees/next-code")
       .then((r) => r.json())
-      .then((rows) => setBanks(rows.map((b: { BankCode: string; BankNameTH: string }) => ({ code: b.BankCode, name: b.BankNameTH }))))
-      .catch(() => {});
-    fetch("/api/sites")
-      .then((r) => r.json())
-      .then((rows) => setSites(rows.map((s: { SiteCode: string; SiteName: string }) => ({ code: s.SiteCode, name: s.SiteName }))))
+      .then((data: { code: string | null }) => {
+        if (data.code) setForm((prev) => (prev.empCode ? prev : { ...prev, empCode: data.code! }));
+      })
       .catch(() => {});
   }, []);
+
+  async function submit(confirmDuplicate: boolean) {
+    const res = await fetch("/api/employees", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        ...form,
+        deptCode: form.deptCode || null,
+        positionCode: form.positionCode || null,
+        referrerEmpCode: form.referrerEmpCode || null,
+        confirmDuplicateIdCard: confirmDuplicate,
+      }),
+    });
+    const body = await res.json().catch(() => ({}));
+
+    if (res.ok) {
+      if (body.empCodeAutoGenerated) {
+        await Swal.fire({
+          icon: "info",
+          title: "สร้างรหัสพนักงานใหม่ให้อัตโนมัติ",
+          html: `รหัสพนักงาน <b>${body.requestedEmpCode}</b> มีอยู่แล้วในระบบ<br>ระบบสร้างรหัสใหม่เป็น <b>${body.EmpCode}</b> ให้แทน`,
+          confirmButtonText: "ตกลง",
+          confirmButtonColor: "#111827",
+        });
+      }
+      router.push(`/employees/${body.EmpCode}`);
+      return;
+    }
+
+    if (body.error === "ID_CARD_DUPLICATE_NEEDS_CONFIRM" && !confirmDuplicate) {
+      const proceed = await confirmDuplicateIdCard(body.matches ?? [], body.blacklist ?? null);
+      if (proceed) {
+        await submit(true);
+      }
+      return;
+    }
+
+    setError(
+      body.error === "EMPLOYEE_ALREADY_EXISTS"
+        ? "รหัสพนักงานนี้มีอยู่แล้วในระบบ กรุณาใช้รหัสอื่น"
+        : body.message || body.error || "เพิ่มพนักงานไม่สำเร็จ",
+    );
+  }
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setError(null);
     setPending(true);
     try {
-      const res = await fetch("/api/employees", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          ...form,
-          deptCode: form.deptCode || null,
-          positionCode: form.positionCode || null,
-          defaultSiteCode: form.defaultSiteCode || null,
-          bankCode: form.bankCode || null,
-          dailyRate: form.dailyRate || null,
-        }),
-      });
-      const body = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        setError(body.message || body.error || "เพิ่มพนักงานไม่สำเร็จ");
-        return;
-      }
-      router.push(`/employees/${form.empCode}`);
+      await submit(false);
     } finally {
       setPending(false);
     }
@@ -93,35 +190,29 @@ export default function NewEmployeePage() {
         <Field label="รหัสพนักงาน">
           <input required value={form.empCode} onChange={(e) => setForm({ ...form, empCode: e.target.value })} className={inputCls} />
         </Field>
+        <Field label="รหัสคนแนะนำ">
+          <input
+            value={form.referrerEmpCode}
+            onChange={(e) => setForm({ ...form, referrerEmpCode: e.target.value })}
+            onBlur={(e) => lookupReferrer(e.target.value)}
+            className={inputCls}
+          />
+          {referrerLookupPending && <span className="text-xs text-gray-400">กำลังค้นหา...</span>}
+          {!referrerLookupPending && referrerName && (
+            <span className={`text-xs ${referrerName === "ไม่พบรหัสพนักงานนี้" ? "text-red-500" : "text-gray-500"}`}>→ {referrerName}</span>
+          )}
+        </Field>
         <Field label="เลขบัตรประชาชน">
           <input required value={form.idCardNo} onChange={(e) => setForm({ ...form, idCardNo: e.target.value })} className={inputCls} />
         </Field>
-        <Field label="ชื่อ-นามสกุล">
-          <input required value={form.fullName} onChange={(e) => setForm({ ...form, fullName: e.target.value })} className={inputCls} />
+        <Field label="คำนำหน้า">
+          <input required value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} placeholder="นาย/นาง/นางสาว" className={inputCls} />
         </Field>
-        <Field label="ที่อยู่">
-          <input value={form.address} onChange={(e) => setForm({ ...form, address: e.target.value })} className={inputCls} />
+        <Field label="ชื่อ">
+          <input required value={form.firstName} onChange={(e) => setForm({ ...form, firstName: e.target.value })} className={inputCls} />
         </Field>
-        <Field label="วันเริ่มงาน">
-          <input
-            required
-            type="date"
-            value={form.startDate}
-            onChange={(e) => setForm({ ...form, startDate: e.target.value })}
-            className={inputCls}
-          />
-        </Field>
-        <Field label="ประเภทพนักงาน">
-          <select required value={form.employeeType} onChange={(e) => setForm({ ...form, employeeType: e.target.value })} className={inputCls}>
-            <option value="" disabled>
-              เลือกประเภท
-            </option>
-            {EMPLOYEE_TYPE_VALUES.map((t) => (
-              <option key={t} value={t}>
-                {EMPLOYEE_TYPE_LABELS[t]}
-              </option>
-            ))}
-          </select>
+        <Field label="นามสกุล">
+          <input required value={form.lastName} onChange={(e) => setForm({ ...form, lastName: e.target.value })} className={inputCls} />
         </Field>
         <Field label="แผนก">
           <select value={form.deptCode} onChange={(e) => setForm({ ...form, deptCode: e.target.value })} className={inputCls}>
@@ -143,37 +234,26 @@ export default function NewEmployeePage() {
             ))}
           </select>
         </Field>
-        <Field label="หน่วยงานหลัก (Site)">
-          <select value={form.defaultSiteCode} onChange={(e) => setForm({ ...form, defaultSiteCode: e.target.value })} className={inputCls}>
-            <option value="">- ไม่ระบุ -</option>
-            {sites.map((s) => (
-              <option key={s.code} value={s.code}>
-                {s.name}
+        <Field label="ประเภทพนักงาน">
+          <select required value={form.employeeType} onChange={(e) => setForm({ ...form, employeeType: e.target.value })} className={inputCls}>
+            <option value="" disabled>
+              เลือกประเภท
+            </option>
+            {EMPLOYEE_TYPE_VALUES.map((t) => (
+              <option key={t} value={t}>
+                {EMPLOYEE_TYPE_LABELS[t]}
               </option>
             ))}
           </select>
         </Field>
-        <Field label="ค่าแรง/วัน (บาท)">
+        <Field label="วันเริ่มงาน">
           <input
-            type="number"
-            step="0.01"
-            value={form.dailyRate}
-            onChange={(e) => setForm({ ...form, dailyRate: e.target.value })}
+            required
+            type="date"
+            value={form.startDate}
+            onChange={(e) => setForm({ ...form, startDate: e.target.value })}
             className={inputCls}
           />
-        </Field>
-        <Field label="ธนาคาร">
-          <select value={form.bankCode} onChange={(e) => setForm({ ...form, bankCode: e.target.value })} className={inputCls}>
-            <option value="">- ไม่ระบุ -</option>
-            {banks.map((b) => (
-              <option key={b.code} value={b.code}>
-                {b.name}
-              </option>
-            ))}
-          </select>
-        </Field>
-        <Field label="เลขบัญชีธนาคาร">
-          <input value={form.bankAccountNo} onChange={(e) => setForm({ ...form, bankAccountNo: e.target.value })} className={inputCls} />
         </Field>
 
         {error && <p className="text-sm text-red-600">{error}</p>}

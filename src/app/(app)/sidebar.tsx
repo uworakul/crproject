@@ -119,7 +119,7 @@ function HamburgerIcon({ className }: { className?: string }) {
   );
 }
 
-export default function Sidebar({ groups }: { groups: NavGroup[] }) {
+export default function Sidebar({ groups, companyShortName }: { groups: NavGroup[]; companyShortName: string }) {
   const pathname = usePathname();
   // Groups containing the current page start open; the rest start
   // collapsed — click a group header to toggle it independently.
@@ -155,7 +155,7 @@ export default function Sidebar({ groups }: { groups: NavGroup[] }) {
         <div className="flex items-center justify-between px-5 pt-6 pb-4">
           <div>
             <div className="text-lg font-semibold tracking-tight text-gray-900">CRPAYROLL</div>
-            <div className="text-xs text-gray-400">ABC CO., LTD.</div>
+            <div className="text-xs text-gray-400">{companyShortName}</div>
           </div>
           <button
             type="button"

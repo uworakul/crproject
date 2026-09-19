@@ -21,7 +21,15 @@ export async function POST(request: NextRequest) {
   const denied = await requirePermission(user, "REFERENCE", "save");
   if (denied) return denied;
 
-  let body: { companyCode?: unknown; companyName?: unknown; address?: unknown; taxID?: unknown; ssoRegistNo?: unknown; contactPhone?: unknown };
+  let body: {
+    companyCode?: unknown;
+    companyName?: unknown;
+    shortName?: unknown;
+    address?: unknown;
+    taxID?: unknown;
+    ssoRegistNo?: unknown;
+    contactPhone?: unknown;
+  };
   try {
     body = await request.json();
   } catch {
@@ -39,6 +47,7 @@ export async function POST(request: NextRequest) {
     data: {
       CompanyCode: companyCode,
       CompanyName: companyName,
+      ShortName: typeof body.shortName === "string" && body.shortName.trim() ? body.shortName.trim() : null,
       Address: typeof body.address === "string" && body.address.trim() ? body.address.trim() : null,
       TaxID: typeof body.taxID === "string" && body.taxID.trim() ? body.taxID.trim() : null,
       SSORegistNo: typeof body.ssoRegistNo === "string" && body.ssoRegistNo.trim() ? body.ssoRegistNo.trim() : null,

@@ -15,7 +15,7 @@ export async function PUT(request: NextRequest, ctx: RouteContext<"/api/referenc
   const existing = await prisma.refCompany.findUnique({ where: { CompanyCode: code } });
   if (!existing) return apiError(404, "COMPANY_NOT_FOUND");
 
-  let body: { companyName?: unknown; address?: unknown; taxID?: unknown; ssoRegistNo?: unknown; contactPhone?: unknown };
+  let body: { companyName?: unknown; shortName?: unknown; address?: unknown; taxID?: unknown; ssoRegistNo?: unknown; contactPhone?: unknown };
   try {
     body = await request.json();
   } catch {
@@ -26,6 +26,7 @@ export async function PUT(request: NextRequest, ctx: RouteContext<"/api/referenc
     where: { CompanyCode: code },
     data: {
       CompanyName: typeof body.companyName === "string" && body.companyName.trim() ? body.companyName.trim() : undefined,
+      ShortName: typeof body.shortName === "string" ? body.shortName.trim() || null : undefined,
       Address: typeof body.address === "string" ? (body.address.trim() || null) : undefined,
       TaxID: typeof body.taxID === "string" ? (body.taxID.trim() || null) : undefined,
       SSORegistNo: typeof body.ssoRegistNo === "string" ? (body.ssoRegistNo.trim() || null) : undefined,

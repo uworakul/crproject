@@ -47,6 +47,21 @@ export interface FieldDef {
   hidden?: boolean; // not rendered as a column or form input, but still tracked
   // (e.g. an auto-increment PK used as the API's URL id when the visible
   // "code" column is a different, more meaningful field — see ref_black_list)
+  readOnly?: boolean; // shown as a column, but never an input (add-form or
+  // edit-mode) and never sent to the API — for server-computed display
+  // values that aren't real stored columns (e.g. NextNumber, see
+  // ref_document_number)
+  hideWhen?: { field: string; equals: boolean }; // per-row: skip this
+  // field's input (add-form/edit-mode) and show "-" in the display cell
+  // when another field in the same row/form currently equals this value
+  // (e.g. hide the auto-numbering fields when IsCustomNumber is checked)
+}
+
+function fieldIsHidden(field: FieldDef, values: Record<string, unknown>): boolean {
+  if (!field.hideWhen) return false;
+  const raw = values[field.hideWhen.field];
+  const current = typeof raw === "string" ? raw === "true" : raw === true;
+  return current === field.hideWhen.equals;
 }
 
 interface Props {
@@ -174,6 +189,7 @@ export default function ReferenceTable({
   function toApiBody(values: Record<string, string>) {
     const body: Record<string, unknown> = {};
     for (const f of fields) {
+      if (f.readOnly) continue;
       const raw = values[f.key];
       if (raw === "") continue;
       body[toApiKey(f.key)] =
@@ -397,7 +413,9 @@ export default function ReferenceTable({
                   {showRowNumber && <td className="px-3 py-2 text-gray-500">{idx + 1}</td>}
                   {visibleFields.map((f) => (
                     <td key={f.key} className="px-3 py-2">
-                      {isEditing && !f.isKey ? (
+                      {isEditing && fieldIsHidden(f, editForm) ? (
+                        "-"
+                      ) : isEditing && !f.isKey && !f.readOnly ? (
                         f.type === "checkbox" ? (
                           <input
                             type="checkbox"
@@ -412,6 +430,8 @@ export default function ReferenceTable({
                             className="w-full rounded border border-gray-300 px-2 py-1 text-sm"
                           />
                         )
+                      ) : !isEditing && fieldIsHidden(f, row) ? (
+                        "-"
                       ) : (
                         displayValue(f, row[f.key])
                       )}
@@ -466,7 +486,7 @@ export default function ReferenceTable({
       {canSave && allowAdd && (
         <div className="flex flex-wrap items-end gap-2 rounded-lg border border-dashed border-gray-300 p-3">
           {visibleFields.map((f) =>
-            f.type === "checkbox" ? (
+            f.readOnly || fieldIsHidden(f, form) ? null : f.type === "checkbox" ? (
               <label key={f.key} className="flex items-center gap-1 pb-1.5 text-xs text-gray-500">
                 <input
                   type="checkbox"

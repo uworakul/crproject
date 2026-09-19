@@ -27,8 +27,57 @@ export function isValidEmployeeType(value: unknown): value is EmployeeType {
   return typeof value === "string" && (EMPLOYEE_TYPE_VALUES as readonly string[]).includes(value);
 }
 
-// mst_employee.EmployeeStatus CHECK constraint.
-export const EMPLOYEE_STATUS_VALUES = ["ACTIVE", "RESIGNED"] as const;
+// mst_employee.EmployeeStatus CHECK constraint — expanded 2026-09-19.
+// "ACTIVE" is kept as the DB value for "ปกติ" (not renamed to e.g. "NORMAL")
+// because 4 existing pages (inventory issue/return, leave request/balances)
+// filter employees by the literal string "ACTIVE"; renaming it would silently
+// break those dropdowns for every existing employee row.
+export const EMPLOYEE_STATUS_VALUES = ["ACTIVE", "PROBATION", "SUSPENDED", "TERMINATED", "RESIGNED"] as const;
+export type EmployeeStatus = (typeof EMPLOYEE_STATUS_VALUES)[number];
+export const EMPLOYEE_STATUS_LABELS: Record<EmployeeStatus, string> = {
+  ACTIVE: "ปกติ",
+  PROBATION: "ทดลองงาน",
+  SUSPENDED: "พักงาน",
+  TERMINATED: "เลิกจ้าง",
+  RESIGNED: "ลาออก",
+};
+export function isValidEmployeeStatus(value: unknown): value is EmployeeStatus {
+  return typeof value === "string" && (EMPLOYEE_STATUS_VALUES as readonly string[]).includes(value);
+}
+
+// mst_employee.MaritalStatus — informational only, no DB CHECK.
+export const MARITAL_STATUS_VALUES = ["SINGLE", "MARRIED", "DIVORCED", "WIDOWED"] as const;
+export type MaritalStatus = (typeof MARITAL_STATUS_VALUES)[number];
+export const MARITAL_STATUS_LABELS: Record<MaritalStatus, string> = {
+  SINGLE: "โสด",
+  MARRIED: "สมรส",
+  DIVORCED: "หย่าร้าง",
+  WIDOWED: "หม้าย",
+};
+
+// mst_employee.Gender — informational only, no DB CHECK.
+export const GENDER_VALUES = ["MALE", "FEMALE", "OTHER"] as const;
+export type Gender = (typeof GENDER_VALUES)[number];
+export const GENDER_LABELS: Record<Gender, string> = {
+  MALE: "ชาย",
+  FEMALE: "หญิง",
+  OTHER: "อื่นๆ",
+};
+
+// mst_employee.Education — informational only, no DB CHECK.
+export const EDUCATION_LEVEL_VALUES = ["NONE", "PRIMARY", "SECONDARY", "MIDDLE_SCHOOL", "HIGH_SCHOOL", "VOC_CERT", "VOC_DIPLOMA", "BACHELOR", "OTHER"] as const;
+export type EducationLevel = (typeof EDUCATION_LEVEL_VALUES)[number];
+export const EDUCATION_LEVEL_LABELS: Record<EducationLevel, string> = {
+  NONE: "ไม่มี",
+  PRIMARY: "ป.ต้น",
+  SECONDARY: "ป.ปลาย",
+  MIDDLE_SCHOOL: "ม.ต้น",
+  HIGH_SCHOOL: "ม.ปลาย",
+  VOC_CERT: "ปวช",
+  VOC_DIPLOMA: "ปวส",
+  BACHELOR: "ป.ตรี",
+  OTHER: "อื่นๆ",
+};
 
 // mst_employee_quota.QuotaType CHECK constraint.
 export const QUOTA_TYPE_VALUES = ["ADVANCE", "LOAN", "UNIFORM", "SERVICE", "INSURANCE"] as const;
@@ -48,7 +97,7 @@ export function isValidQuotaType(value: unknown): value is QuotaType {
 export const MEMO_TYPE_VALUES = ["GENERAL", "ADMIN", "FINANCE"] as const;
 export type MemoType = (typeof MEMO_TYPE_VALUES)[number];
 export const MEMO_TYPE_LABELS: Record<MemoType, string> = {
-  GENERAL: "ทั่วไป",
+  GENERAL: "บุคคล",
   ADMIN: "ธุรการ",
   FINANCE: "การเงิน",
 };

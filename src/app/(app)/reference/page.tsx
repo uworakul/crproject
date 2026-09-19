@@ -4,10 +4,12 @@ import { hasPermission } from "@/lib/authorize";
 import { prisma } from "@/lib/prisma";
 import Tabs from "./tabs";
 import ReferenceTable, { type FieldDef } from "./reference-table";
+import { withNextNumber } from "@/lib/document-number";
 
 const companyFields: FieldDef[] = [
   { key: "CompanyCode", label: "รหัสบริษัท", type: "text", isKey: true },
   { key: "CompanyName", label: "ชื่อ", type: "text" },
+  { key: "ShortName", label: "ชื่อย่อ", type: "text" },
   { key: "Address", label: "ที่อยู่", type: "text" },
   { key: "TaxID", label: "เลขประจำตัวภาษี", type: "text" },
   { key: "SSORegistNo", label: "เลขประจำตัวปกส", type: "text" },
@@ -30,6 +32,15 @@ const blacklistFields: FieldDef[] = [
   { key: "IDCardNo", label: "รหัสแบล็คลิส", type: "text" },
   { key: "FullName", label: "รายละเอียด", type: "text" },
 ];
+const documentNumberFields: FieldDef[] = [
+  { key: "DocumentNumberID", label: "ID", type: "number", isKey: true, readOnly: true },
+  { key: "DocumentCode", label: "รหัสเอกสาร", type: "text" },
+  { key: "Description", label: "รายละเอียด", type: "text" },
+  { key: "IsCustomNumber", label: "กำหนดเอง", type: "checkbox" },
+  { key: "UseYearMonthPrefix", label: "นำหน้าด้วยปีเดือน", type: "checkbox", hideWhen: { field: "IsCustomNumber", equals: true } },
+  { key: "LatestNumber", label: "เลขที่ล่าสุด", type: "number", hideWhen: { field: "IsCustomNumber", equals: true } },
+  { key: "NextNumber", label: "เลขที่ถัดไป", type: "text", readOnly: true, hideWhen: { field: "IsCustomNumber", equals: true } },
+];
 export default async function ReferencePage() {
   const user = await verifySession();
   if (!user) redirect("/login");
@@ -37,7 +48,7 @@ export default async function ReferencePage() {
   const canRead = await hasPermission(user, "REFERENCE", "read");
   if (!canRead) redirect("/");
 
-  const [canSave, canDelete, companiesRaw, banksRaw, departmentsRaw, positionsRaw, blacklistRaw] = await Promise.all([
+  const [canSave, canDelete, companiesRaw, banksRaw, departmentsRaw, positionsRaw, blacklistRaw, documentNumbersRaw] = await Promise.all([
     hasPermission(user, "REFERENCE", "save"),
     hasPermission(user, "REFERENCE", "delete"),
     prisma.refCompany.findMany({ orderBy: { CompanyCode: "asc" } }),
@@ -45,13 +56,14 @@ export default async function ReferencePage() {
     prisma.refDepartment.findMany({ orderBy: { DeptCode: "asc" } }),
     prisma.refPosition.findMany({ orderBy: { PositionCode: "asc" } }),
     prisma.refBlackList.findMany({ orderBy: { AddedDate: "desc" } }),
+    prisma.refDocumentNumber.findMany({ orderBy: { DocumentCode: "asc" } }),
   ]);
 
   // Prisma.Decimal fields (PositionAllowance) aren't plain objects React
   // Server Components can pass to a Client Component — round-trip through
   // JSON so Decimal.toJSON() turns them into strings.
-  const [companies, banks, departments, positions, blacklist] = JSON.parse(
-    JSON.stringify([companiesRaw, banksRaw, departmentsRaw, positionsRaw, blacklistRaw]),
+  const [companies, banks, departments, positions, blacklist, documentNumbers] = JSON.parse(
+    JSON.stringify([companiesRaw, banksRaw, departmentsRaw, positionsRaw, blacklistRaw, documentNumbersRaw.map(withNextNumber)]),
   );
 
   return (
@@ -125,6 +137,19 @@ export default async function ReferencePage() {
                 canSave={canSave}
                 canDelete={canDelete}
                 initialRows={blacklist}
+              />
+            ),
+          },
+          {
+            label: "เลขที่เอกสาร",
+            content: (
+              <ReferenceTable
+                key="/api/reference/document-numbers"
+                apiBase="/api/reference/document-numbers"
+                fields={documentNumberFields}
+                canSave={canSave}
+                canDelete={canDelete}
+                initialRows={documentNumbers}
               />
             ),
           },

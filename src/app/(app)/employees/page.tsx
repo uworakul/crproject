@@ -3,6 +3,7 @@ import Link from "next/link";
 import { verifySession } from "@/lib/dal";
 import { hasPermission } from "@/lib/authorize";
 import { prisma } from "@/lib/prisma";
+import EmployeesTable from "./employees-table";
 
 export default async function EmployeesPage() {
   const user = await verifySession();
@@ -11,22 +12,39 @@ export default async function EmployeesPage() {
   const canRead = await hasPermission(user, "EMPLOYEE", "read");
   if (!canRead) redirect("/");
 
-  const [employees, canCreate] = await Promise.all([
+  const [employeesRaw, departments, sites, canCreate] = await Promise.all([
     prisma.mstEmployee.findMany({
       select: {
         EmpCode: true,
         FullName: true,
         EmployeeStatus: true,
         EmployeeType: true,
+        DeptCode: true,
         Department: { select: { DeptName: true } },
         Position: { select: { PositionName: true } },
+        DefaultSiteCode: true,
         Site: { select: { SiteName: true } },
         IsActive: true,
       },
       orderBy: { EmpCode: "asc" },
     }),
+    prisma.refDepartment.findMany({ where: { IsActive: true }, orderBy: { DeptCode: "asc" } }),
+    prisma.mstSite.findMany({ where: { IsActive: true }, orderBy: { SiteCode: "asc" } }),
     hasPermission(user, "EMPLOYEE", "save"),
   ]);
+
+  const employees = employeesRaw.map((e) => ({
+    EmpCode: e.EmpCode,
+    FullName: e.FullName,
+    EmployeeStatus: e.EmployeeStatus,
+    EmployeeType: e.EmployeeType,
+    DeptCode: e.DeptCode,
+    DeptName: e.Department?.DeptName ?? null,
+    PositionName: e.Position?.PositionName ?? null,
+    SiteCode: e.DefaultSiteCode,
+    SiteName: e.Site?.SiteName ?? null,
+    IsActive: e.IsActive,
+  }));
 
   return (
     <div className="mx-auto max-w-5xl p-8">
@@ -39,49 +57,7 @@ export default async function EmployeesPage() {
         )}
       </div>
 
-      <table className="w-full border-collapse overflow-hidden rounded-lg border border-gray-200 bg-white text-sm">
-        <thead className="border-b border-gray-200 bg-gray-50 text-left text-gray-500">
-          <tr>
-            <th className="px-3 py-2 font-medium">รหัส</th>
-            <th className="px-3 py-2 font-medium">ชื่อ-นามสกุล</th>
-            <th className="px-3 py-2 font-medium">แผนก</th>
-            <th className="px-3 py-2 font-medium">ตำแหน่ง</th>
-            <th className="px-3 py-2 font-medium">หน่วยงาน</th>
-            <th className="px-3 py-2 font-medium">สถานะ</th>
-          </tr>
-        </thead>
-        <tbody>
-          {employees.map((e) => (
-            <tr key={e.EmpCode} className="border-t border-gray-100 hover:bg-gray-50">
-              <td className="px-3 py-2">
-                <Link href={`/employees/${e.EmpCode}`} className="text-gray-900 hover:underline">
-                  {e.EmpCode}
-                </Link>
-              </td>
-              <td className="px-3 py-2">{e.FullName}</td>
-              <td className="px-3 py-2 text-gray-500">{e.Department?.DeptName ?? "-"}</td>
-              <td className="px-3 py-2 text-gray-500">{e.Position?.PositionName ?? "-"}</td>
-              <td className="px-3 py-2 text-gray-500">{e.Site?.SiteName ?? "-"}</td>
-              <td className="px-3 py-2">
-                {e.EmployeeStatus === "RESIGNED" ? (
-                  <span className="text-gray-400">ลาออกแล้ว</span>
-                ) : e.IsActive ? (
-                  <span className="text-green-600">ทำงานอยู่</span>
-                ) : (
-                  <span className="text-red-500">ระงับ</span>
-                )}
-              </td>
-            </tr>
-          ))}
-          {employees.length === 0 && (
-            <tr>
-              <td colSpan={6} className="px-3 py-6 text-center text-gray-400">
-                ยังไม่มีพนักงาน
-              </td>
-            </tr>
-          )}
-        </tbody>
-      </table>
+      <EmployeesTable employees={employees} departments={departments} sites={sites} />
     </div>
   );
 }
