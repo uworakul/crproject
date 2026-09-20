@@ -32,7 +32,7 @@ export default async function IncomeDeductionPage() {
   const [incomeTypes, deductionTypes] = JSON.parse(JSON.stringify([incomeTypesRaw, deductionTypesRaw]));
 
   return (
-    <div className="mx-auto max-w-3xl p-8">
+    <div className="w-full px-6 py-8">
       <h1 className="mb-6 text-lg font-semibold text-gray-900">รายได้และรายการหัก</h1>
       <Tabs
         tabs={[

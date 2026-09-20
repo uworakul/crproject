@@ -2,7 +2,21 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import Swal from "sweetalert2";
 import { REQUEST_DOCUMENT_CODE_VALUES, REQUEST_DOCUMENT_CODE_LABELS, type RequestDocumentCode } from "@/lib/request";
+
+async function confirmDeleteRequest(label: string): Promise<boolean> {
+  const result = await Swal.fire({
+    html: `ยืนยันการลบเอกสาร ${label}?`,
+    icon: "warning",
+    showCancelButton: true,
+    confirmButtonText: "ยืนยัน",
+    cancelButtonText: "ยกเลิก",
+    confirmButtonColor: "#dc2626",
+    cancelButtonColor: "#9ca3af",
+  });
+  return result.isConfirmed;
+}
 
 interface HeaderRow {
   RequestHeaderID: number;
@@ -11,6 +25,9 @@ interface HeaderRow {
   RequestDate: string;
   Remark: string | null;
   Status: string;
+  ApprovedDate: string | null;
+  RejectedDate: string | null;
+  RejectReason: string | null;
   Details: { Amount: string }[];
 }
 
@@ -25,16 +42,23 @@ function money(v: number) {
   return v.toLocaleString("th-TH", { minimumFractionDigits: 2 });
 }
 
+function approvedOrRejectedDate(r: HeaderRow) {
+  const d = r.ApprovedDate ?? r.RejectedDate;
+  return d ? new Date(d).toLocaleString("th-TH") : "-";
+}
+
 export default function RequestGroupView({
   docType,
   documentCodes,
   initialRows,
   canSave,
+  canDelete,
 }: {
   docType: string;
   documentCodes: RequestDocumentCode[];
   initialRows: HeaderRow[];
   canSave: boolean;
+  canDelete: boolean;
 }) {
   const [rows, setRows] = useState(initialRows);
   const [form, setForm] = useState<{ documentCode: string; requestDate: string; remark: string }>({
@@ -48,6 +72,18 @@ export default function RequestGroupView({
   async function refresh() {
     const res = await fetch(`/api/requests?docType=${docType}`);
     if (res.ok) setRows(await res.json());
+  }
+
+  async function handleDelete(r: HeaderRow) {
+    if (!(await confirmDeleteRequest(`${r.DocumentCode} ${r.DocumentNo ? `#${r.DocumentNo}` : `(คำขอ #${r.RequestHeaderID})`}`))) return;
+    setMessage(null);
+    const res = await fetch(`/api/requests/${r.RequestHeaderID}`, { method: "DELETE" });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      setMessage(body.message || body.error);
+      return;
+    }
+    await refresh();
   }
 
   async function handleCreate() {
@@ -83,6 +119,9 @@ export default function RequestGroupView({
               <th className="px-3 py-2 font-medium text-right">จำนวนรายการ</th>
               <th className="px-3 py-2 font-medium text-right">ยอดเงินรวม</th>
               <th className="px-3 py-2 font-medium">สถานะ</th>
+              <th className="px-3 py-2 font-medium">วันที่อนุมัติ/ตีกลับ</th>
+              <th className="min-w-[200px] px-3 py-2 font-medium">เหตุผลตีกลับ</th>
+              {canDelete && <th className="px-3 py-2"></th>}
             </tr>
           </thead>
           <tbody>
@@ -101,12 +140,23 @@ export default function RequestGroupView({
                   <td className="px-3 py-2 text-right">{r.Details.length}</td>
                   <td className="px-3 py-2 text-right">{money(total)}</td>
                   <td className="px-3 py-2">{STATUS_LABEL[r.Status] ?? r.Status}</td>
+                  <td className="px-3 py-2 text-gray-500">{approvedOrRejectedDate(r)}</td>
+                  <td className="px-3 py-2 text-gray-500">{r.Status === "APPROVED" ? "-" : (r.RejectReason ?? "-")}</td>
+                  {canDelete && (
+                    <td className="px-3 py-2 text-right">
+                      {r.Status === "DRAFT" && (
+                        <button onClick={() => handleDelete(r)} className="text-red-500 hover:underline">
+                          ลบ
+                        </button>
+                      )}
+                    </td>
+                  )}
                 </tr>
               );
             })}
             {rows.length === 0 && (
               <tr>
-                <td colSpan={7} className="px-3 py-6 text-center text-gray-400">
+                <td colSpan={canDelete ? 10 : 9} className="px-3 py-6 text-center text-gray-400">
                   ยังไม่มีรายการ
                 </td>
               </tr>

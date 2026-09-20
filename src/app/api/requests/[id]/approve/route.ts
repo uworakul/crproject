@@ -58,6 +58,7 @@ export async function POST(_req: Request, ctx: RouteContext<"/api/requests/[id]/
         data: {
           EmpCode: d.EmpCode,
           DeductionCode: deductionType.DeductionCode,
+          RequestHeaderID: requestId,
           Description: description,
           TotalAmount: d.Amount,
           RemainingAmount: d.Amount,

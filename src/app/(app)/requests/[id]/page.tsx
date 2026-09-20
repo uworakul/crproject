@@ -16,7 +16,9 @@ export default async function RequestDetailPage({ params }: { params: Promise<{ 
 
   const header = await prisma.trnRequestHeader.findUnique({
     where: { RequestHeaderID: requestId },
-    include: { Details: { include: { Employee: { select: { FullName: true, EmployeeStatus: true, StartDate: true } } } } },
+    include: {
+      Details: { orderBy: { RequestDetailID: "asc" }, include: { Employee: { select: { FullName: true, EmployeeStatus: true, StartDate: true } } } },
+    },
   });
   if (!header) notFound();
 
@@ -24,17 +26,21 @@ export default async function RequestDetailPage({ params }: { params: Promise<{ 
   const canRead = await hasPermission(user, docType, "read");
   if (!canRead) redirect("/");
 
-  const [canSave, canApprove] = await Promise.all([hasPermission(user, docType, "save"), hasPermission(user, docType, "approve")]);
+  const [canSave, canApprove, employees] = await Promise.all([
+    hasPermission(user, docType, "save"),
+    hasPermission(user, docType, "approve"),
+    prisma.mstEmployee.findMany({ where: { EmployeeStatus: "ACTIVE" }, orderBy: { EmpCode: "asc" }, select: { EmpCode: true, FullName: true } }),
+  ]);
 
   return (
-    <div className="mx-auto max-w-3xl p-8">
+    <div className="w-full px-6 py-8">
       <Link href="/requests" className="text-sm text-gray-500 hover:underline">
         ← กลับการขออนุมัติ
       </Link>
       <h1 className="mb-6 mt-2 text-lg font-semibold text-gray-900">
         {header.DocumentCode} {header.DocumentNo ? `#${header.DocumentNo}` : `(คำขอ #${header.RequestHeaderID})`}
       </h1>
-      <RequestDetailView request={JSON.parse(JSON.stringify(header))} canSave={canSave} canApprove={canApprove} />
+      <RequestDetailView request={JSON.parse(JSON.stringify(header))} canSave={canSave} canApprove={canApprove} employees={employees} />
     </div>
   );
 }

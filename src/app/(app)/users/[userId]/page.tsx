@@ -46,7 +46,7 @@ export default async function UserDetailPage({
   if (!target) notFound();
 
   return (
-    <div className="mx-auto max-w-3xl p-8">
+    <div className="w-full px-6 py-8">
       <Link href="/users" className="text-sm text-gray-500 hover:underline">
         ← กลับรายการผู้ใช้งาน
       </Link>

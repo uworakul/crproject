@@ -43,7 +43,7 @@ export default async function WorksheetPage() {
   }
 
   return (
-    <div className="mx-auto max-w-6xl p-8">
+    <div className="w-full px-6 py-8">
       <h1 className="mb-6 text-lg font-semibold text-gray-900">ใบลงเวลาปฏิบัติงานประจำเดือน</h1>
 
       {sites.length === 0 ? (

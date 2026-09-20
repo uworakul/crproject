@@ -77,7 +77,7 @@ export default function LeaveBalancesView({ employees, canSave }: { employees: {
         </label>
         <label className="flex flex-col gap-1 text-xs text-gray-500">
           ปี (พ.ศ.)
-          <input value={year} onChange={(e) => setYear(e.target.value)} className="w-24 rounded border border-gray-300 px-2 py-1 text-sm text-gray-900" />
+          <input type="number" value={year} onChange={(e) => setYear(e.target.value)} className="w-24 rounded border border-gray-300 px-2 py-1 text-sm text-gray-900" />
         </label>
         <button onClick={load} className="rounded-md border border-gray-300 px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50">
           โหลดข้อมูล
@@ -102,6 +102,8 @@ export default function LeaveBalancesView({ employees, canSave }: { employees: {
                   <td className="px-3 py-2">
                     {canSave ? (
                       <input
+                        type="number"
+                        step="any"
                         value={entitledForm[r.leaveTypeCode] ?? ""}
                         onChange={(e) => setEntitledForm({ ...entitledForm, [r.leaveTypeCode]: e.target.value })}
                         className="w-20 rounded border border-gray-300 px-2 py-1 text-sm"

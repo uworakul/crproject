@@ -57,6 +57,10 @@ export interface FieldDef {
   // (e.g. hide the auto-numbering fields when IsCustomNumber is checked)
 }
 
+function isNumericFieldType(type: FieldDef["type"]): boolean {
+  return type === "number" || type === "percent" || type === "year";
+}
+
 function fieldIsHidden(field: FieldDef, values: Record<string, unknown>): boolean {
   if (!field.hideWhen) return false;
   const raw = values[field.hideWhen.field];
@@ -424,7 +428,8 @@ export default function ReferenceTable({
                           />
                         ) : (
                           <input
-                            type={f.type === "date" ? "date" : "text"}
+                            type={f.type === "date" ? "date" : isNumericFieldType(f.type) ? "number" : "text"}
+                            step={isNumericFieldType(f.type) ? "any" : undefined}
                             value={editForm[f.key] ?? ""}
                             onChange={(e) => setEditForm({ ...editForm, [f.key]: e.target.value })}
                             className="w-full rounded border border-gray-300 px-2 py-1 text-sm"
@@ -499,7 +504,8 @@ export default function ReferenceTable({
               <label key={f.key} className="flex flex-col gap-1 text-xs text-gray-500">
                 {f.label}
                 <input
-                  type={f.type === "date" ? "date" : "text"}
+                  type={f.type === "date" ? "date" : isNumericFieldType(f.type) ? "number" : "text"}
+                  step={isNumericFieldType(f.type) ? "any" : undefined}
                   value={form[f.key]}
                   onChange={(e) => setForm({ ...form, [f.key]: e.target.value })}
                   className="w-32 rounded border border-gray-300 px-2 py-1 text-sm text-gray-900"

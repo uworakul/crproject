@@ -53,7 +53,10 @@ export default async function EmployeeDetailPage({ params }: { params: Promise<{
     prisma.mstEmployeeTrainingExperience.findMany({ where: { EmpCode: empCode }, orderBy: { StartDate: "desc" } }),
     prisma.invEmployeeDebt.findMany({
       where: { EmpCode: empCode },
-      include: { DeductionType: { select: { DeductionCode: true, DeductionName: true } } },
+      include: {
+        DeductionType: { select: { DeductionCode: true, DeductionName: true } },
+        RequestHeader: { select: { DocumentNo: true, ApprovedDate: true } },
+      },
       orderBy: { DebtID: "desc" },
     }),
     prisma.refDeductionType.findMany({ where: { IsInstallment: true }, orderBy: { DeductionCode: "asc" } }),
@@ -166,7 +169,7 @@ export default async function EmployeeDetailPage({ params }: { params: Promise<{
   }
 
   return (
-    <div className="mx-auto max-w-3xl p-8">
+    <div className="w-full px-6 py-8">
       <Link href="/employees" className="text-sm text-gray-500 hover:underline">
         ← กลับทะเบียนพนักงาน
       </Link>

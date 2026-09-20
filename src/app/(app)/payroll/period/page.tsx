@@ -34,7 +34,7 @@ export default async function PayrollPeriodPage() {
   const periods = JSON.parse(JSON.stringify(periodsRaw));
 
   return (
-    <div className="mx-auto max-w-6xl p-8">
+    <div className="w-full px-6 py-8">
       <h1 className="mb-6 text-lg font-semibold text-gray-900">ประมวลผลเงินเดือน</h1>
       <PayrollWorkspace
         initialPeriods={periods}

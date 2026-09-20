@@ -19,6 +19,8 @@ export default async function EmployeesPage() {
         FullName: true,
         EmployeeStatus: true,
         EmployeeType: true,
+        StartDate: true,
+        ResignDate: true,
         DeptCode: true,
         Department: { select: { DeptName: true } },
         Position: { select: { PositionName: true } },
@@ -39,6 +41,8 @@ export default async function EmployeesPage() {
     FullName: e.FullName,
     EmployeeStatus: e.EmployeeStatus,
     EmployeeType: e.EmployeeType,
+    StartDate: e.StartDate,
+    ResignDate: e.ResignDate,
     DeptCode: e.DeptCode,
     DeptName: e.Department?.DeptName ?? null,
     PositionName: e.Position?.PositionName ?? null,
@@ -48,7 +52,7 @@ export default async function EmployeesPage() {
   }));
 
   return (
-    <div className="mx-auto max-w-5xl p-8">
+    <div className="w-full px-6 py-8">
       <div className="mb-6 flex items-center justify-between">
         <h1 className="text-lg font-semibold text-gray-900">ทะเบียนพนักงาน</h1>
         {canCreate && (

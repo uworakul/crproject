@@ -14,6 +14,7 @@ interface Debt {
   DeductPerPeriod: string | null;
   Status: string;
   MovementID: number | null;
+  RequestHeader: { DocumentNo: string | null; ApprovedDate: string | null } | null;
 }
 
 function money(v: string) {
@@ -45,6 +46,8 @@ export default function InstallmentDeductionTab({
   canSave: boolean;
 }) {
   const [rows, setRows] = useState(initialRows);
+  const [onlyWithRemaining, setOnlyWithRemaining] = useState(false);
+  const visibleRows = onlyWithRemaining ? rows.filter((r) => Number(r.RemainingAmount) > 0) : rows;
   const [form, setForm] = useState({ deductionCode: "", totalAmount: "", deductPerPeriod: "", description: "" });
   const [editingId, setEditingId] = useState<number | null>(null);
   const [editForm, setEditForm] = useState({ description: "", deductPerPeriod: "", remainingAmount: "" });
@@ -116,12 +119,18 @@ export default function InstallmentDeductionTab({
 
   return (
     <div className="flex flex-col gap-3">
+      <label className="flex w-fit items-center gap-2 text-sm text-gray-600">
+        <input type="checkbox" checked={onlyWithRemaining} onChange={(e) => setOnlyWithRemaining(e.target.checked)} />
+        แสดงเฉพาะที่มียอดคงเหลือ
+      </label>
       <div className="overflow-x-auto rounded-lg border border-gray-200 bg-white">
         <table className="w-full border-collapse text-sm">
           <thead className="border-b border-gray-200 bg-gray-50 text-left text-gray-500">
             <tr>
               <th className="px-3 py-2 font-medium">รายการหัก</th>
-              <th className="px-3 py-2 font-medium">หมายเหตุ</th>
+              <th className="px-3 py-2 font-medium">เลขที่เอกสาร</th>
+              <th className="px-3 py-2 font-medium">วันที่อนุมัติ</th>
+              <th className="min-w-[280px] px-3 py-2 font-medium">หมายเหตุ</th>
               <th className="px-3 py-2 font-medium text-right">ยอดเงินต้น</th>
               <th className="px-3 py-2 font-medium text-right">ยอดหักต่องวด</th>
               <th className="px-3 py-2 font-medium text-right">ยอดคงเหลือ</th>
@@ -130,17 +139,21 @@ export default function InstallmentDeductionTab({
             </tr>
           </thead>
           <tbody>
-            {rows.map((r) => {
+            {visibleRows.map((r) => {
               const isEditing = editingId === r.DebtID;
               return (
-                <tr key={r.DebtID} className="border-t border-gray-100">
+                <tr key={r.DebtID} className="border-t border-gray-100 hover:bg-purple-50">
                   <td className="px-3 py-2">{r.DeductionType?.DeductionName ?? (r.MovementID ? "เบิกเครื่องแบบ/สินค้า" : "-")}</td>
+                  <td className="px-3 py-2 text-gray-500">{r.RequestHeader?.DocumentNo ?? "-"}</td>
+                  <td className="px-3 py-2 text-gray-500">
+                    {r.RequestHeader?.ApprovedDate ? new Date(r.RequestHeader.ApprovedDate).toLocaleDateString("th-TH") : "-"}
+                  </td>
                   <td className="px-3 py-2 text-gray-500">
                     {isEditing ? (
                       <input
                         value={editForm.description}
                         onChange={(e) => setEditForm({ ...editForm, description: e.target.value })}
-                        className="w-32 rounded border border-gray-300 px-2 py-1 text-sm text-gray-900"
+                        className="w-full rounded border border-gray-300 px-2 py-1 text-sm text-gray-900"
                       />
                     ) : (
                       (r.Description ?? "-")
@@ -150,6 +163,8 @@ export default function InstallmentDeductionTab({
                   <td className="px-3 py-2 text-right">
                     {isEditing ? (
                       <input
+                        type="number"
+                        step="any"
                         value={editForm.deductPerPeriod}
                         onChange={(e) => setEditForm({ ...editForm, deductPerPeriod: e.target.value })}
                         className="w-24 rounded border border-gray-300 px-2 py-1 text-right text-sm text-gray-900"
@@ -163,6 +178,8 @@ export default function InstallmentDeductionTab({
                   <td className="px-3 py-2 text-right font-medium">
                     {isEditing ? (
                       <input
+                        type="number"
+                        step="any"
                         value={editForm.remainingAmount}
                         onChange={(e) => setEditForm({ ...editForm, remainingAmount: e.target.value })}
                         className="w-24 rounded border border-gray-300 px-2 py-1 text-right text-sm text-gray-900"
@@ -200,10 +217,10 @@ export default function InstallmentDeductionTab({
                 </tr>
               );
             })}
-            {rows.length === 0 && (
+            {visibleRows.length === 0 && (
               <tr>
-                <td colSpan={7} className="px-3 py-6 text-center text-gray-400">
-                  ยังไม่มีรายการหักต่องวด
+                <td colSpan={9} className="px-3 py-6 text-center text-gray-400">
+                  {rows.length === 0 ? "ยังไม่มีรายการหักต่องวด" : "ไม่มีรายการที่มียอดคงเหลือ"}
                 </td>
               </tr>
             )}
@@ -231,6 +248,8 @@ export default function InstallmentDeductionTab({
           <label className="flex flex-col gap-1 text-xs text-gray-500">
             ยอดเงินต้น
             <input
+              type="number"
+              step="any"
               value={form.totalAmount}
               onChange={(e) => setForm({ ...form, totalAmount: e.target.value })}
               className="w-28 rounded border border-gray-300 px-2 py-1 text-sm text-gray-900"
@@ -239,6 +258,8 @@ export default function InstallmentDeductionTab({
           <label className="flex flex-col gap-1 text-xs text-gray-500">
             ยอดหักต่องวด
             <input
+              type="number"
+              step="any"
               value={form.deductPerPeriod}
               onChange={(e) => setForm({ ...form, deductPerPeriod: e.target.value })}
               className="w-28 rounded border border-gray-300 px-2 py-1 text-sm text-gray-900"

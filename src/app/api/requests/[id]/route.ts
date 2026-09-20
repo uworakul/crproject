@@ -16,7 +16,9 @@ export async function GET(_req: NextRequest, ctx: RouteContext<"/api/requests/[i
 
   const header = await prisma.trnRequestHeader.findUnique({
     where: { RequestHeaderID: requestId },
-    include: { Details: { include: { Employee: { select: { FullName: true, EmployeeStatus: true, StartDate: true } } } } },
+    include: {
+      Details: { orderBy: { RequestDetailID: "asc" }, include: { Employee: { select: { FullName: true, EmployeeStatus: true, StartDate: true } } } },
+    },
   });
   if (!header) return apiError(404, "REQUEST_NOT_FOUND");
 

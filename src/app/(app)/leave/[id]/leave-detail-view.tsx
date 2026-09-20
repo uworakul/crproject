@@ -2,7 +2,21 @@
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import Swal from "sweetalert2";
 import { LEAVE_STATUS_LABELS } from "@/lib/leave";
+
+async function confirmDialog(html: string) {
+  const result = await Swal.fire({
+    html,
+    icon: "warning",
+    showCancelButton: true,
+    confirmButtonText: "ยืนยัน",
+    cancelButtonText: "ยกเลิก",
+    confirmButtonColor: "#16a34a",
+    cancelButtonColor: "#9ca3af",
+  });
+  return result.isConfirmed;
+}
 
 interface LeaveDetail {
   LeaveID: number;
@@ -63,6 +77,8 @@ export default function LeaveDetailView({ leave, canSave, canApprove }: { leave:
         <label className="flex flex-col gap-1">
           <span className="text-gray-500">จำนวนวัน</span>
           <input
+            type="number"
+            step="0.5"
             disabled={!isDraft || !canSave}
             value={totalDays}
             onChange={(e) => setTotalDays(e.target.value)}
@@ -93,7 +109,13 @@ export default function LeaveDetailView({ leave, canSave, canApprove }: { leave:
         )}
         {isSubmitted && canApprove && (
           <>
-            <button onClick={() => call("/approve", { method: "POST" })} className="rounded-md bg-green-600 px-4 py-2 text-sm text-white hover:bg-green-700">
+            <button
+              onClick={async () => {
+                if (!(await confirmDialog(`ยืนยันอนุมัติใบลา ${leave.EmpCode} — ${leave.Employee.FullName} (${leave.LeaveType.LeaveTypeName}, ${leave.TotalDays} วัน)?`))) return;
+                await call("/approve", { method: "POST" });
+              }}
+              className="rounded-md bg-green-600 px-4 py-2 text-sm text-white hover:bg-green-700"
+            >
               อนุมัติ
             </button>
             <button onClick={() => call("/reject", { method: "POST" })} className="rounded-md border border-red-300 px-4 py-2 text-sm text-red-600 hover:bg-red-50">

@@ -379,6 +379,8 @@ export default function PayrollWorkspace({
                           <td key={f.key} className="px-2 py-2">
                             {isEditing ? (
                               <input
+                                type="number"
+                                step="any"
                                 value={editForm[f.key] ?? ""}
                                 onChange={(e) => setEditForm({ ...editForm, [f.key]: e.target.value })}
                                 className="w-20 rounded border border-gray-300 px-1 py-0.5 text-xs"

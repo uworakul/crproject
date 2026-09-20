@@ -1,6 +1,20 @@
 "use client";
 
 import { useState } from "react";
+import Swal from "sweetalert2";
+
+async function confirmDeleteRow(): Promise<boolean> {
+  const result = await Swal.fire({
+    html: "ยืนยันการลบประวัติการฝึกอบรมรายการนี้?",
+    icon: "warning",
+    showCancelButton: true,
+    confirmButtonText: "ยืนยัน",
+    cancelButtonText: "ยกเลิก",
+    confirmButtonColor: "#dc2626",
+    cancelButtonColor: "#9ca3af",
+  });
+  return result.isConfirmed;
+}
 
 interface TrainingExperience {
   TrainingExperienceID: number;
@@ -96,6 +110,7 @@ export default function TrainingExperienceTab({
   }
 
   async function remove(id: number) {
+    if (!(await confirmDeleteRow())) return;
     setMessage(null);
     const res = await fetch(`/api/employees/${empCode}/training-experience/${id}`, { method: "DELETE" });
     const body = await res.json().catch(() => ({}));

@@ -1,8 +1,22 @@
 "use client";
 
 import { useState } from "react";
+import Swal from "sweetalert2";
 import { EMPLOYEE_TYPE_VALUES, EMPLOYEE_TYPE_LABELS, type EmployeeType } from "@/lib/validation";
 import { toBuddhistYear, toGregorianYear } from "@/lib/buddhist-year";
+
+async function confirmDeletePeriod(label: string): Promise<boolean> {
+  const result = await Swal.fire({
+    html: `ยืนยันการลบงวด ${label}?`,
+    icon: "warning",
+    showCancelButton: true,
+    confirmButtonText: "ยืนยัน",
+    cancelButtonText: "ยกเลิก",
+    confirmButtonColor: "#dc2626",
+    cancelButtonColor: "#9ca3af",
+  });
+  return result.isConfirmed;
+}
 
 interface Period {
   PeriodID: number;
@@ -83,6 +97,7 @@ export default function PeriodsView({ initialPeriods, canSave, canDelete }: { in
   }
 
   async function remove(p: Period) {
+    if (!(await confirmDeletePeriod(`${p.PeriodMonth}/${toBuddhistYear(p.PeriodYear)}`))) return;
     setMessage(null);
     const res = await fetch(`/api/periods/${p.PeriodID}`, { method: "DELETE" });
     const body = await res.json().catch(() => ({}));
@@ -197,7 +212,7 @@ export default function PeriodsView({ initialPeriods, canSave, canDelete }: { in
             {filteredPeriods.map((p) => {
               const isEditing = editingId === p.PeriodID;
               return (
-                <tr key={p.PeriodID} className="border-t border-gray-100">
+                <tr key={p.PeriodID} className="border-t border-gray-100 hover:bg-purple-50">
                   <td className="px-3 py-2 text-gray-500">{p.PeriodID}</td>
                   <td className="px-3 py-2">{EMPLOYEE_TYPE_LABELS[p.EmployeeType as EmployeeType] ?? p.EmployeeType}</td>
                   <td className="px-3 py-2">
@@ -313,6 +328,7 @@ export default function PeriodsView({ initialPeriods, canSave, canDelete }: { in
           <label className="flex flex-col gap-1 text-xs text-gray-500">
             ปี พ.ศ.
             <input
+              type="number"
               value={form.periodYear}
               onChange={(e) => setForm({ ...form, periodYear: e.target.value })}
               className="w-20 rounded border border-gray-300 px-2 py-1 text-sm text-gray-900"
@@ -321,6 +337,9 @@ export default function PeriodsView({ initialPeriods, canSave, canDelete }: { in
           <label className="flex flex-col gap-1 text-xs text-gray-500">
             เดือน (1-12)
             <input
+              type="number"
+              min="1"
+              max="12"
               value={form.periodMonth}
               onChange={(e) => setForm({ ...form, periodMonth: e.target.value })}
               className="w-16 rounded border border-gray-300 px-2 py-1 text-sm text-gray-900"

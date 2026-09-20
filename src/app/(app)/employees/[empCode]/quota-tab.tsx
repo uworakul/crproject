@@ -65,6 +65,8 @@ export default function QuotaTab({ empCode, initialQuota, canSave }: { empCode: 
                 <td className="px-3 py-2">
                   {canSave ? (
                     <input
+                      type="number"
+                      step="any"
                       value={edits[t] ?? row?.QuotaLimit ?? "0"}
                       onChange={(e) => setEdits({ ...edits, [t]: e.target.value })}
                       className="w-28 rounded border border-gray-300 px-2 py-1 text-sm"

@@ -23,7 +23,7 @@ export default async function StockTransferPage() {
   const [warehouses, products, movements] = JSON.parse(JSON.stringify([warehousesRaw, productsRaw, movementsRaw]));
 
   return (
-    <div className="mx-auto max-w-5xl p-8">
+    <div className="w-full px-6 py-8">
       <h1 className="mb-6 text-lg font-semibold text-gray-900">โอนสินค้าระหว่างคลัง (Transfer)</h1>
       <MovementDocument
         movementType="TRANSFER"

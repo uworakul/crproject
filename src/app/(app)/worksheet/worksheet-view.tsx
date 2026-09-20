@@ -173,6 +173,7 @@ export default function WorksheetView({
 
   async function removeEmployee(empCode: string) {
     if (!data) return;
+    if (!(await confirmDialog(`ยืนยันลบพนักงาน ${empCode} ออกจากใบลงเวลานี้?`))) return;
     const res = await fetch(`/api/worksheets/${data.worksheetId}/employees/${empCode}`, { method: "DELETE" });
     const body = await res.json().catch(() => ({}));
     setMessage(res.ok ? null : body.message || body.error);
@@ -214,6 +215,7 @@ export default function WorksheetView({
 
   async function approve() {
     if (!data) return;
+    if (!(await confirmDialog(`ยืนยันอนุมัติใบลงเวลานี้ (${data.details.length} คน)?`, "#16a34a"))) return;
     const res = await fetch(`/api/worksheets/${data.worksheetId}/approve`, { method: "POST" });
     const body = await res.json().catch(() => ({}));
     setMessage(res.ok ? "อนุมัติแล้ว" : body.message || `${body.error}${body.empCode ? ` (${body.empCode})` : ""}`);

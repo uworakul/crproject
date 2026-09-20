@@ -15,6 +15,7 @@ export default async function RequestsPage() {
       group: g,
       canRead: await hasPermission(user, g.docType, "read"),
       canSave: await hasPermission(user, g.docType, "save"),
+      canDelete: await hasPermission(user, g.docType, "delete"),
     })),
   );
 
@@ -33,7 +34,7 @@ export default async function RequestsPage() {
   const safeHeaders = JSON.parse(JSON.stringify(headersByGroup));
 
   return (
-    <div className="mx-auto max-w-4xl p-8">
+    <div className="w-full px-6 py-8">
       <h1 className="mb-6 text-lg font-semibold text-gray-900">การขออนุมัติ</h1>
       <Tabs
         tabs={visibleGroups.map((v, i) => ({
@@ -45,6 +46,7 @@ export default async function RequestsPage() {
               documentCodes={v.group.documentCodes}
               initialRows={safeHeaders[i]}
               canSave={v.canSave}
+              canDelete={v.canDelete}
             />
           ),
         }))}

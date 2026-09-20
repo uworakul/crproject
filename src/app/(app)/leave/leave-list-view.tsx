@@ -159,7 +159,7 @@ export default function LeaveListView({
           </label>
           <label className="flex flex-col gap-1 text-xs text-gray-500">
             จำนวนวัน
-            <input value={form.totalDays} onChange={(e) => setForm({ ...form, totalDays: e.target.value })} className="w-20 rounded border border-gray-300 px-2 py-1 text-sm text-gray-900" />
+            <input type="number" step="0.5" value={form.totalDays} onChange={(e) => setForm({ ...form, totalDays: e.target.value })} className="w-20 rounded border border-gray-300 px-2 py-1 text-sm text-gray-900" />
           </label>
           {selectedType?.RequireMedicalCert && (
             <label className="flex items-center gap-1 pb-1.5 text-xs text-gray-500">

@@ -619,6 +619,7 @@ model TrnRequestHeader {
   UpdatedBy       String?   @db.VarChar(20)
 
   Details  TrnRequestDetail[]
+  Debts    InvEmployeeDebt[]
   Creator  SysUser  @relation("RequestHeaderCreatedBy", fields: [CreatedBy], references: [UserID], map: "FK_trn_request_header_sys_user_created", onUpdate: NoAction, onDelete: NoAction)
   Approver SysUser? @relation("RequestHeaderApprovedBy", fields: [ApprovedBy], references: [UserID], map: "FK_trn_request_header_sys_user_approved", onUpdate: NoAction, onDelete: NoAction)
   Rejecter SysUser? @relation("RequestHeaderRejectedBy", fields: [RejectedBy], references: [UserID], map: "FK_trn_request_header_sys_user_rejected", onUpdate: NoAction, onDelete: NoAction)
@@ -754,6 +755,11 @@ model InvEmployeeDebt {
   // in the approved DDL for this table to extend).
   MovementID      Int?
   DeductionCode   String?   @db.VarChar(10)
+  // Set only for debts created by approving a Request (trn_request_header) —
+  // lets the "รายการหักต่องวด" tab show the source document's เลขที่เอกสาร/
+  // วันที่อนุมัติ. Null for MovementID-origin debts and for debts created
+  // directly on this tab with no underlying document.
+  RequestHeaderID Int?
   Description     String?   @db.NVarChar(200) // free-text note for manually-created (DeductionCode-origin) debts
   TotalAmount     Decimal   @default(0) @db.Decimal(12, 2)
   PaidAmount      Decimal   @default(0) @db.Decimal(12, 2)
@@ -768,6 +774,7 @@ model InvEmployeeDebt {
   Employee      MstEmployee       @relation(fields: [EmpCode], references: [EmpCode], map: "FK_inv_employee_debt_employee", onUpdate: NoAction, onDelete: NoAction)
   Movement      InvStockMovement? @relation(fields: [MovementID], references: [MovementID], map: "FK_inv_employee_debt_movement", onUpdate: NoAction, onDelete: NoAction)
   DeductionType RefDeductionType? @relation(fields: [DeductionCode], references: [DeductionCode], map: "FK_inv_employee_debt_deduction_type", onUpdate: NoAction, onDelete: NoAction)
+  RequestHeader TrnRequestHeader? @relation(fields: [RequestHeaderID], references: [RequestHeaderID], map: "FK_inv_employee_debt_request_header", onUpdate: NoAction, onDelete: NoAction)
 
   @@map("inv_employee_debt")
 }

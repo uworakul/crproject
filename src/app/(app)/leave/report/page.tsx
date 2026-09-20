@@ -14,7 +14,7 @@ export default async function LeaveReportPage() {
   const employees = await prisma.mstEmployee.findMany({ orderBy: { EmpCode: "asc" }, select: { EmpCode: true, FullName: true } });
 
   return (
-    <div className="mx-auto max-w-4xl p-8">
+    <div className="w-full px-6 py-8">
       <h1 className="mb-6 text-lg font-semibold text-gray-900">รายงานประวัติการลา</h1>
       <LeaveReportView employees={employees} />
     </div>

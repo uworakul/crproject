@@ -25,7 +25,7 @@ export default async function SitesPage() {
   const sites = JSON.parse(JSON.stringify(sitesRaw));
 
   return (
-    <div className="mx-auto max-w-3xl p-8">
+    <div className="w-full px-6 py-8">
       <h1 className="mb-6 text-lg font-semibold text-gray-900">หน่วยงาน (Site)</h1>
       <ReferenceTable
         apiBase="/api/sites"

@@ -19,7 +19,7 @@ export default async function UsersPage() {
   const canCreate = await hasPermission(user, "USER", "save");
 
   return (
-    <div className="mx-auto max-w-4xl p-8">
+    <div className="w-full px-6 py-8">
       <div className="mb-6 flex items-center justify-between">
         <h1 className="text-lg font-semibold text-gray-900">ผู้ใช้งาน</h1>
         {canCreate && (

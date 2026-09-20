@@ -4,12 +4,19 @@ import Link from "next/link";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { confirmDeleteEmployee } from "./confirm-delete-employee";
+import { EMPLOYEE_STATUS_LABELS, type EmployeeStatus } from "@/lib/validation";
+
+function fmtDate(v: Date | string | null) {
+  return v ? new Date(v).toLocaleDateString("th-TH") : "-";
+}
 
 interface EmployeeRow {
   EmpCode: string;
   FullName: string;
   EmployeeStatus: string;
   EmployeeType: string;
+  StartDate: Date | string | null;
+  ResignDate: Date | string | null;
   DeptCode: string | null;
   DeptName: string | null;
   PositionName: string | null;
@@ -99,6 +106,9 @@ export default function EmployeesTable({
             <th className="px-3 py-2 font-medium">แผนก</th>
             <th className="px-3 py-2 font-medium">ตำแหน่ง</th>
             <th className="px-3 py-2 font-medium">หน่วยงาน</th>
+            <th className="px-3 py-2 font-medium">วันเริ่มงาน</th>
+            <th className="px-3 py-2 font-medium">สถานะ</th>
+            <th className="px-3 py-2 font-medium">วันลาออก</th>
             {canDelete && <th className="px-3 py-2"></th>}
           </tr>
         </thead>
@@ -114,6 +124,9 @@ export default function EmployeesTable({
               <td className="px-3 py-2 text-gray-500">{e.DeptName ?? "-"}</td>
               <td className="px-3 py-2 text-gray-500">{e.PositionName ?? "-"}</td>
               <td className="px-3 py-2 text-gray-500">{e.SiteName ?? "-"}</td>
+              <td className="px-3 py-2 text-gray-500">{fmtDate(e.StartDate)}</td>
+              <td className="px-3 py-2 text-gray-500">{EMPLOYEE_STATUS_LABELS[e.EmployeeStatus as EmployeeStatus] ?? e.EmployeeStatus}</td>
+              <td className="px-3 py-2 text-gray-500">{fmtDate(e.ResignDate)}</td>
               {canDelete && (
                 <td className="whitespace-nowrap px-3 py-2 text-right">
                   <button onClick={() => handleDelete(e)} className="text-red-500 hover:underline">
@@ -125,7 +138,7 @@ export default function EmployeesTable({
           ))}
           {filtered.length === 0 && (
             <tr>
-              <td colSpan={canDelete ? 6 : 5} className="px-3 py-6 text-center text-gray-400">
+              <td colSpan={canDelete ? 9 : 8} className="px-3 py-6 text-center text-gray-400">
                 ไม่พบพนักงานตามเงื่อนไขที่เลือก
               </td>
             </tr>

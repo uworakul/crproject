@@ -1,6 +1,20 @@
 "use client";
 
 import { useState } from "react";
+import Swal from "sweetalert2";
+
+async function confirmDeleteType(code: string): Promise<boolean> {
+  const result = await Swal.fire({
+    html: `ยืนยันการลบประเภทการลา ${code}?`,
+    icon: "warning",
+    showCancelButton: true,
+    confirmButtonText: "ยืนยัน",
+    cancelButtonText: "ยกเลิก",
+    confirmButtonColor: "#dc2626",
+    cancelButtonColor: "#9ca3af",
+  });
+  return result.isConfirmed;
+}
 
 interface LeaveType {
   LeaveTypeCode: string;
@@ -95,6 +109,7 @@ export default function LeaveTypesView({ initialRows, canSave, canDelete }: { in
   }
 
   async function remove(code: string) {
+    if (!(await confirmDeleteType(code))) return;
     setMessage(null);
     const res = await fetch(`/api/leave/types/${code}`, { method: "DELETE" });
     const body = await res.json().catch(() => ({}));
@@ -142,7 +157,7 @@ export default function LeaveTypesView({ initialRows, canSave, canDelete }: { in
             {sortedRows.map((t) => {
               const isEditing = editingCode === t.LeaveTypeCode;
               return (
-                <tr key={t.LeaveTypeCode} className="border-t border-gray-100">
+                <tr key={t.LeaveTypeCode} className="border-t border-gray-100 hover:bg-purple-50">
                   <td className="px-3 py-2">{t.LeaveTypeCode}</td>
                   <td className="px-3 py-2">
                     {isEditing ? (
@@ -158,6 +173,8 @@ export default function LeaveTypesView({ initialRows, canSave, canDelete }: { in
                   <td className="px-3 py-2">
                     {isEditing ? (
                       <input
+                        type="number"
+                        step="any"
                         value={editForm.maxDaysPerYear}
                         onChange={(e) => setEditForm({ ...editForm, maxDaysPerYear: e.target.value })}
                         className="w-20 rounded border border-gray-300 px-2 py-1 text-sm"
@@ -241,6 +258,8 @@ export default function LeaveTypesView({ initialRows, canSave, canDelete }: { in
           <label className="flex flex-col gap-1 text-xs text-gray-500">
             สิทธิ/ปี (วัน)
             <input
+              type="number"
+              step="any"
               value={form.maxDaysPerYear}
               onChange={(e) => setForm({ ...form, maxDaysPerYear: e.target.value })}
               className="w-20 rounded border border-gray-300 px-2 py-1 text-sm text-gray-900"

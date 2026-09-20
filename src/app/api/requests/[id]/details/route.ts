@@ -45,6 +45,18 @@ export async function POST(request: NextRequest, ctx: RouteContext<"/api/request
   const employee = await prisma.mstEmployee.findUnique({ where: { EmpCode: empCode } });
   if (!employee) return apiError(404, "EMPLOYEE_NOT_FOUND", undefined, { empCode });
 
+  // Ordered the same way the detail page renders rows (RequestDetailID asc,
+  // i.e. insertion order) so the reported position matches what the user sees.
+  const existingDetails = await prisma.trnRequestDetail.findMany({
+    where: { RequestHeaderID: requestId },
+    orderBy: { RequestDetailID: "asc" },
+    select: { EmpCode: true },
+  });
+  const existingIndex = existingDetails.findIndex((d) => d.EmpCode === empCode);
+  if (existingIndex !== -1) {
+    return apiError(409, "EMPLOYEE_ALREADY_IN_REQUEST", `มีรายการนี้แล้ว ในลำดับที่ ${existingIndex + 1}`, { empCode });
+  }
+
   const created = await prisma.trnRequestDetail.create({
     data: {
       RequestHeaderID: requestId,

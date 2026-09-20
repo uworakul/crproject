@@ -83,7 +83,7 @@ export default async function AuditLogPage({
   }>;
 
   return (
-    <div className="mx-auto max-w-5xl p-8">
+    <div className="w-full px-6 py-8">
       <h1 className="mb-6 text-lg font-semibold text-gray-900">Audit Log</h1>
 
       <form method="get" className="mb-4 flex flex-wrap items-end gap-3 rounded-lg border border-gray-200 bg-white p-3">

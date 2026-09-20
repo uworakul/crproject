@@ -4,10 +4,7 @@ import { verifySession } from "@/lib/dal";
 import { hasPermission } from "@/lib/authorize";
 import { prisma } from "@/lib/prisma";
 import { REQUEST_DOCUMENT_CODE_VALUES, REQUEST_DOCUMENT_DOCTYPE, isValidRequestDocumentCode } from "@/lib/request";
-
-function money(v: string | number) {
-  return Number(v).toLocaleString("th-TH", { minimumFractionDigits: 2 });
-}
+import DraftListTable from "./draft-list-table";
 
 export default async function DraftListPage({
   searchParams,
@@ -25,6 +22,12 @@ export default async function DraftListPage({
   const visibleCodes = (
     await Promise.all(REQUEST_DOCUMENT_CODE_VALUES.map(async (c) => ((await hasPermission(user, REQUEST_DOCUMENT_DOCTYPE[c], "read")) ? c : null)))
   ).filter((c): c is (typeof REQUEST_DOCUMENT_CODE_VALUES)[number] => c !== null);
+
+  // Per-code approve permission — a user might have read but not approve
+  // access for some document codes, so this can't just reuse visibleCodes.
+  const canApproveByCode = Object.fromEntries(
+    await Promise.all(REQUEST_DOCUMENT_CODE_VALUES.map(async (c) => [c, await hasPermission(user, REQUEST_DOCUMENT_DOCTYPE[c], "approve")] as const)),
+  );
 
   let documentCodes: string[] = visibleCodes;
   if (documentCode && isValidRequestDocumentCode(documentCode) && visibleCodes.includes(documentCode)) {
@@ -48,7 +51,7 @@ export default async function DraftListPage({
   });
 
   return (
-    <div className="mx-auto max-w-4xl p-8">
+    <div className="w-full px-6 py-8">
       <h1 className="mb-6 text-lg font-semibold text-gray-900">รายการรออนุมัติ</h1>
 
       <form method="get" className="mb-4 flex flex-wrap items-end gap-3 rounded-lg border border-gray-200 bg-white p-3">
@@ -79,46 +82,7 @@ export default async function DraftListPage({
         </Link>
       </form>
 
-      <div className="overflow-x-auto rounded-lg border border-gray-200 bg-white">
-        <table className="w-full border-collapse text-sm">
-          <thead className="border-b border-gray-200 bg-gray-50 text-left text-gray-500">
-            <tr>
-              <th className="px-3 py-2 font-medium">รหัสเอกสาร</th>
-              <th className="px-3 py-2 font-medium">เลขที่เอกสาร</th>
-              <th className="px-3 py-2 font-medium">วันที่</th>
-              <th className="px-3 py-2 font-medium text-right">จำนวนรายการ</th>
-              <th className="px-3 py-2 font-medium text-right">ยอดเงินรวม</th>
-              <th className="px-3 py-2 font-medium">ส่งเมื่อ</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((r) => {
-              const total = r.Details.reduce((sum, d) => sum + Number(d.Amount), 0);
-              return (
-                <tr key={r.RequestHeaderID} className="border-t border-gray-100 hover:bg-gray-50">
-                  <td className="px-3 py-2">
-                    <Link href={`/requests/${r.RequestHeaderID}`} className="text-gray-900 hover:underline">
-                      {r.DocumentCode}
-                    </Link>
-                  </td>
-                  <td className="px-3 py-2 text-gray-500">{r.DocumentNo ?? "-"}</td>
-                  <td className="px-3 py-2 text-gray-500">{new Date(r.RequestDate).toLocaleDateString("th-TH")}</td>
-                  <td className="px-3 py-2 text-right">{r.Details.length}</td>
-                  <td className="px-3 py-2 text-right">{money(total)}</td>
-                  <td className="px-3 py-2 text-gray-500">{r.SubmittedDate ? new Date(r.SubmittedDate).toLocaleString("th-TH") : "-"}</td>
-                </tr>
-              );
-            })}
-            {rows.length === 0 && (
-              <tr>
-                <td colSpan={6} className="px-3 py-6 text-center text-gray-400">
-                  ไม่มีรายการรออนุมัติ
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-      </div>
+      <DraftListTable rows={JSON.parse(JSON.stringify(rows))} canApproveByCode={canApproveByCode} />
     </div>
   );
 }

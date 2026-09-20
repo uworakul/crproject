@@ -18,7 +18,7 @@ export default async function PeriodsPage() {
   ]);
 
   return (
-    <div className="mx-auto max-w-4xl p-8">
+    <div className="w-full px-6 py-8">
       <h1 className="mb-6 text-lg font-semibold text-gray-900">งวดการจ่าย</h1>
       <PeriodsView initialPeriods={JSON.parse(JSON.stringify(periods))} canSave={canSave} canDelete={canDelete} />
     </div>

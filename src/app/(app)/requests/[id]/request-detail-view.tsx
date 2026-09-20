@@ -2,6 +2,21 @@
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import Swal from "sweetalert2";
+import SearchableSelect from "../../searchable-select";
+
+async function confirmDialog(html: string) {
+  const result = await Swal.fire({
+    html,
+    icon: "warning",
+    showCancelButton: true,
+    confirmButtonText: "ยืนยัน",
+    cancelButtonText: "ยกเลิก",
+    confirmButtonColor: "#dc2626",
+    cancelButtonColor: "#9ca3af",
+  });
+  return result.isConfirmed;
+}
 
 interface DetailRow {
   RequestDetailID: number;
@@ -45,10 +60,12 @@ export default function RequestDetailView({
   request,
   canSave,
   canApprove,
+  employees,
 }: {
   request: RequestDoc;
   canSave: boolean;
   canApprove: boolean;
+  employees: { EmpCode: string; FullName: string }[];
 }) {
   const router = useRouter();
   const [remark, setRemark] = useState(request.Remark ?? "");
@@ -76,6 +93,11 @@ export default function RequestDetailView({
 
   async function addRow() {
     if (!newRow.empCode.trim() || !newRow.amount) return;
+    const existingIndex = request.Details.findIndex((d) => d.EmpCode === newRow.empCode);
+    if (existingIndex !== -1) {
+      setMessage(`มีรายการนี้แล้ว ในลำดับที่ ${existingIndex + 1}`);
+      return;
+    }
     const ok = await call("/details", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(newRow) });
     if (ok) setNewRow({ empCode: "", amount: "", deductPerPeriod: "" });
   }
@@ -94,8 +116,9 @@ export default function RequestDetailView({
     if (ok) setEditingId(null);
   }
 
-  async function deleteRow(detailId: number) {
-    await call(`/details/${detailId}`, { method: "DELETE" });
+  async function deleteRow(d: DetailRow) {
+    if (!(await confirmDialog(`ยืนยันลบรายการของ ${d.EmpCode} — ${d.Employee.FullName}?`))) return;
+    await call(`/details/${d.RequestDetailID}`, { method: "DELETE" });
   }
 
   const canEditRows = canSave && request.Status !== "APPROVED";
@@ -146,6 +169,7 @@ export default function RequestDetailView({
         <table className="w-full border-collapse text-sm">
           <thead className="border-b border-gray-200 bg-gray-50 text-left text-gray-500">
             <tr>
+              <th className="px-3 py-2 font-medium">ลำดับที่</th>
               <th className="px-3 py-2 font-medium">รหัสพนักงาน</th>
               <th className="px-3 py-2 font-medium">ชื่อพนักงาน</th>
               <th className="px-3 py-2 font-medium">สถานะพนักงาน</th>
@@ -156,10 +180,11 @@ export default function RequestDetailView({
             </tr>
           </thead>
           <tbody>
-            {request.Details.map((d) => {
+            {request.Details.map((d, i) => {
               const isEditing = editingId === d.RequestDetailID;
               return (
                 <tr key={d.RequestDetailID} className="border-t border-gray-100">
+                  <td className="px-3 py-2 text-gray-500">{i + 1}</td>
                   <td className="px-3 py-2">{d.EmpCode}</td>
                   <td className="px-3 py-2">{d.Employee.FullName}</td>
                   <td className="px-3 py-2 text-gray-500">{EMP_STATUS_LABEL[d.Employee.EmployeeStatus] ?? d.Employee.EmployeeStatus}</td>
@@ -167,6 +192,8 @@ export default function RequestDetailView({
                   <td className="px-3 py-2 text-right">
                     {isEditing ? (
                       <input
+                        type="number"
+                        step="0.01"
                         value={editForm.amount}
                         onChange={(e) => setEditForm({ ...editForm, amount: e.target.value })}
                         className="w-24 rounded border border-gray-300 px-2 py-1 text-right text-sm"
@@ -178,6 +205,8 @@ export default function RequestDetailView({
                   <td className="px-3 py-2 text-right">
                     {isEditing ? (
                       <input
+                        type="number"
+                        step="0.01"
                         value={editForm.deductPerPeriod}
                         onChange={(e) => setEditForm({ ...editForm, deductPerPeriod: e.target.value })}
                         className="w-24 rounded border border-gray-300 px-2 py-1 text-right text-sm"
@@ -202,7 +231,7 @@ export default function RequestDetailView({
                           <button onClick={() => startEdit(d)} className="text-gray-500 hover:text-gray-900 hover:underline">
                             แก้ไข
                           </button>
-                          <button onClick={() => deleteRow(d.RequestDetailID)} className="text-red-500 hover:underline">
+                          <button onClick={() => deleteRow(d)} className="text-red-500 hover:underline">
                             ลบ
                           </button>
                         </div>
@@ -214,7 +243,7 @@ export default function RequestDetailView({
             })}
             {request.Details.length === 0 && (
               <tr>
-                <td colSpan={canEditRows ? 7 : 6} className="px-3 py-6 text-center text-gray-400">
+                <td colSpan={canEditRows ? 8 : 7} className="px-3 py-6 text-center text-gray-400">
                   ยังไม่มีรายการพนักงาน
                 </td>
               </tr>
@@ -227,29 +256,40 @@ export default function RequestDetailView({
         <div className="flex flex-wrap items-end gap-2 rounded-lg border border-dashed border-gray-300 p-3">
           <label className="flex flex-col gap-1 text-xs text-gray-500">
             รหัสพนักงาน
-            <input
-              value={newRow.empCode}
-              onChange={(e) => setNewRow({ ...newRow, empCode: e.target.value })}
-              className="w-32 rounded border border-gray-300 px-2 py-1 text-sm text-gray-900"
-            />
+            <div className="w-56">
+              <SearchableSelect
+                value={newRow.empCode}
+                onChange={(code) => setNewRow({ ...newRow, empCode: code })}
+                options={employees.map((e) => ({ code: e.EmpCode, label: `${e.EmpCode} — ${e.FullName}` }))}
+                placeholder="ค้นหารหัส/ชื่อพนักงาน"
+              />
+            </div>
           </label>
           <label className="flex flex-col gap-1 text-xs text-gray-500">
             ยอดเงิน
             <input
+              type="number"
+              step="0.01"
               value={newRow.amount}
-              onChange={(e) => setNewRow({ ...newRow, amount: e.target.value })}
+              onChange={(e) => setNewRow({ ...newRow, amount: e.target.value, deductPerPeriod: e.target.value })}
               className="w-28 rounded border border-gray-300 px-2 py-1 text-sm text-gray-900"
             />
           </label>
           <label className="flex flex-col gap-1 text-xs text-gray-500">
             หักงวดละ
             <input
+              type="number"
+              step="0.01"
               value={newRow.deductPerPeriod}
               onChange={(e) => setNewRow({ ...newRow, deductPerPeriod: e.target.value })}
               className="w-28 rounded border border-gray-300 px-2 py-1 text-sm text-gray-900"
             />
           </label>
-          <button onClick={addRow} className="rounded-md bg-gray-900 px-3 py-1.5 text-sm text-white hover:bg-gray-700">
+          <button
+            onClick={addRow}
+            disabled={request.Details.some((d) => d.EmpCode === newRow.empCode)}
+            className="rounded-md bg-gray-900 px-3 py-1.5 text-sm text-white hover:bg-gray-700 disabled:opacity-50"
+          >
             + เพิ่มรายการ
           </button>
         </div>
@@ -268,7 +308,13 @@ export default function RequestDetailView({
         )}
         {request.Status === "SUBMITTED" && canApprove && (
           <>
-            <button onClick={() => call("/approve", { method: "POST" })} className="rounded-md bg-green-600 px-4 py-2 text-sm text-white hover:bg-green-700">
+            <button
+              onClick={async () => {
+                if (!(await confirmDialog(`ยืนยันอนุมัติเอกสาร ${request.DocumentCode} ${request.DocumentNo ? `#${request.DocumentNo}` : ""} จำนวน ${request.Details.length} รายการ ยอดรวม ${money(totalAmount)} บาท?`))) return;
+                await call("/approve", { method: "POST" });
+              }}
+              className="rounded-md bg-green-600 px-4 py-2 text-sm text-white hover:bg-green-700"
+            >
               อนุมัติ
             </button>
             <div className="flex items-center gap-2">

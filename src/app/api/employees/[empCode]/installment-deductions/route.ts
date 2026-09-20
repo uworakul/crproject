@@ -18,7 +18,10 @@ export async function GET(_req: NextRequest, ctx: RouteContext<"/api/employees/[
   const { empCode } = await ctx.params;
   const rows = await prisma.invEmployeeDebt.findMany({
     where: { EmpCode: empCode },
-    include: { DeductionType: { select: { DeductionCode: true, DeductionName: true } } },
+    include: {
+      DeductionType: { select: { DeductionCode: true, DeductionName: true } },
+      RequestHeader: { select: { DocumentNo: true, ApprovedDate: true } },
+    },
     orderBy: { DebtID: "desc" },
   });
   return apiSuccess(rows);

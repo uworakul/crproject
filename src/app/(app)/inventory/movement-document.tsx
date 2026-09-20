@@ -1,6 +1,20 @@
 "use client";
 
 import { useState } from "react";
+import Swal from "sweetalert2";
+
+async function confirmDeleteMovement(movementId: number): Promise<boolean> {
+  const result = await Swal.fire({
+    html: `ยืนยันการลบเอกสาร #${movementId} นี้?`,
+    icon: "warning",
+    showCancelButton: true,
+    confirmButtonText: "ยืนยัน",
+    cancelButtonText: "ยกเลิก",
+    confirmButtonColor: "#dc2626",
+    cancelButtonColor: "#9ca3af",
+  });
+  return result.isConfirmed;
+}
 
 export type MovementType = "ADJUST" | "PURCHASE" | "TRANSFER" | "ISSUE" | "RETURN";
 
@@ -170,6 +184,7 @@ export default function MovementDocument({
 
   async function handleDelete() {
     if (!selected) return;
+    if (!(await confirmDeleteMovement(selected.MovementID))) return;
     setMessage(null);
     const res = await fetch(`/api/inventory/movements/${selected.MovementID}`, { method: "DELETE" });
     const body = await res.json().catch(() => ({}));
@@ -390,6 +405,8 @@ export default function MovementDocument({
                   <td className="py-1 pr-2">
                     {!selected || selected.Status === "DRAFT" ? (
                       <input
+                        type="number"
+                        step="any"
                         value={l.qty}
                         onChange={(e) => updateLine(i, { qty: e.target.value })}
                         className="w-24 rounded border border-gray-300 px-2 py-1 text-sm"
@@ -401,6 +418,8 @@ export default function MovementDocument({
                   <td className="py-1 pr-2">
                     {!selected || selected.Status === "DRAFT" ? (
                       <input
+                        type="number"
+                        step="any"
                         value={l.unitPrice}
                         onChange={(e) => updateLine(i, { unitPrice: e.target.value })}
                         className="w-24 rounded border border-gray-300 px-2 py-1 text-sm"
@@ -433,7 +452,7 @@ export default function MovementDocument({
           {movementType === "ISSUE" && selected?.Status === "DRAFT" && canApprove && (
             <label className="mb-3 flex flex-col gap-1 text-xs text-gray-500">
               ชำระทันที (บาท) — ส่วนที่เหลือจะตั้งเป็นหนี้พนักงานอัตโนมัติ
-              <input value={paidAmount} onChange={(e) => setPaidAmount(e.target.value)} className="w-40 rounded border border-gray-300 px-2 py-1 text-sm" />
+              <input type="number" step="any" value={paidAmount} onChange={(e) => setPaidAmount(e.target.value)} className="w-40 rounded border border-gray-300 px-2 py-1 text-sm" />
             </label>
           )}
 

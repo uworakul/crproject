@@ -1,6 +1,20 @@
 "use client";
 
 import { useState } from "react";
+import Swal from "sweetalert2";
+
+async function confirmDeleteRow(): Promise<boolean> {
+  const result = await Swal.fire({
+    html: "ยืนยันการลบประวัติการทำงานรายการนี้?",
+    icon: "warning",
+    showCancelButton: true,
+    confirmButtonText: "ยืนยัน",
+    cancelButtonText: "ยกเลิก",
+    confirmButtonColor: "#dc2626",
+    cancelButtonColor: "#9ca3af",
+  });
+  return result.isConfirmed;
+}
 
 interface WorkExperience {
   WorkExperienceID: number;
@@ -88,6 +102,7 @@ export default function WorkExperienceTab({ empCode, initialRows, canSave }: { e
   }
 
   async function remove(id: number) {
+    if (!(await confirmDeleteRow())) return;
     setMessage(null);
     const res = await fetch(`/api/employees/${empCode}/work-experience/${id}`, { method: "DELETE" });
     const body = await res.json().catch(() => ({}));

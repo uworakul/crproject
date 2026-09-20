@@ -24,7 +24,7 @@ export default async function StockIssuePage() {
   const [warehouses, employees, products, movements] = JSON.parse(JSON.stringify([warehousesRaw, employeesRaw, productsRaw, movementsRaw]));
 
   return (
-    <div className="mx-auto max-w-5xl p-8">
+    <div className="w-full px-6 py-8">
       <h1 className="mb-6 text-lg font-semibold text-gray-900">จำหน่ายสินค้า/เครื่องแบบ (Issue)</h1>
       <MovementDocument
         movementType="ISSUE"

@@ -60,7 +60,7 @@ export default function LeaveReportView({ employees }: { employees: { EmpCode: s
         </label>
         <label className="flex flex-col gap-1 text-xs text-gray-500">
           ปี (พ.ศ., ไม่ระบุ = ทั้งหมด)
-          <input value={year} onChange={(e) => setYear(e.target.value)} className="w-28 rounded border border-gray-300 px-2 py-1 text-sm text-gray-900" />
+          <input type="number" value={year} onChange={(e) => setYear(e.target.value)} className="w-28 rounded border border-gray-300 px-2 py-1 text-sm text-gray-900" />
         </label>
         <button onClick={load} className="rounded-md bg-gray-900 px-3 py-1.5 text-sm text-white hover:bg-gray-700">
           แสดงรายงาน

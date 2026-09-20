@@ -3,7 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { EMPLOYEE_TYPE_VALUES, EMPLOYEE_TYPE_LABELS, EMPLOYEE_STATUS_VALUES, EMPLOYEE_STATUS_LABELS } from "@/lib/validation";
-import SearchableSelect from "./searchable-select";
+import SearchableSelect from "../../searchable-select";
 import { confirmDeleteEmployee } from "../confirm-delete-employee";
 
 interface Employee {
