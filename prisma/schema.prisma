@@ -292,19 +292,34 @@ model SysUser {
 
   DefaultSite MstSite? @relation(fields: [DefaultSiteCode], references: [SiteCode], map: "FK_sys_user_mst_site", onUpdate: NoAction, onDelete: NoAction)
 
-  Permissions             SysUserPermission[]
-  ProcessLogs             SysProcessLog[]
-  Sessions                SysSession[]
-  RecordedEmployeeHistory MstEmployeeHistory[]
-  CreatedRequestHeaders   TrnRequestHeader[]       @relation("RequestHeaderCreatedBy")
-  ApprovedRequestHeaders  TrnRequestHeader[]       @relation("RequestHeaderApprovedBy")
-  RejectedRequestHeaders  TrnRequestHeader[]       @relation("RequestHeaderRejectedBy")
-  CreatedStockMovements   InvStockMovement[]
-  CreatedWorksheetHeaders TrnWorksheetHeader[]
-  CalculatedPayrollLogs   TrnPayrollCalculateLog[]
-  PayrollLocks            TrnPayrollLock[]
-  CreatedLeaveRequests    TrnLeaveRequest[]        @relation("LeaveCreatedBy")
-  ApprovedLeaveRequests   TrnLeaveRequest[]        @relation("LeaveApprovedBy")
+  Permissions               SysUserPermission[]
+  ProcessLogs               SysProcessLog[]
+  Sessions                  SysSession[]
+  RecordedEmployeeHistory   MstEmployeeHistory[]
+  CreatedRequestHeaders     TrnRequestHeader[]       @relation("RequestHeaderCreatedBy")
+  ApprovedRequestHeaders    TrnRequestHeader[]       @relation("RequestHeaderApprovedBy")
+  RejectedRequestHeaders    TrnRequestHeader[]       @relation("RequestHeaderRejectedBy")
+  CreatedStockMovements     InvStockMovement[]
+  CreatedWorksheetHeaders   TrnWorksheetHeader[]
+  CalculatedPayrollLogs     TrnPayrollCalculateLog[]
+  PayrollLocks              TrnPayrollLock[]
+  CreatedLeaveRequests      TrnLeaveRequest[]        @relation("LeaveCreatedBy")
+  ApprovedLeaveRequests     TrnLeaveRequest[]        @relation("LeaveApprovedBy")
+  CreatedStockCountHeaders  InvStockCountHeader[]    @relation("StockCountHeaderCreatedBy")
+  ApprovedStockCountHeaders InvStockCountHeader[]    @relation("StockCountHeaderApprovedBy")
+  RejectedStockCountHeaders InvStockCountHeader[]    @relation("StockCountHeaderRejectedBy")
+  CreatedPurchaseHeaders    InvPurchaseHeader[]      @relation("PurchaseHeaderCreatedBy")
+  ApprovedPurchaseHeaders   InvPurchaseHeader[]      @relation("PurchaseHeaderApprovedBy")
+  RejectedPurchaseHeaders   InvPurchaseHeader[]      @relation("PurchaseHeaderRejectedBy")
+  CreatedTransferHeaders    InvTransferHeader[]      @relation("TransferHeaderCreatedBy")
+  ApprovedTransferHeaders   InvTransferHeader[]      @relation("TransferHeaderApprovedBy")
+  RejectedTransferHeaders   InvTransferHeader[]      @relation("TransferHeaderRejectedBy")
+  CreatedIssueHeaders       InvIssueHeader[]         @relation("IssueHeaderCreatedBy")
+  ApprovedIssueHeaders      InvIssueHeader[]         @relation("IssueHeaderApprovedBy")
+  RejectedIssueHeaders      InvIssueHeader[]         @relation("IssueHeaderRejectedBy")
+  CreatedReturnHeaders      InvReturnHeader[]        @relation("ReturnHeaderCreatedBy")
+  ApprovedReturnHeaders     InvReturnHeader[]        @relation("ReturnHeaderApprovedBy")
+  RejectedReturnHeaders     InvReturnHeader[]        @relation("ReturnHeaderRejectedBy")
 
   @@map("sys_user")
 }
@@ -434,60 +449,60 @@ model MstEmployee {
   // All nullable: existing rows have none of this data, and it's filled in
   // gradually by HR through the employee detail page after creation, same
   // pattern already established for DailyRate/PhotoPath.
-  Title              String?   @db.NVarChar(20)
-  FirstName          String?   @db.NVarChar(100)
-  LastName           String?   @db.NVarChar(100)
-  BirthDate          DateTime? @db.Date
-  CompanyCode        String?   @db.VarChar(10)
-  ProbationPassDate  DateTime? @db.Date
-  CertificateNo      String?   @db.VarChar(50)
-  IDCardIssuedBy     String?   @db.NVarChar(100)
-  IDCardIssueDate    DateTime? @db.Date
-  IDCardExpiryDate   DateTime? @db.Date
-  IDCardAddress      String?   @db.NVarChar(300)
-  PhoneNo            String?   @db.VarChar(20)
-  EmergencyContactName  String? @db.NVarChar(150)
-  EmergencyContactPhone String? @db.VarChar(20)
-  GuarantorName      String?   @db.NVarChar(150)
+  Title                        String?   @db.NVarChar(20)
+  FirstName                    String?   @db.NVarChar(100)
+  LastName                     String?   @db.NVarChar(100)
+  BirthDate                    DateTime? @db.Date
+  CompanyCode                  String?   @db.VarChar(10)
+  ProbationPassDate            DateTime? @db.Date
+  CertificateNo                String?   @db.VarChar(50)
+  IDCardIssuedBy               String?   @db.NVarChar(100)
+  IDCardIssueDate              DateTime? @db.Date
+  IDCardExpiryDate             DateTime? @db.Date
+  IDCardAddress                String?   @db.NVarChar(300)
+  PhoneNo                      String?   @db.VarChar(20)
+  EmergencyContactName         String?   @db.NVarChar(150)
+  EmergencyContactPhone        String?   @db.VarChar(20)
+  GuarantorName                String?   @db.NVarChar(150)
   // Deliberately stored only, not wired into calculateTaxWithheld() — the
   // approved payroll tax design uses a single flat PERSONAL deduction only
   // (see CLAUDE.md, Payroll module). Confirmed with the user 2026-09-19.
-  MaritalStatus      String?   @db.VarChar(10) // suggested: SINGLE | MARRIED | DIVORCED | WIDOWED — no DB CHECK, informational
-  ChildrenCount       Int?     @default(0)
-  ParentSupportAmount        Decimal? @db.Decimal(12, 2) // อุปการะบิดามารดา
-  LifeInsurancePremium       Decimal? @db.Decimal(12, 2) // เบี้ยประกันชีวิต
-  HealthInsurancePremium     Decimal? @db.Decimal(12, 2) // เบี้ยประกันสุขภาพ
-  ParentHealthInsurancePremium Decimal? @db.Decimal(12, 2) // เบี้ยประกันสุขภาพบิดามารดา
-  RMFPurchaseAmount          Decimal? @db.Decimal(12, 2) // ยอดซื้อกองทุน RMF ในปี
-  HomeLoanInterestAmount     Decimal? @db.Decimal(12, 2) // ยอดดอกเบี้ยบ้าน
-  DonationAmount             Decimal? @db.Decimal(12, 2) // ยอดเงินบริจาค
+  MaritalStatus                String?   @db.VarChar(10) // suggested: SINGLE | MARRIED | DIVORCED | WIDOWED — no DB CHECK, informational
+  ChildrenCount                Int?      @default(0)
+  ParentSupportAmount          Decimal?  @db.Decimal(12, 2) // อุปการะบิดามารดา
+  LifeInsurancePremium         Decimal?  @db.Decimal(12, 2) // เบี้ยประกันชีวิต
+  HealthInsurancePremium       Decimal?  @db.Decimal(12, 2) // เบี้ยประกันสุขภาพ
+  ParentHealthInsurancePremium Decimal?  @db.Decimal(12, 2) // เบี้ยประกันสุขภาพบิดามารดา
+  RMFPurchaseAmount            Decimal?  @db.Decimal(12, 2) // ยอดซื้อกองทุน RMF ในปี
+  HomeLoanInterestAmount       Decimal?  @db.Decimal(12, 2) // ยอดดอกเบี้ยบ้าน
+  DonationAmount               Decimal?  @db.Decimal(12, 2) // ยอดเงินบริจาค
   // Free-text cross-reference codes, not enforced FKs — same rationale as
   // CreatedBy/UpdatedBy elsewhere: a strict FK to mst_employee (self) or
   // ref_black_list would add relation complexity disproportionate to what's
   // essentially a lookup note.
-  ReferrerEmpCode    String?   @db.VarChar(15) // รหัสคนแนะนำ
-  BlacklistCode      String?   @db.VarChar(20) // รหัสแบล็คลิส (ref_black_list.IDCardNo, cross-referenced manually)
-  BloodType          String?   @db.VarChar(5)
-  Height             Decimal?  @db.Decimal(5, 1) // cm
-  Weight             Decimal?  @db.Decimal(5, 1) // kg
-  BodyType           String?   @db.NVarChar(50)
-  DistinguishingMarks String?  @db.NVarChar(200) // ตำหนิ
-  Gender             String?   @db.VarChar(10) // suggested: MALE | FEMALE | OTHER — no DB CHECK, informational
-  Religion           String?   @db.NVarChar(50)
-  Ethnicity          String?   @db.NVarChar(50) // เชื้อชาติ
-  Nationality        String?   @db.NVarChar(50) // สัญชาติ
-  Education          String?   @db.VarChar(20) // วุฒิการศึกษา — see EDUCATION_LEVEL_VALUES, no DB CHECK, informational
+  ReferrerEmpCode              String?   @db.VarChar(15) // รหัสคนแนะนำ
+  BlacklistCode                String?   @db.VarChar(20) // รหัสแบล็คลิส (ref_black_list.IDCardNo, cross-referenced manually)
+  BloodType                    String?   @db.VarChar(5)
+  Height                       Decimal?  @db.Decimal(5, 1) // cm
+  Weight                       Decimal?  @db.Decimal(5, 1) // kg
+  BodyType                     String?   @db.NVarChar(50)
+  DistinguishingMarks          String?   @db.NVarChar(200) // ตำหนิ
+  Gender                       String?   @db.VarChar(10) // suggested: MALE | FEMALE | OTHER — no DB CHECK, informational
+  Religion                     String?   @db.NVarChar(50)
+  Ethnicity                    String?   @db.NVarChar(50) // เชื้อชาติ
+  Nationality                  String?   @db.NVarChar(50) // สัญชาติ
+  Education                    String?   @db.VarChar(20) // วุฒิการศึกษา — see EDUCATION_LEVEL_VALUES, no DB CHECK, informational
   // ใบอนุญาตตาม พ.ร.บ.ธุรกิจรักษาความปลอดภัย (เฉพาะธุรกิจ รปภ. ของบริษัทนี้)
-  LicenseNo6         String?   @db.VarChar(50) // เลขที่ใบอนุญาต ธภ.6
-  LicenseDate6       DateTime? @db.Date // ลงวันที่ ธภ.6
-  LicenseNo7         String?   @db.VarChar(50) // เลขที่ใบอนุญาต ธภ.7
-  LicenseDate7       DateTime? @db.Date // ลงวันที่ ธภ.7
+  LicenseNo6                   String?   @db.VarChar(50) // เลขที่ใบอนุญาต ธภ.6
+  LicenseDate6                 DateTime? @db.Date // ลงวันที่ ธภ.6
+  LicenseNo7                   String?   @db.VarChar(50) // เลขที่ใบอนุญาต ธภ.7
+  LicenseDate7                 DateTime? @db.Date // ลงวันที่ ธภ.7
   // รายได้ — DailyRate already existed; these are new. None of these feed
   // Worksheet/Payroll calculation yet (DailyRate is still the only rate
   // Worksheet snapshots per approved design) — stored for reference only.
-  OTRatePerDay       Decimal?  @db.Decimal(10, 2)
-  MonthlySalary      Decimal?  @db.Decimal(12, 2)
-  EmployeePositionAllowance Decimal? @db.Decimal(10, 2) // per-employee override, distinct from ref_position.PositionAllowance
+  OTRatePerDay                 Decimal?  @db.Decimal(10, 2)
+  MonthlySalary                Decimal?  @db.Decimal(12, 2)
+  EmployeePositionAllowance    Decimal?  @db.Decimal(10, 2) // per-employee override, distinct from ref_position.PositionAllowance
 
   Department RefDepartment? @relation(fields: [DeptCode], references: [DeptCode], map: "FK_mst_employee_ref_department", onUpdate: NoAction, onDelete: NoAction)
   Position   RefPosition?   @relation(fields: [PositionCode], references: [PositionCode], map: "FK_mst_employee_ref_position", onUpdate: NoAction, onDelete: NoAction)
@@ -506,6 +521,8 @@ model MstEmployee {
   LeaveBalances       MstEmployeeLeaveBalance[]
   WorkExperiences     MstEmployeeWorkExperience[]
   TrainingExperiences MstEmployeeTrainingExperience[]
+  IssueHeaders        InvIssueHeader[]
+  ReturnHeaders       InvReturnHeader[]
 
   @@index([DeptCode], map: "IX_mst_employee_DeptCode")
   @@map("mst_employee")
@@ -620,9 +637,9 @@ model TrnRequestHeader {
 
   Details  TrnRequestDetail[]
   Debts    InvEmployeeDebt[]
-  Creator  SysUser  @relation("RequestHeaderCreatedBy", fields: [CreatedBy], references: [UserID], map: "FK_trn_request_header_sys_user_created", onUpdate: NoAction, onDelete: NoAction)
-  Approver SysUser? @relation("RequestHeaderApprovedBy", fields: [ApprovedBy], references: [UserID], map: "FK_trn_request_header_sys_user_approved", onUpdate: NoAction, onDelete: NoAction)
-  Rejecter SysUser? @relation("RequestHeaderRejectedBy", fields: [RejectedBy], references: [UserID], map: "FK_trn_request_header_sys_user_rejected", onUpdate: NoAction, onDelete: NoAction)
+  Creator  SysUser            @relation("RequestHeaderCreatedBy", fields: [CreatedBy], references: [UserID], map: "FK_trn_request_header_sys_user_created", onUpdate: NoAction, onDelete: NoAction)
+  Approver SysUser?           @relation("RequestHeaderApprovedBy", fields: [ApprovedBy], references: [UserID], map: "FK_trn_request_header_sys_user_approved", onUpdate: NoAction, onDelete: NoAction)
+  Rejecter SysUser?           @relation("RequestHeaderRejectedBy", fields: [RejectedBy], references: [UserID], map: "FK_trn_request_header_sys_user_rejected", onUpdate: NoAction, onDelete: NoAction)
 
   @@map("trn_request_header")
 }
@@ -661,7 +678,8 @@ model InvSupplier {
   UpdatedDate  DateTime? @db.DateTime
   UpdatedBy    String?   @db.VarChar(20)
 
-  StockMovements InvStockMovement[]
+  StockMovements  InvStockMovement[]
+  PurchaseHeaders InvPurchaseHeader[]
 
   @@map("inv_supplier")
 }
@@ -675,8 +693,15 @@ model InvWarehouse {
   UpdatedDate   DateTime? @db.DateTime
   UpdatedBy     String?   @db.VarChar(20)
 
-  MovementsFrom InvStockMovement[] @relation("MovementSourceWarehouse")
-  MovementsTo   InvStockMovement[] @relation("MovementTargetWarehouse")
+  MovementsFrom         InvStockMovement[]    @relation("MovementSourceWarehouse")
+  MovementsTo           InvStockMovement[]    @relation("MovementTargetWarehouse")
+  SecondhandStocks      InvSecondhandStock[]
+  StockCountHeaders     InvStockCountHeader[]
+  PurchaseHeaders       InvPurchaseHeader[]
+  TransferHeadersSource InvTransferHeader[]   @relation("TransferHeaderSourceWarehouse")
+  TransferHeadersTarget InvTransferHeader[]   @relation("TransferHeaderTargetWarehouse")
+  IssueHeaders          InvIssueHeader[]
+  ReturnHeaders         InvReturnHeader[]
 
   @@map("inv_warehouse")
 }
@@ -696,21 +721,329 @@ model InvProductCategory {
 }
 
 model InvProduct {
-  ProductCode  String    @id(map: "PK_inv_product") @db.VarChar(15)
-  ProductName  String    @db.NVarChar(150)
-  CategoryCode String?   @db.VarChar(20)
-  UnitCost     Decimal   @default(0) @db.Decimal(10, 2)
-  UnitPrice    Decimal   @default(0) @db.Decimal(10, 2)
-  IsActive     Boolean   @default(true)
-  CreatedDate  DateTime? @default(now()) @db.DateTime
-  CreatedBy    String?   @db.VarChar(20)
-  UpdatedDate  DateTime? @db.DateTime
-  UpdatedBy    String?   @db.VarChar(20)
+  ProductCode   String    @id(map: "PK_inv_product") @db.VarChar(15)
+  ProductName   String    @db.NVarChar(150)
+  CategoryCode  String?   @db.VarChar(20)
+  UnitOfMeasure String?   @db.NVarChar(20)
+  UnitCost      Decimal   @default(0) @db.Decimal(10, 2)
+  UnitPrice     Decimal   @default(0) @db.Decimal(10, 2)
+  IsActive      Boolean   @default(true)
+  CreatedDate   DateTime? @default(now()) @db.DateTime
+  CreatedBy     String?   @db.VarChar(20)
+  UpdatedDate   DateTime? @db.DateTime
+  UpdatedBy     String?   @db.VarChar(20)
 
-  ProductCategory InvProductCategory?       @relation(fields: [CategoryCode], references: [CategoryCode], map: "FK_inv_product_category", onUpdate: NoAction, onDelete: NoAction)
-  MovementDetails InvStockMovementDetail[]
+  ProductCategory   InvProductCategory?      @relation(fields: [CategoryCode], references: [CategoryCode], map: "FK_inv_product_category", onUpdate: NoAction, onDelete: NoAction)
+  MovementDetails   InvStockMovementDetail[]
+  SecondhandStocks  InvSecondhandStock[]
+  StockCountDetails InvStockCountDetail[]
+  PurchaseDetails   InvPurchaseDetail[]
+  TransferDetails   InvTransferDetail[]
+  IssueDetails      InvIssueDetail[]
+  ReturnDetails     InvReturnDetail[]
 
   @@map("inv_product")
+}
+
+// Stock count as its own header+detail document workflow (2026-09-20,
+// mirrors trn_request_header/detail) — separate from the shared
+// inv_stock_movement ledger table because it needs its own DRAFT -> SUBMITTED
+// -> APPROVED states (a fifth ADJUST-only workflow alongside PURCHASE/
+// TRANSFER/ISSUE/RETURN would require widening inv_stock_movement.Status's
+// CHECK constraint, which is shared by all 5 movement types and would risk
+// the simpler DRAFT/CONFIRMED-only types). Approving a count document is what
+// actually posts to the ledger: it creates+confirms one ADJUST
+// inv_stock_movement per line (delta between counted qty and the live ledger
+// balance at approval time) and upserts inv_secondhand_stock — the count
+// document itself never stores a running stock balance.
+model InvStockCountHeader {
+  StockCountHeaderID Int       @id(map: "PK_inv_stock_count_header") @default(autoincrement())
+  DocumentNo         String?   @db.VarChar(20)
+  WarehouseCode      String    @db.VarChar(10)
+  CountDate          DateTime  @db.Date
+  Remark             String?   @db.NVarChar(300)
+  Status             String    @default("DRAFT") @db.VarChar(15) // CHECK: DRAFT | SUBMITTED | APPROVED
+  CreatedBy          String    @db.VarChar(20)
+  CreatedDate        DateTime  @default(now()) @db.DateTime
+  SubmittedDate      DateTime? @db.DateTime
+  ApprovedBy         String?   @db.VarChar(20)
+  ApprovedDate       DateTime? @db.DateTime
+  RejectedBy         String?   @db.VarChar(20)
+  RejectedDate       DateTime? @db.DateTime
+  RejectReason       String?   @db.NVarChar(300)
+  UpdatedDate        DateTime? @db.DateTime
+  UpdatedBy          String?   @db.VarChar(20)
+
+  Warehouse InvWarehouse          @relation(fields: [WarehouseCode], references: [WarehouseCode], map: "FK_inv_stock_count_header_warehouse", onUpdate: NoAction, onDelete: NoAction)
+  Creator   SysUser               @relation("StockCountHeaderCreatedBy", fields: [CreatedBy], references: [UserID], map: "FK_inv_stock_count_header_sys_user_created", onUpdate: NoAction, onDelete: NoAction)
+  Approver  SysUser?              @relation("StockCountHeaderApprovedBy", fields: [ApprovedBy], references: [UserID], map: "FK_inv_stock_count_header_sys_user_approved", onUpdate: NoAction, onDelete: NoAction)
+  Rejecter  SysUser?              @relation("StockCountHeaderRejectedBy", fields: [RejectedBy], references: [UserID], map: "FK_inv_stock_count_header_sys_user_rejected", onUpdate: NoAction, onDelete: NoAction)
+  Details   InvStockCountDetail[]
+
+  @@map("inv_stock_count_header")
+}
+
+model InvStockCountDetail {
+  StockCountDetailID   Int       @id(map: "PK_inv_stock_count_detail") @default(autoincrement())
+  StockCountHeaderID   Int
+  ProductCode          String    @db.VarChar(15)
+  CountedQty           Decimal   @db.Decimal(10, 2)
+  CountedSecondHandQty Decimal   @default(0) @db.Decimal(10, 2)
+  CreatedDate          DateTime? @default(now()) @db.DateTime
+  CreatedBy            String?   @db.VarChar(20)
+  UpdatedDate          DateTime? @db.DateTime
+  UpdatedBy            String?   @db.VarChar(20)
+
+  Header  InvStockCountHeader @relation(fields: [StockCountHeaderID], references: [StockCountHeaderID], map: "FK_inv_stock_count_detail_header", onUpdate: NoAction, onDelete: NoAction)
+  Product InvProduct          @relation(fields: [ProductCode], references: [ProductCode], map: "FK_inv_stock_count_detail_product", onUpdate: NoAction, onDelete: NoAction)
+
+  @@index([StockCountHeaderID], map: "IX_inv_stock_count_detail_StockCountHeaderID")
+  @@map("inv_stock_count_detail")
+}
+
+// Purchase as its own header+detail document workflow (2026-09-20), same
+// reasoning and shape as InvStockCountHeader/Detail above — approving posts
+// one PURCHASE inv_stock_movement covering every line (all lines add to the
+// same receiving warehouse, so unlike ADJUST there's no per-line delta to
+// compute) and recalculates each line's product UnitCost as a weighted
+// average against its current total on-hand qty across all warehouses.
+model InvPurchaseHeader {
+  PurchaseHeaderID   Int       @id(map: "PK_inv_purchase_header") @default(autoincrement())
+  DocumentNo         String?   @db.VarChar(20)
+  WarehouseCode      String    @db.VarChar(10)
+  SupplierCode       String    @db.VarChar(15)
+  SupplierDeliveryNo String?   @db.VarChar(50)
+  DeliveryDate       DateTime  @db.Date
+  Remark             String?   @db.NVarChar(300)
+  Status             String    @default("DRAFT") @db.VarChar(15) // CHECK: DRAFT | SUBMITTED | APPROVED
+  CreatedBy          String    @db.VarChar(20)
+  CreatedDate        DateTime  @default(now()) @db.DateTime
+  SubmittedDate      DateTime? @db.DateTime
+  ApprovedBy         String?   @db.VarChar(20)
+  ApprovedDate       DateTime? @db.DateTime
+  RejectedBy         String?   @db.VarChar(20)
+  RejectedDate       DateTime? @db.DateTime
+  RejectReason       String?   @db.NVarChar(300)
+  UpdatedDate        DateTime? @db.DateTime
+  UpdatedBy          String?   @db.VarChar(20)
+
+  Warehouse InvWarehouse        @relation(fields: [WarehouseCode], references: [WarehouseCode], map: "FK_inv_purchase_header_warehouse", onUpdate: NoAction, onDelete: NoAction)
+  Supplier  InvSupplier         @relation(fields: [SupplierCode], references: [SupplierCode], map: "FK_inv_purchase_header_supplier", onUpdate: NoAction, onDelete: NoAction)
+  Creator   SysUser             @relation("PurchaseHeaderCreatedBy", fields: [CreatedBy], references: [UserID], map: "FK_inv_purchase_header_sys_user_created", onUpdate: NoAction, onDelete: NoAction)
+  Approver  SysUser?            @relation("PurchaseHeaderApprovedBy", fields: [ApprovedBy], references: [UserID], map: "FK_inv_purchase_header_sys_user_approved", onUpdate: NoAction, onDelete: NoAction)
+  Rejecter  SysUser?            @relation("PurchaseHeaderRejectedBy", fields: [RejectedBy], references: [UserID], map: "FK_inv_purchase_header_sys_user_rejected", onUpdate: NoAction, onDelete: NoAction)
+  Details   InvPurchaseDetail[]
+
+  @@map("inv_purchase_header")
+}
+
+model InvPurchaseDetail {
+  PurchaseDetailID Int       @id(map: "PK_inv_purchase_detail") @default(autoincrement())
+  PurchaseHeaderID Int
+  ProductCode      String    @db.VarChar(15)
+  Qty              Decimal   @db.Decimal(10, 2)
+  UnitPrice        Decimal   @db.Decimal(10, 2)
+  Amount           Decimal   @db.Decimal(12, 2)
+  CreatedDate      DateTime? @default(now()) @db.DateTime
+  CreatedBy        String?   @db.VarChar(20)
+  UpdatedDate      DateTime? @db.DateTime
+  UpdatedBy        String?   @db.VarChar(20)
+
+  Header  InvPurchaseHeader @relation(fields: [PurchaseHeaderID], references: [PurchaseHeaderID], map: "FK_inv_purchase_detail_header", onUpdate: NoAction, onDelete: NoAction)
+  Product InvProduct        @relation(fields: [ProductCode], references: [ProductCode], map: "FK_inv_purchase_detail_product", onUpdate: NoAction, onDelete: NoAction)
+
+  @@index([PurchaseHeaderID], map: "IX_inv_purchase_detail_PurchaseHeaderID")
+  @@map("inv_purchase_detail")
+}
+
+// Transfer as its own header+detail workflow (2026-09-20), same shape as
+// Purchase/StockCount — approving posts one TRANSFER inv_stock_movement
+// covering every line (subtract from source, add to target, same as the
+// existing shared-ledger TRANSFER semantics) and moves each line's
+// SecondHandQty directly between the two warehouses' inv_secondhand_stock
+// rows (decrement source, upsert target) — sufficiency-checked on both.
+model InvTransferHeader {
+  TransferHeaderID    Int       @id(map: "PK_inv_transfer_header") @default(autoincrement())
+  DocumentNo          String?   @db.VarChar(20)
+  SourceWarehouseCode String    @db.VarChar(10)
+  TargetWarehouseCode String    @db.VarChar(10)
+  DeliveryNo          String?   @db.VarChar(50)
+  DeliveryDate        DateTime  @db.Date
+  Remark              String?   @db.NVarChar(300)
+  Status              String    @default("DRAFT") @db.VarChar(15) // CHECK: DRAFT | SUBMITTED | APPROVED
+  CreatedBy           String    @db.VarChar(20)
+  CreatedDate         DateTime  @default(now()) @db.DateTime
+  SubmittedDate       DateTime? @db.DateTime
+  ApprovedBy          String?   @db.VarChar(20)
+  ApprovedDate        DateTime? @db.DateTime
+  RejectedBy          String?   @db.VarChar(20)
+  RejectedDate        DateTime? @db.DateTime
+  RejectReason        String?   @db.NVarChar(300)
+  UpdatedDate         DateTime? @db.DateTime
+  UpdatedBy           String?   @db.VarChar(20)
+
+  SourceWarehouse InvWarehouse        @relation("TransferHeaderSourceWarehouse", fields: [SourceWarehouseCode], references: [WarehouseCode], map: "FK_inv_transfer_header_source_warehouse", onUpdate: NoAction, onDelete: NoAction)
+  TargetWarehouse InvWarehouse        @relation("TransferHeaderTargetWarehouse", fields: [TargetWarehouseCode], references: [WarehouseCode], map: "FK_inv_transfer_header_target_warehouse", onUpdate: NoAction, onDelete: NoAction)
+  Creator         SysUser             @relation("TransferHeaderCreatedBy", fields: [CreatedBy], references: [UserID], map: "FK_inv_transfer_header_sys_user_created", onUpdate: NoAction, onDelete: NoAction)
+  Approver        SysUser?            @relation("TransferHeaderApprovedBy", fields: [ApprovedBy], references: [UserID], map: "FK_inv_transfer_header_sys_user_approved", onUpdate: NoAction, onDelete: NoAction)
+  Rejecter        SysUser?            @relation("TransferHeaderRejectedBy", fields: [RejectedBy], references: [UserID], map: "FK_inv_transfer_header_sys_user_rejected", onUpdate: NoAction, onDelete: NoAction)
+  Details         InvTransferDetail[]
+
+  @@map("inv_transfer_header")
+}
+
+model InvTransferDetail {
+  TransferDetailID Int       @id(map: "PK_inv_transfer_detail") @default(autoincrement())
+  TransferHeaderID Int
+  ProductCode      String    @db.VarChar(15)
+  Qty              Decimal   @db.Decimal(10, 2)
+  SecondHandQty    Decimal   @default(0) @db.Decimal(10, 2)
+  CreatedDate      DateTime? @default(now()) @db.DateTime
+  CreatedBy        String?   @db.VarChar(20)
+  UpdatedDate      DateTime? @db.DateTime
+  UpdatedBy        String?   @db.VarChar(20)
+
+  Header  InvTransferHeader @relation(fields: [TransferHeaderID], references: [TransferHeaderID], map: "FK_inv_transfer_detail_header", onUpdate: NoAction, onDelete: NoAction)
+  Product InvProduct        @relation(fields: [ProductCode], references: [ProductCode], map: "FK_inv_transfer_detail_product", onUpdate: NoAction, onDelete: NoAction)
+
+  @@index([TransferHeaderID], map: "IX_inv_transfer_detail_TransferHeaderID")
+  @@map("inv_transfer_detail")
+}
+
+// Issue as its own header+detail workflow (2026-09-20) — each line is either
+// a regular product (auto-priced from inv_product.UnitPrice) or a
+// secondhand item (manually priced), and can be flagged "สวัสดิการ" (welfare
+// / free — still leaves the warehouse, but excluded from the amount owed).
+// Approving posts regular lines as one ISSUE inv_stock_movement, decrements
+// inv_secondhand_stock directly for secondhand lines, and merges the
+// non-welfare total (net of cash received) into the employee's single
+// running OPEN "UNIFORM" inv_employee_debt row (creating it if none exists)
+// — per the user's explicit choice, not a new debt row per document.
+model InvIssueHeader {
+  IssueHeaderID   Int       @id(map: "PK_inv_issue_header") @default(autoincrement())
+  DocumentNo      String?   @db.VarChar(20)
+  WarehouseCode   String    @db.VarChar(10)
+  DeliveryNo      String?   @db.VarChar(50)
+  DeliveryDate    DateTime  @db.Date
+  EmpCode         String    @db.VarChar(15)
+  CashReceived    Decimal   @default(0) @db.Decimal(12, 2)
+  DeductPerPeriod Decimal?  @db.Decimal(12, 2)
+  Remark          String?   @db.NVarChar(300)
+  Status          String    @default("DRAFT") @db.VarChar(15) // CHECK: DRAFT | SUBMITTED | APPROVED
+  CreatedBy       String    @db.VarChar(20)
+  CreatedDate     DateTime  @default(now()) @db.DateTime
+  SubmittedDate   DateTime? @db.DateTime
+  ApprovedBy      String?   @db.VarChar(20)
+  ApprovedDate    DateTime? @db.DateTime
+  RejectedBy      String?   @db.VarChar(20)
+  RejectedDate    DateTime? @db.DateTime
+  RejectReason    String?   @db.NVarChar(300)
+  UpdatedDate     DateTime? @db.DateTime
+  UpdatedBy       String?   @db.VarChar(20)
+
+  Warehouse InvWarehouse     @relation(fields: [WarehouseCode], references: [WarehouseCode], map: "FK_inv_issue_header_warehouse", onUpdate: NoAction, onDelete: NoAction)
+  Employee  MstEmployee      @relation(fields: [EmpCode], references: [EmpCode], map: "FK_inv_issue_header_employee", onUpdate: NoAction, onDelete: NoAction)
+  Creator   SysUser          @relation("IssueHeaderCreatedBy", fields: [CreatedBy], references: [UserID], map: "FK_inv_issue_header_sys_user_created", onUpdate: NoAction, onDelete: NoAction)
+  Approver  SysUser?         @relation("IssueHeaderApprovedBy", fields: [ApprovedBy], references: [UserID], map: "FK_inv_issue_header_sys_user_approved", onUpdate: NoAction, onDelete: NoAction)
+  Rejecter  SysUser?         @relation("IssueHeaderRejectedBy", fields: [RejectedBy], references: [UserID], map: "FK_inv_issue_header_sys_user_rejected", onUpdate: NoAction, onDelete: NoAction)
+  Details   InvIssueDetail[]
+
+  @@map("inv_issue_header")
+}
+
+model InvIssueDetail {
+  IssueDetailID Int       @id(map: "PK_inv_issue_detail") @default(autoincrement())
+  IssueHeaderID Int
+  ProductCode   String    @db.VarChar(15)
+  IsSecondHand  Boolean   @default(false)
+  Qty           Decimal   @db.Decimal(10, 2)
+  UnitPrice     Decimal   @db.Decimal(10, 2)
+  Amount        Decimal   @db.Decimal(12, 2)
+  IsWelfare     Boolean   @default(false)
+  CreatedDate   DateTime? @default(now()) @db.DateTime
+  CreatedBy     String?   @db.VarChar(20)
+  UpdatedDate   DateTime? @db.DateTime
+  UpdatedBy     String?   @db.VarChar(20)
+
+  Header  InvIssueHeader @relation(fields: [IssueHeaderID], references: [IssueHeaderID], map: "FK_inv_issue_detail_header", onUpdate: NoAction, onDelete: NoAction)
+  Product InvProduct     @relation(fields: [ProductCode], references: [ProductCode], map: "FK_inv_issue_detail_product", onUpdate: NoAction, onDelete: NoAction)
+
+  @@index([IssueHeaderID], map: "IX_inv_issue_detail_IssueHeaderID")
+  @@map("inv_issue_detail")
+}
+
+// Return as its own header+detail workflow (2026-09-20) — mirrors Issue's
+// structure. Approving posts regular lines as one RETURN inv_stock_movement,
+// increments inv_secondhand_stock directly for secondhand lines, and
+// applies the total as a payment against the employee's OPEN "UNIFORM" debt
+// (same apply-to-RemainingAmount mechanic the old ISSUE/RETURN confirm flow
+// already used for movement-linked debts) — if none is open, there's
+// nothing to reduce and the debt step is skipped silently.
+model InvReturnHeader {
+  ReturnHeaderID Int       @id(map: "PK_inv_return_header") @default(autoincrement())
+  DocumentNo     String?   @db.VarChar(20)
+  WarehouseCode  String    @db.VarChar(10)
+  DeliveryNo     String?   @db.VarChar(50)
+  DeliveryDate   DateTime  @db.Date
+  EmpCode        String    @db.VarChar(15)
+  Remark         String?   @db.NVarChar(300)
+  Status         String    @default("DRAFT") @db.VarChar(15) // CHECK: DRAFT | SUBMITTED | APPROVED
+  CreatedBy      String    @db.VarChar(20)
+  CreatedDate    DateTime  @default(now()) @db.DateTime
+  SubmittedDate  DateTime? @db.DateTime
+  ApprovedBy     String?   @db.VarChar(20)
+  ApprovedDate   DateTime? @db.DateTime
+  RejectedBy     String?   @db.VarChar(20)
+  RejectedDate   DateTime? @db.DateTime
+  RejectReason   String?   @db.NVarChar(300)
+  UpdatedDate    DateTime? @db.DateTime
+  UpdatedBy      String?   @db.VarChar(20)
+
+  Warehouse InvWarehouse      @relation(fields: [WarehouseCode], references: [WarehouseCode], map: "FK_inv_return_header_warehouse", onUpdate: NoAction, onDelete: NoAction)
+  Employee  MstEmployee       @relation(fields: [EmpCode], references: [EmpCode], map: "FK_inv_return_header_employee", onUpdate: NoAction, onDelete: NoAction)
+  Creator   SysUser           @relation("ReturnHeaderCreatedBy", fields: [CreatedBy], references: [UserID], map: "FK_inv_return_header_sys_user_created", onUpdate: NoAction, onDelete: NoAction)
+  Approver  SysUser?          @relation("ReturnHeaderApprovedBy", fields: [ApprovedBy], references: [UserID], map: "FK_inv_return_header_sys_user_approved", onUpdate: NoAction, onDelete: NoAction)
+  Rejecter  SysUser?          @relation("ReturnHeaderRejectedBy", fields: [RejectedBy], references: [UserID], map: "FK_inv_return_header_sys_user_rejected", onUpdate: NoAction, onDelete: NoAction)
+  Details   InvReturnDetail[]
+
+  @@map("inv_return_header")
+}
+
+model InvReturnDetail {
+  ReturnDetailID Int       @id(map: "PK_inv_return_detail") @default(autoincrement())
+  ReturnHeaderID Int
+  ProductCode    String    @db.VarChar(15)
+  IsSecondHand   Boolean   @default(false)
+  Qty            Decimal   @db.Decimal(10, 2)
+  UnitPrice      Decimal   @db.Decimal(10, 2)
+  Amount         Decimal   @db.Decimal(12, 2)
+  CreatedDate    DateTime? @default(now()) @db.DateTime
+  CreatedBy      String?   @db.VarChar(20)
+  UpdatedDate    DateTime? @db.DateTime
+  UpdatedBy      String?   @db.VarChar(20)
+
+  Header  InvReturnHeader @relation(fields: [ReturnHeaderID], references: [ReturnHeaderID], map: "FK_inv_return_detail_header", onUpdate: NoAction, onDelete: NoAction)
+  Product InvProduct      @relation(fields: [ProductCode], references: [ProductCode], map: "FK_inv_return_detail_product", onUpdate: NoAction, onDelete: NoAction)
+
+  @@index([ReturnHeaderID], map: "IX_inv_return_detail_ReturnHeaderID")
+  @@map("inv_return_detail")
+}
+
+model InvSecondhandStock {
+  SecondhandStockID Int       @id(map: "PK_inv_secondhand_stock") @default(autoincrement())
+  WarehouseCode     String    @db.VarChar(10)
+  ProductCode       String    @db.VarChar(15)
+  Qty               Decimal   @default(0) @db.Decimal(10, 2)
+  CreatedDate       DateTime? @default(now()) @db.DateTime
+  CreatedBy         String?   @db.VarChar(20)
+  UpdatedDate       DateTime? @db.DateTime
+  UpdatedBy         String?   @db.VarChar(20)
+
+  Warehouse InvWarehouse @relation(fields: [WarehouseCode], references: [WarehouseCode], map: "FK_inv_secondhand_stock_warehouse", onUpdate: NoAction, onDelete: NoAction)
+  Product   InvProduct   @relation(fields: [ProductCode], references: [ProductCode], map: "FK_inv_secondhand_stock_product", onUpdate: NoAction, onDelete: NoAction)
+
+  @@unique([WarehouseCode, ProductCode], map: "UQ_inv_secondhand_stock_warehouse_product")
+  @@map("inv_secondhand_stock")
 }
 
 model InvStockMovement {

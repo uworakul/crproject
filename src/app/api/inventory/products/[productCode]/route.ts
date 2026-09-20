@@ -27,7 +27,7 @@ export async function PUT(request: NextRequest, ctx: RouteContext<"/api/inventor
   const existing = await prisma.invProduct.findUnique({ where: { ProductCode: productCode } });
   if (!existing) return apiError(404, "PRODUCT_NOT_FOUND");
 
-  let body: { productName?: unknown; categoryCode?: unknown; unitCost?: unknown; unitPrice?: unknown; isActive?: unknown };
+  let body: { productName?: unknown; categoryCode?: unknown; unitOfMeasure?: unknown; unitCost?: unknown; unitPrice?: unknown; isActive?: unknown };
   try {
     body = await request.json();
   } catch {
@@ -48,11 +48,15 @@ export async function PUT(request: NextRequest, ctx: RouteContext<"/api/inventor
     if (!category) return apiError(404, "CATEGORY_NOT_FOUND", undefined, { categoryCode });
   }
 
+  const unitOfMeasure =
+    body.unitOfMeasure === undefined ? existing.UnitOfMeasure : typeof body.unitOfMeasure === "string" && body.unitOfMeasure.trim() ? body.unitOfMeasure.trim() : null;
+
   const updated = await prisma.invProduct.update({
     where: { ProductCode: productCode },
     data: {
       ProductName: productName,
       CategoryCode: categoryCode,
+      UnitOfMeasure: unitOfMeasure,
       UnitCost: unitCost,
       UnitPrice: unitPrice,
       IsActive: typeof body.isActive === "boolean" ? body.isActive : existing.IsActive,

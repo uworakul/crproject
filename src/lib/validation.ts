@@ -79,6 +79,11 @@ export const EDUCATION_LEVEL_LABELS: Record<EducationLevel, string> = {
   OTHER: "อื่นๆ",
 };
 
+// inv_product.UnitOfMeasure — informational only (no DB CHECK, free
+// NVARCHAR), values are the Thai unit labels themselves so no code<->label
+// translation table is needed like the other dropdowns above.
+export const UNIT_OF_MEASURE_VALUES = ["ตัว", "ชุด", "ชิ้น", "อัน", "ด้าม", "คู่", "ใบ", "อื่นๆ"] as const;
+
 // mst_employee_quota.QuotaType CHECK constraint.
 export const QUOTA_TYPE_VALUES = ["ADVANCE", "LOAN", "UNIFORM", "SERVICE", "INSURANCE"] as const;
 export type QuotaType = (typeof QUOTA_TYPE_VALUES)[number];

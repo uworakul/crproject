@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { verifySession } from "@/lib/dal";
 import { hasPermission } from "@/lib/authorize";
 import { prisma } from "@/lib/prisma";
+import { UNIT_OF_MEASURE_VALUES } from "@/lib/validation";
 import Tabs from "../reference/tabs";
 import ReferenceTable, { type FieldDef } from "../reference/reference-table";
 
@@ -61,7 +62,15 @@ export default async function InventoryMasterPage() {
       key: "CategoryCode",
       label: "หมวดหมู่",
       type: "select",
+      searchable: false,
       options: categories.map((c: { CategoryCode: string; CategoryName: string }) => ({ code: c.CategoryCode, label: c.CategoryName })),
+    },
+    {
+      key: "UnitOfMeasure",
+      label: "หน่วยนับ",
+      type: "select",
+      searchable: false,
+      options: UNIT_OF_MEASURE_VALUES.map((v) => ({ code: v, label: v })),
     },
     { key: "UnitCost", label: "ต้นทุน/หน่วย (บาท)", type: "number" },
     { key: "UnitPrice", label: "ราคาขาย/หน่วย (บาท)", type: "number" },

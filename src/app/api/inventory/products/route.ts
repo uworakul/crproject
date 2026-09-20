@@ -21,7 +21,7 @@ export async function POST(request: NextRequest) {
   const denied = await requirePermission(user, "PRODUCT", "save");
   if (denied) return denied;
 
-  let body: { productCode?: unknown; productName?: unknown; categoryCode?: unknown; unitCost?: unknown; unitPrice?: unknown };
+  let body: { productCode?: unknown; productName?: unknown; categoryCode?: unknown; unitOfMeasure?: unknown; unitCost?: unknown; unitPrice?: unknown };
   try {
     body = await request.json();
   } catch {
@@ -42,6 +42,7 @@ export async function POST(request: NextRequest) {
     const category = await prisma.invProductCategory.findUnique({ where: { CategoryCode: categoryCode } });
     if (!category) return apiError(404, "CATEGORY_NOT_FOUND", undefined, { categoryCode });
   }
+  const unitOfMeasure = typeof body.unitOfMeasure === "string" && body.unitOfMeasure.trim() ? body.unitOfMeasure.trim() : null;
 
   const existing = await prisma.invProduct.findUnique({ where: { ProductCode: productCode } });
   if (existing) return apiError(409, "PRODUCT_ALREADY_EXISTS", undefined, { productCode });
@@ -51,6 +52,7 @@ export async function POST(request: NextRequest) {
       ProductCode: productCode,
       ProductName: productName,
       CategoryCode: categoryCode,
+      UnitOfMeasure: unitOfMeasure,
       UnitCost: unitCost,
       UnitPrice: unitPrice,
       CreatedBy: user.userId,

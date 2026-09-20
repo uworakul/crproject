@@ -32,6 +32,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     canViewTransfer,
     canViewIssue,
     canViewReturn,
+    canApproveCount,
     canViewSite,
     canViewPayrollWorkspace,
     canViewLeaveRequest,
@@ -55,6 +56,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     hasPermission(user, "STOCK_TRANSFER", "read"),
     hasPermission(user, "STOCK_ISSUE", "read"),
     hasPermission(user, "STOCK_RETURN", "read"),
+    hasPermission(user, "STOCK_COUNT", "approve"),
     hasPermission(user, "SITE", "read"),
     Promise.all([
       hasPermission(user, "PAYROLL_TRANSACTION", "read"),
@@ -67,6 +69,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     prisma.refCompany.findFirst({ orderBy: { CompanyCode: "asc" } }),
   ]);
   const canViewInventoryMaster = canViewSupplier || canViewWarehouse || canViewProduct;
+  const canViewTransactions = canViewCount || canViewPurchase || canViewTransfer || canViewIssue || canViewReturn || canViewInventoryMaster;
   const companyShortName = company?.ShortName || DEFAULT_COMPANY_LABEL;
 
   const groups = [
@@ -106,12 +109,9 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       label: "สินค้าคงคลัง/เครื่องแบบ",
       icon: "inventory" as const,
       items: [
-        ...(canViewInventoryMaster ? [{ href: "/inventory", label: "ข้อมูลหลัก (ผู้ขาย/คลัง/สินค้า)" }] : []),
-        ...(canViewCount ? [{ href: "/inventory/count", label: "ตรวจนับสต๊อก" }] : []),
-        ...(canViewPurchase ? [{ href: "/inventory/purchase", label: "ซื้อสินค้า" }] : []),
-        ...(canViewTransfer ? [{ href: "/inventory/transfer", label: "โอนสินค้าระหว่างคลัง" }] : []),
-        ...(canViewIssue ? [{ href: "/inventory/issue", label: "จำหน่ายสินค้า" }] : []),
-        ...(canViewReturn ? [{ href: "/inventory/return", label: "คืนสินค้า" }] : []),
+        ...(canViewInventoryMaster ? [{ href: "/inventory", label: "ข้อมูลหลัก" }] : []),
+        ...(canViewTransactions ? [{ href: "/inventory/transactions", label: "บันทึกรายการสต๊อก" }] : []),
+        ...(canApproveCount ? [{ href: "/inventory/stock-count-approvals", label: "รายการรออนุมัติ" }] : []),
       ],
     },
     {

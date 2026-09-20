@@ -43,8 +43,9 @@ async function confirmImportClearFirst(): Promise<"clear" | "keep" | null> {
 export interface FieldDef {
   key: string; // matches the API's JSON field name (PascalCase, from Prisma)
   label: string;
-  type: "text" | "number" | "percent" | "date" | "year" | "checkbox" | "select"; // percent: stored 0-1, edited as a 0-100 field; year: stored ค.ศ., displayed/edited as พ.ศ.; checkbox: boolean, displays "Yes" when true; select: FK-style dropdown (searchable) over `options`
-  options?: { code: string; label: string }[]; // required when type === "select" — the code is what's stored/sent, label is the searchable display text
+  type: "text" | "number" | "percent" | "date" | "year" | "checkbox" | "select"; // percent: stored 0-1, edited as a 0-100 field; year: stored ค.ศ., displayed/edited as พ.ศ.; checkbox: boolean, displays "Yes" when true; select: dropdown over `options`
+  options?: { code: string; label: string }[]; // required when type === "select" — the code is what's stored/sent, label is the display text
+  searchable?: boolean; // select only — true (default) renders a typeahead SearchableSelect (FK lookups with many rows, e.g. Category); false renders a plain native <select> (small fixed lists, e.g. UnitOfMeasure — a real dropdown reads clearer than a combobox for 8 options)
   isKey?: boolean; // primary key — shown but not editable once created
   hidden?: boolean; // not rendered as a column or form input, but still tracked
   // (e.g. an auto-increment PK used as the API's URL id when the visible
@@ -429,6 +430,19 @@ export default function ReferenceTable({
                             checked={editForm[f.key] === "true"}
                             onChange={(e) => setEditForm({ ...editForm, [f.key]: String(e.target.checked) })}
                           />
+                        ) : f.type === "select" && f.searchable === false ? (
+                          <select
+                            value={editForm[f.key] ?? ""}
+                            onChange={(e) => setEditForm({ ...editForm, [f.key]: e.target.value })}
+                            className="w-full rounded border border-gray-300 px-2 py-1 text-sm"
+                          >
+                            <option value="">- ไม่ระบุ -</option>
+                            {(f.options ?? []).map((o) => (
+                              <option key={o.code} value={o.code}>
+                                {o.label}
+                              </option>
+                            ))}
+                          </select>
                         ) : f.type === "select" ? (
                           <SearchableSelect
                             value={editForm[f.key] ?? ""}
@@ -508,6 +522,22 @@ export default function ReferenceTable({
                   onChange={(e) => setForm({ ...form, [f.key]: String(e.target.checked) })}
                 />
                 {f.label}
+              </label>
+            ) : f.type === "select" && f.searchable === false ? (
+              <label key={f.key} className="flex flex-col gap-1 text-xs text-gray-500">
+                {f.label}
+                <select
+                  value={form[f.key]}
+                  onChange={(e) => setForm({ ...form, [f.key]: e.target.value })}
+                  className="w-40 rounded border border-gray-300 px-2 py-1 text-sm text-gray-900"
+                >
+                  <option value="">- ไม่ระบุ -</option>
+                  {(f.options ?? []).map((o) => (
+                    <option key={o.code} value={o.code}>
+                      {o.label}
+                    </option>
+                  ))}
+                </select>
               </label>
             ) : f.type === "select" ? (
               <label key={f.key} className="flex flex-col gap-1 text-xs text-gray-500">

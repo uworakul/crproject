@@ -126,3 +126,24 @@ export async function getStockBalancesForWarehouse(warehouseCode: string): Promi
   }
   return balances;
 }
+
+// Company-wide on-hand qty for one product, across every warehouse combined
+// — used for the weighted-average UnitCost recalculation on Purchase
+// approval (inv_product.UnitCost isn't warehouse-scoped, so the cost basis
+// has to weight against total stock, not any single warehouse's balance).
+// TRANSFER lines are skipped entirely: a transfer subtracts from its source
+// warehouse and adds the same qty to its target, netting to zero company-wide.
+export async function getTotalStockBalance(productCode: string): Promise<Prisma.Decimal> {
+  const details = await prisma.invStockMovementDetail.findMany({
+    where: { ProductCode: productCode, Movement: { Status: "CONFIRMED" } },
+    include: { Movement: { select: { MovementType: true } } },
+  });
+
+  let balance = new Prisma.Decimal(0);
+  for (const d of details) {
+    const type = d.Movement.MovementType as MovementType;
+    if (type === "PURCHASE" || type === "ADJUST" || type === "RETURN") balance = balance.add(d.Qty);
+    else if (type === "ISSUE") balance = balance.sub(d.Qty);
+  }
+  return balance;
+}

@@ -1,0 +1,51 @@
+import { redirect, notFound } from "next/navigation";
+import Link from "next/link";
+import { verifySession } from "@/lib/dal";
+import { hasPermission } from "@/lib/authorize";
+import { prisma } from "@/lib/prisma";
+import StockIssueDetailView from "./stock-issue-detail-view";
+
+export default async function StockIssueDetailPage({ params }: { params: Promise<{ id: string }> }) {
+  const user = await verifySession();
+  if (!user) redirect("/login");
+
+  const { id } = await params;
+  const issueId = Number(id);
+  if (!Number.isInteger(issueId)) notFound();
+
+  const canRead = await hasPermission(user, "STOCK_ISSUE", "read");
+  if (!canRead) redirect("/");
+
+  const header = await prisma.invIssueHeader.findUnique({
+    where: { IssueHeaderID: issueId },
+    include: {
+      Warehouse: { select: { WarehouseName: true } },
+      Employee: { select: { FullName: true, Site: { select: { SiteName: true } } } },
+      Details: { orderBy: { IssueDetailID: "asc" }, include: { Product: { select: { ProductName: true, UnitOfMeasure: true } } } },
+    },
+  });
+  if (!header) notFound();
+
+  const [canSave, canApprove, products] = await Promise.all([
+    hasPermission(user, "STOCK_ISSUE", "save"),
+    hasPermission(user, "STOCK_ISSUE", "approve"),
+    prisma.invProduct.findMany({ where: { IsActive: true }, orderBy: { ProductCode: "asc" } }),
+  ]);
+
+  return (
+    <div className="w-full px-6 py-8">
+      <Link href="/inventory/transactions" className="text-sm text-gray-500 hover:underline">
+        ← กลับบันทึกรายการสต๊อก
+      </Link>
+      <h1 className="mb-6 mt-2 text-lg font-semibold text-gray-900">
+        จำหน่ายสินค้า {header.DocumentNo ? `#${header.DocumentNo}` : `(เอกสาร #${header.IssueHeaderID})`}
+      </h1>
+      <StockIssueDetailView
+        issue={JSON.parse(JSON.stringify(header))}
+        canSave={canSave}
+        canApprove={canApprove}
+        products={JSON.parse(JSON.stringify(products))}
+      />
+    </div>
+  );
+}
