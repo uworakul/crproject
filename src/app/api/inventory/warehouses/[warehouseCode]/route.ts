@@ -61,10 +61,12 @@ export async function DELETE(_req: NextRequest, ctx: RouteContext<"/api/inventor
   const existing = await prisma.invWarehouse.findUnique({ where: { WarehouseCode: warehouseCode } });
   if (!existing) return apiError(404, "WAREHOUSE_NOT_FOUND");
 
-  const updated = await prisma.invWarehouse.update({
-    where: { WarehouseCode: warehouseCode },
-    data: { IsActive: false, UpdatedBy: user.userId, UpdatedDate: new Date() },
-  });
-  await logAction(user.userId, "DEACTIVATE_WAREHOUSE", { targetTable: "inv_warehouse", targetId: warehouseCode });
-  return apiSuccess(updated);
+  try {
+    await prisma.invWarehouse.delete({ where: { WarehouseCode: warehouseCode } });
+  } catch {
+    return apiError(409, "WAREHOUSE_IN_USE", "This warehouse is linked to one or more stock movements and cannot be deleted");
+  }
+
+  await logAction(user.userId, "DELETE_WAREHOUSE", { targetTable: "inv_warehouse", targetId: warehouseCode });
+  return apiSuccess({ ok: true });
 }

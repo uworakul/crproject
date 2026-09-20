@@ -63,10 +63,12 @@ export async function DELETE(_req: NextRequest, ctx: RouteContext<"/api/inventor
   const existing = await prisma.invSupplier.findUnique({ where: { SupplierCode: supplierCode } });
   if (!existing) return apiError(404, "SUPPLIER_NOT_FOUND");
 
-  const updated = await prisma.invSupplier.update({
-    where: { SupplierCode: supplierCode },
-    data: { IsActive: false, UpdatedBy: user.userId, UpdatedDate: new Date() },
-  });
-  await logAction(user.userId, "DEACTIVATE_SUPPLIER", { targetTable: "inv_supplier", targetId: supplierCode });
-  return apiSuccess(updated);
+  try {
+    await prisma.invSupplier.delete({ where: { SupplierCode: supplierCode } });
+  } catch {
+    return apiError(409, "SUPPLIER_IN_USE", "This supplier is linked to one or more stock movements and cannot be deleted");
+  }
+
+  await logAction(user.userId, "DELETE_SUPPLIER", { targetTable: "inv_supplier", targetId: supplierCode });
+  return apiSuccess({ ok: true });
 }

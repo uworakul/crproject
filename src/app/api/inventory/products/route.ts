@@ -21,7 +21,7 @@ export async function POST(request: NextRequest) {
   const denied = await requirePermission(user, "PRODUCT", "save");
   if (denied) return denied;
 
-  let body: { productCode?: unknown; productName?: unknown; category?: unknown; unitCost?: unknown; unitPrice?: unknown };
+  let body: { productCode?: unknown; productName?: unknown; categoryCode?: unknown; unitCost?: unknown; unitPrice?: unknown };
   try {
     body = await request.json();
   } catch {
@@ -37,6 +37,12 @@ export async function POST(request: NextRequest) {
   if (!Number.isFinite(unitCost) || unitCost < 0) return apiError(400, "VALIDATION_FAILED", "unitCost must be a non-negative number");
   if (!Number.isFinite(unitPrice) || unitPrice < 0) return apiError(400, "VALIDATION_FAILED", "unitPrice must be a non-negative number");
 
+  const categoryCode = typeof body.categoryCode === "string" && body.categoryCode.trim() ? body.categoryCode.trim() : null;
+  if (categoryCode) {
+    const category = await prisma.invProductCategory.findUnique({ where: { CategoryCode: categoryCode } });
+    if (!category) return apiError(404, "CATEGORY_NOT_FOUND", undefined, { categoryCode });
+  }
+
   const existing = await prisma.invProduct.findUnique({ where: { ProductCode: productCode } });
   if (existing) return apiError(409, "PRODUCT_ALREADY_EXISTS", undefined, { productCode });
 
@@ -44,7 +50,7 @@ export async function POST(request: NextRequest) {
     data: {
       ProductCode: productCode,
       ProductName: productName,
-      Category: typeof body.category === "string" && body.category.trim() ? body.category.trim() : null,
+      CategoryCode: categoryCode,
       UnitCost: unitCost,
       UnitPrice: unitPrice,
       CreatedBy: user.userId,

@@ -25,7 +25,7 @@ export async function GET(request: NextRequest) {
   const result = products.map((p) => ({
     productCode: p.ProductCode,
     productName: p.ProductName,
-    category: p.Category,
+    categoryCode: p.CategoryCode,
     onHand: (balances.get(p.ProductCode) ?? 0).toString(),
   }));
 

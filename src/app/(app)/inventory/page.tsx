@@ -15,12 +15,9 @@ const warehouseFields: FieldDef[] = [
   { key: "WarehouseCode", label: "รหัสคลัง", type: "text", isKey: true },
   { key: "WarehouseName", label: "ชื่อคลัง", type: "text" },
 ];
-const productFields: FieldDef[] = [
-  { key: "ProductCode", label: "รหัสสินค้า", type: "text", isKey: true },
-  { key: "ProductName", label: "ชื่อสินค้า", type: "text" },
-  { key: "Category", label: "หมวดหมู่", type: "text" },
-  { key: "UnitCost", label: "ต้นทุน/หน่วย (บาท)", type: "number" },
-  { key: "UnitPrice", label: "ราคาขาย/หน่วย (บาท)", type: "number" },
+const categoryFields: FieldDef[] = [
+  { key: "CategoryCode", label: "รหัสหมวดหมู่", type: "text", isKey: true },
+  { key: "CategoryName", label: "ชื่อหมวดหมู่", type: "text" },
 ];
 
 export default async function InventoryMasterPage() {
@@ -43,14 +40,32 @@ export default async function InventoryMasterPage() {
     hasPermission(user, "PRODUCT", "delete"),
   ]);
 
-  const [suppliersRaw, warehousesRaw, productsRaw] = await Promise.all([
+  // Categories are gated the same as Product (PRODUCT permission) — this
+  // table only exists as the "หมวดหมู่" dropdown source for inv_product.
+  const [suppliersRaw, warehousesRaw, categoriesRaw, productsRaw] = await Promise.all([
     canReadSupplier ? prisma.invSupplier.findMany({ orderBy: { SupplierCode: "asc" } }) : Promise.resolve([]),
     canReadWarehouse ? prisma.invWarehouse.findMany({ orderBy: { WarehouseCode: "asc" } }) : Promise.resolve([]),
+    canReadProduct ? prisma.invProductCategory.findMany({ orderBy: { CategoryCode: "asc" } }) : Promise.resolve([]),
     canReadProduct ? prisma.invProduct.findMany({ orderBy: { ProductCode: "asc" } }) : Promise.resolve([]),
   ]);
 
   // UnitCost/UnitPrice are Prisma.Decimal — round-trip to plain JSON-safe values.
-  const [suppliers, warehouses, products] = JSON.parse(JSON.stringify([suppliersRaw, warehousesRaw, productsRaw]));
+  const [suppliers, warehouses, categories, products] = JSON.parse(
+    JSON.stringify([suppliersRaw, warehousesRaw, categoriesRaw, productsRaw]),
+  );
+
+  const productFields: FieldDef[] = [
+    { key: "ProductCode", label: "รหัสสินค้า", type: "text", isKey: true },
+    { key: "ProductName", label: "ชื่อสินค้า", type: "text" },
+    {
+      key: "CategoryCode",
+      label: "หมวดหมู่",
+      type: "select",
+      options: categories.map((c: { CategoryCode: string; CategoryName: string }) => ({ code: c.CategoryCode, label: c.CategoryName })),
+    },
+    { key: "UnitCost", label: "ต้นทุน/หน่วย (บาท)", type: "number" },
+    { key: "UnitPrice", label: "ราคาขาย/หน่วย (บาท)", type: "number" },
+  ];
 
   const tabs = [];
   if (canReadSupplier) {
@@ -61,7 +76,6 @@ export default async function InventoryMasterPage() {
           key="/api/inventory/suppliers"
           apiBase="/api/inventory/suppliers"
           fields={supplierFields}
-          hasIsActive
           canSave={canSaveSupplier}
           canDelete={canDeleteSupplier}
           initialRows={suppliers}
@@ -77,7 +91,6 @@ export default async function InventoryMasterPage() {
           key="/api/inventory/warehouses"
           apiBase="/api/inventory/warehouses"
           fields={warehouseFields}
-          hasIsActive
           canSave={canSaveWarehouse}
           canDelete={canDeleteWarehouse}
           initialRows={warehouses}
@@ -87,15 +100,31 @@ export default async function InventoryMasterPage() {
   }
   if (canReadProduct) {
     tabs.push({
+      label: "หมวดหมู่ (Category)",
+      content: (
+        <ReferenceTable
+          key="/api/inventory/categories"
+          apiBase="/api/inventory/categories"
+          fields={categoryFields}
+          canSave={canSaveProduct}
+          canDelete={canDeleteProduct}
+          allowExport
+          allowImport
+          initialRows={categories}
+        />
+      ),
+    });
+    tabs.push({
       label: "สินค้า (Product)",
       content: (
         <ReferenceTable
           key="/api/inventory/products"
           apiBase="/api/inventory/products"
           fields={productFields}
-          hasIsActive
           canSave={canSaveProduct}
           canDelete={canDeleteProduct}
+          allowExport
+          allowImport
           initialRows={products}
         />
       ),
@@ -104,7 +133,7 @@ export default async function InventoryMasterPage() {
 
   return (
     <div className="w-full px-6 py-8">
-      <h1 className="mb-6 text-lg font-semibold text-gray-900">ข้อมูลหลักคลังสินค้า</h1>
+      <h1 className="mb-6 text-lg font-semibold text-gray-900">ข้อมูลหลัก</h1>
       <Tabs tabs={tabs} />
     </div>
   );

@@ -95,3 +95,59 @@ export async function parseThreeColumnWorkbook(buffer: Buffer): Promise<ParsedIm
   });
   return rows;
 }
+
+// inv_product's shape only — code/name/categoryCode/unitCost/unitPrice.
+// Kept separate rather than generalizing further, same rationale as the
+// two/three-column pair: only one table needs this shape.
+export interface ParsedProductRow {
+  code: string;
+  name: string;
+  categoryCode: string | null;
+  unitCost: number;
+  unitPrice: number;
+}
+
+export async function buildProductWorkbook(
+  rows: { code: string; name: string; categoryCode: string | null; unitCost: number; unitPrice: number }[],
+) {
+  const workbook = new ExcelJS.Workbook();
+  const sheet = workbook.addWorksheet("สินค้า");
+  sheet.columns = [
+    { header: "รหัสสินค้า", key: "code", width: 20 },
+    { header: "ชื่อสินค้า", key: "name", width: 40 },
+    { header: "รหัสหมวดหมู่", key: "categoryCode", width: 20 },
+    { header: "ต้นทุน/หน่วย", key: "unitCost", width: 15 },
+    { header: "ราคาขาย/หน่วย", key: "unitPrice", width: 15 },
+  ];
+  sheet.addRows(rows.map((r) => ({ ...r, categoryCode: r.categoryCode ?? "" })));
+  return workbook.xlsx.writeBuffer();
+}
+
+// Column position matters (A=code, B=name, C=categoryCode, D=unitCost,
+// E=unitPrice), not exact header text. categoryCode is optional (blank
+// cell -> null); unitCost/unitPrice default to 0 when blank or unparsable.
+export async function parseProductWorkbook(buffer: Buffer): Promise<ParsedProductRow[]> {
+  const workbook = new ExcelJS.Workbook();
+  await workbook.xlsx.load(buffer as unknown as ArrayBuffer);
+  const sheet = workbook.worksheets[0];
+  if (!sheet) return [];
+
+  const rows: ParsedProductRow[] = [];
+  sheet.eachRow((row, rowNumber) => {
+    if (rowNumber === 1) return; // header
+    const code = String(row.getCell(1).value ?? "").trim();
+    const name = String(row.getCell(2).value ?? "").trim();
+    if (!code || !name) return;
+    const categoryCodeRaw = String(row.getCell(3).value ?? "").trim();
+    const unitCost = Number(row.getCell(4).value ?? 0);
+    const unitPrice = Number(row.getCell(5).value ?? 0);
+    rows.push({
+      code,
+      name,
+      categoryCode: categoryCodeRaw || null,
+      unitCost: Number.isFinite(unitCost) ? unitCost : 0,
+      unitPrice: Number.isFinite(unitPrice) ? unitPrice : 0,
+    });
+  });
+  return rows;
+}

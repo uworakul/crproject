@@ -681,18 +681,33 @@ model InvWarehouse {
   @@map("inv_warehouse")
 }
 
-model InvProduct {
-  ProductCode String    @id(map: "PK_inv_product") @db.VarChar(15)
-  ProductName String    @db.NVarChar(150)
-  Category    String?   @db.VarChar(30)
-  UnitCost    Decimal   @default(0) @db.Decimal(10, 2)
-  UnitPrice   Decimal   @default(0) @db.Decimal(10, 2)
-  IsActive    Boolean   @default(true)
-  CreatedDate DateTime? @default(now()) @db.DateTime
-  CreatedBy   String?   @db.VarChar(20)
-  UpdatedDate DateTime? @db.DateTime
-  UpdatedBy   String?   @db.VarChar(20)
+model InvProductCategory {
+  CategoryCode String    @id(map: "PK_inv_product_category") @db.VarChar(20)
+  CategoryName String    @db.NVarChar(100)
+  IsActive     Boolean   @default(true)
+  CreatedDate  DateTime? @default(now()) @db.DateTime
+  CreatedBy    String?   @db.VarChar(20)
+  UpdatedDate  DateTime? @db.DateTime
+  UpdatedBy    String?   @db.VarChar(20)
 
+  Products InvProduct[]
+
+  @@map("inv_product_category")
+}
+
+model InvProduct {
+  ProductCode  String    @id(map: "PK_inv_product") @db.VarChar(15)
+  ProductName  String    @db.NVarChar(150)
+  CategoryCode String?   @db.VarChar(20)
+  UnitCost     Decimal   @default(0) @db.Decimal(10, 2)
+  UnitPrice    Decimal   @default(0) @db.Decimal(10, 2)
+  IsActive     Boolean   @default(true)
+  CreatedDate  DateTime? @default(now()) @db.DateTime
+  CreatedBy    String?   @db.VarChar(20)
+  UpdatedDate  DateTime? @db.DateTime
+  UpdatedBy    String?   @db.VarChar(20)
+
+  ProductCategory InvProductCategory?       @relation(fields: [CategoryCode], references: [CategoryCode], map: "FK_inv_product_category", onUpdate: NoAction, onDelete: NoAction)
   MovementDetails InvStockMovementDetail[]
 
   @@map("inv_product")

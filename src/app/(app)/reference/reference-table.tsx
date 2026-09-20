@@ -3,6 +3,7 @@
 import { useRef, useState } from "react";
 import Swal from "sweetalert2";
 import { toBuddhistYear, toGregorianYear } from "@/lib/buddhist-year";
+import SearchableSelect from "../searchable-select";
 
 async function confirmDialog(lines: string | string[]) {
   const html = (Array.isArray(lines) ? lines : [lines]).filter(Boolean).join("<br>");
@@ -42,7 +43,8 @@ async function confirmImportClearFirst(): Promise<"clear" | "keep" | null> {
 export interface FieldDef {
   key: string; // matches the API's JSON field name (PascalCase, from Prisma)
   label: string;
-  type: "text" | "number" | "percent" | "date" | "year" | "checkbox"; // percent: stored 0-1, edited as a 0-100 field; year: stored ค.ศ., displayed/edited as พ.ศ.; checkbox: boolean, displays "Yes" when true
+  type: "text" | "number" | "percent" | "date" | "year" | "checkbox" | "select"; // percent: stored 0-1, edited as a 0-100 field; year: stored ค.ศ., displayed/edited as พ.ศ.; checkbox: boolean, displays "Yes" when true; select: FK-style dropdown (searchable) over `options`
+  options?: { code: string; label: string }[]; // required when type === "select" — the code is what's stored/sent, label is the searchable display text
   isKey?: boolean; // primary key — shown but not editable once created
   hidden?: boolean; // not rendered as a column or form input, but still tracked
   // (e.g. an auto-increment PK used as the API's URL id when the visible
@@ -110,6 +112,7 @@ function displayValue(field: FieldDef, value: unknown) {
   if (field.type === "percent") return `${(Number(value) * 100).toFixed(2)}%`;
   if (field.type === "date") return new Date(String(value)).toLocaleDateString("th-TH");
   if (field.type === "year") return String(toBuddhistYear(Number(value)));
+  if (field.type === "select") return field.options?.find((o) => o.code === value)?.label ?? String(value);
   return String(value);
 }
 
@@ -426,6 +429,12 @@ export default function ReferenceTable({
                             checked={editForm[f.key] === "true"}
                             onChange={(e) => setEditForm({ ...editForm, [f.key]: String(e.target.checked) })}
                           />
+                        ) : f.type === "select" ? (
+                          <SearchableSelect
+                            value={editForm[f.key] ?? ""}
+                            onChange={(code) => setEditForm({ ...editForm, [f.key]: code })}
+                            options={f.options ?? []}
+                          />
                         ) : (
                           <input
                             type={f.type === "date" ? "date" : isNumericFieldType(f.type) ? "number" : "text"}
@@ -499,6 +508,13 @@ export default function ReferenceTable({
                   onChange={(e) => setForm({ ...form, [f.key]: String(e.target.checked) })}
                 />
                 {f.label}
+              </label>
+            ) : f.type === "select" ? (
+              <label key={f.key} className="flex flex-col gap-1 text-xs text-gray-500">
+                {f.label}
+                <div className="w-48">
+                  <SearchableSelect value={form[f.key]} onChange={(code) => setForm({ ...form, [f.key]: code })} options={f.options ?? []} />
+                </div>
               </label>
             ) : (
               <label key={f.key} className="flex flex-col gap-1 text-xs text-gray-500">
