@@ -25,7 +25,15 @@ export async function GET(request: NextRequest) {
         ? { Employee: { ...(companyCode ? { CompanyCode: companyCode } : {}), ...(deptCode ? { DeptCode: deptCode } : {}) } }
         : {}),
     },
-    include: { Employee: { select: { EmpCode: true, FullName: true } }, Site: { select: { SiteCode: true, SiteName: true } } },
+    include: {
+      // Department/Site here are the EMPLOYEE's own DeptCode/DefaultSiteCode
+      // (2026-09-21, "รายการประจำงวด" list — "แผนก"/"หน่วยงานต้นสังกัด"),
+      // distinct from the top-level Site relation below (the transaction's
+      // own SiteCode, snapshotted by Worksheet approve / defaulted at
+      // creation — used by the Calculate screen's "หน่วยงานหลัก" column).
+      Employee: { select: { EmpCode: true, FullName: true, Department: { select: { DeptName: true } }, Site: { select: { SiteName: true } } } },
+      Site: { select: { SiteCode: true, SiteName: true } },
+    },
     orderBy: { EmpCode: "asc" },
   });
   return apiSuccess(transactions);

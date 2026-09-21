@@ -1,28 +1,17 @@
 "use client";
 
-import { useState } from "react";
+import { Fragment, useState } from "react";
 import Swal from "sweetalert2";
-import { toBuddhistYear } from "@/lib/buddhist-year";
+import { EMPLOYEE_TYPE_VALUES, EMPLOYEE_TYPE_LABELS } from "@/lib/validation";
 import SearchableSelect from "../../searchable-select";
+import TransactionDetailPanel from "./transaction-detail-panel";
 
-interface DetailRow {
-  DetailID: number;
-  LineType: "INCOME" | "DEDUCTION";
-  Code: string;
-  Description: string;
-  Hours: string | null;
-  Days: string | null;
-  Amount: string;
-}
-
-interface Transaction {
-  TransactionID: number;
-  WorkDays: string;
-  GrossWage: string;
-  OtherIncome: string;
-  OtherDeduction: string;
-  NetPay: string;
-  Details: DetailRow[];
+interface Period {
+  PeriodID: number;
+  EmployeeType: string;
+  PeriodYear: number;
+  PeriodMonth: number;
+  IsCurrent: boolean;
 }
 
 interface PeriodInfo {
@@ -33,9 +22,28 @@ interface PeriodInfo {
   EndDate: string;
 }
 
-async function confirmDeleteLine(name: string): Promise<boolean> {
+interface Row {
+  TransactionID: number;
+  EmpCode: string;
+  WorkDays: string;
+  DoubleShiftDays: string;
+  HolidayDays: string;
+  Employee: { EmpCode: string; FullName: string; Department: { DeptName: string } | null; Site: { SiteName: string } | null };
+}
+
+interface FullTransaction {
+  TransactionID: number;
+  WorkDays: string;
+  GrossWage: string;
+  OtherIncome: string;
+  OtherDeduction: string;
+  NetPay: string;
+  Details: { DetailID: number; LineType: "INCOME" | "DEDUCTION"; Code: string; Description: string; Hours: string | null; Days: string | null; Amount: string }[];
+}
+
+async function confirmDeleteTransaction(label: string): Promise<boolean> {
   const result = await Swal.fire({
-    html: `ยืนยันการลบ "${name}"?`,
+    html: `ยืนยันการลบรายการประจำงวดของ "${label}"? (รายละเอียดรายได้/รายการหักทั้งหมดของพนักงานคนนี้ในงวดนี้จะถูกลบไปด้วย)`,
     icon: "warning",
     showCancelButton: true,
     confirmButtonText: "ยืนยัน",
@@ -46,292 +54,224 @@ async function confirmDeleteLine(name: string): Promise<boolean> {
   return result.isConfirmed;
 }
 
-const emptyForm = { lineType: "INCOME" as "INCOME" | "DEDUCTION", code: "", hours: "", days: "", amount: "" };
-
 export default function TransactionEntryView({
+  periods,
+  companies,
   employees,
   incomeTypes,
   deductionTypes,
   canSave,
+  canDelete,
 }: {
-  employees: { EmpCode: string; FullName: string }[];
+  periods: Period[];
+  companies: { CompanyCode: string; CompanyName: string }[];
+  employees: { EmpCode: string; FullName: string; EmployeeType: string; CompanyCode: string | null }[];
   incomeTypes: { IncomeCode: string; IncomeName: string }[];
   deductionTypes: { DeductionCode: string; DeductionName: string }[];
   canSave: boolean;
+  canDelete: boolean;
 }) {
-  const [empCode, setEmpCode] = useState("");
-  const [period, setPeriod] = useState<PeriodInfo | null>(null);
-  const [transaction, setTransaction] = useState<Transaction | null>(null);
-  const [form, setForm] = useState(emptyForm);
-  const [editingId, setEditingId] = useState<number | null>(null);
-  const [editForm, setEditForm] = useState({ hours: "", days: "", amount: "" });
+  const [employeeType, setEmployeeType] = useState("");
+  const [companyCode, setCompanyCode] = useState("");
+  const [rows, setRows] = useState<Row[]>([]);
+  const [expandedEmpCode, setExpandedEmpCode] = useState<string | null>(null);
+  const [panelData, setPanelData] = useState<Record<string, { period: PeriodInfo; transaction: FullTransaction }>>({});
+  const [addEmpCode, setAddEmpCode] = useState("");
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
 
-  async function load(code: string) {
+  const period = periods.find((p) => p.EmployeeType === employeeType && p.IsCurrent);
+
+  async function refreshRows(periodId: number, company: string) {
+    const params = new URLSearchParams({ periodId: String(periodId) });
+    if (company) params.set("companyCode", company);
+    const res = await fetch(`/api/payroll/transactions?${params}`);
+    if (res.ok) setRows(await res.json());
+  }
+
+  async function handleSelectType(v: string) {
+    setEmployeeType(v);
     setMessage(null);
-    setPeriod(null);
-    setTransaction(null);
-    if (!code) return;
+    setExpandedEmpCode(null);
+    const p = periods.find((pp) => pp.EmployeeType === v && pp.IsCurrent);
+    if (p) await refreshRows(p.PeriodID, companyCode);
+    else setRows([]);
+  }
+
+  async function handleSelectCompany(v: string) {
+    setCompanyCode(v);
+    if (period) await refreshRows(period.PeriodID, v);
+  }
+
+  async function toggleExpand(empCode: string) {
+    if (expandedEmpCode === empCode) {
+      setExpandedEmpCode(null);
+      return;
+    }
+    setExpandedEmpCode(empCode);
+    if (!panelData[empCode]) {
+      const res = await fetch(`/api/payroll/transactions/by-employee?empCode=${encodeURIComponent(empCode)}`);
+      if (res.ok) {
+        const body = await res.json();
+        setPanelData({ ...panelData, [empCode]: body });
+      }
+    }
+  }
+
+  async function handleAddEmployee() {
+    if (!addEmpCode) return;
+    setMessage(null);
     setLoading(true);
     try {
-      const res = await fetch(`/api/payroll/transactions/by-employee?empCode=${encodeURIComponent(code)}`);
+      const res = await fetch(`/api/payroll/transactions/by-employee?empCode=${encodeURIComponent(addEmpCode)}`);
       const body = await res.json().catch(() => ({}));
       if (!res.ok) {
         setMessage(body.message || body.error);
         return;
       }
-      setPeriod(body.period);
-      setTransaction(body.transaction);
+      setAddEmpCode("");
+      if (period) await refreshRows(period.PeriodID, companyCode);
     } finally {
       setLoading(false);
     }
   }
 
-  async function refresh() {
-    if (!empCode) return;
-    const res = await fetch(`/api/payroll/transactions/by-employee?empCode=${encodeURIComponent(empCode)}`);
-    if (res.ok) {
-      const body = await res.json();
-      setPeriod(body.period);
-      setTransaction(body.transaction);
-    }
-  }
-
-  const usedCodes = new Set((transaction?.Details ?? []).filter((d) => d.LineType === form.lineType).map((d) => d.Code));
-  const typeOptions = (form.lineType === "INCOME" ? incomeTypes : deductionTypes)
-    .filter((t) => !usedCodes.has("IncomeCode" in t ? t.IncomeCode : t.DeductionCode))
-    .map((t) => ("IncomeCode" in t ? { code: t.IncomeCode, label: t.IncomeName } : { code: t.DeductionCode, label: t.DeductionName }));
-
-  async function handleAdd() {
-    if (!transaction || !form.code) return;
+  async function handleDelete(row: Row) {
+    if (!(await confirmDeleteTransaction(`${row.EmpCode} — ${row.Employee.FullName}`))) return;
     setMessage(null);
-    setLoading(true);
-    try {
-      const res = await fetch("/api/payroll/transaction-details", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          transactionId: transaction.TransactionID,
-          lineType: form.lineType,
-          code: form.code,
-          hours: form.hours || undefined,
-          days: form.days || undefined,
-          amount: Number(form.amount),
-        }),
-      });
-      const body = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        setMessage(body.message || body.error);
-        return;
-      }
-      setForm({ ...emptyForm, lineType: form.lineType });
-      await refresh();
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  function startEdit(d: DetailRow) {
-    setEditingId(d.DetailID);
-    setEditForm({ hours: d.Hours ?? "", days: d.Days ?? "", amount: d.Amount });
-  }
-
-  async function saveEdit(id: number) {
-    setMessage(null);
-    const res = await fetch(`/api/payroll/transaction-details/${id}`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ hours: editForm.hours || null, days: editForm.days || null, amount: Number(editForm.amount) }),
-    });
+    const res = await fetch(`/api/payroll/transactions/${row.TransactionID}`, { method: "DELETE" });
     const body = await res.json().catch(() => ({}));
     if (!res.ok) {
       setMessage(body.message || body.error);
       return;
     }
-    setEditingId(null);
-    await refresh();
+    if (expandedEmpCode === row.EmpCode) setExpandedEmpCode(null);
+    if (period) await refreshRows(period.PeriodID, companyCode);
   }
 
-  async function remove(d: DetailRow) {
-    if (!(await confirmDeleteLine(d.Description))) return;
-    setMessage(null);
-    const res = await fetch(`/api/payroll/transaction-details/${d.DetailID}`, { method: "DELETE" });
-    const body = await res.json().catch(() => ({}));
-    if (!res.ok) {
-      setMessage(body.message || body.error);
-      return;
-    }
-    await refresh();
-  }
+  const existingCodes = new Set(rows.map((r) => r.EmpCode));
+  const candidateEmployees = employees.filter((e) => e.EmployeeType === employeeType && (!companyCode || e.CompanyCode === companyCode) && !existingCodes.has(e.EmpCode));
 
   return (
     <div className="flex flex-col gap-4">
-      <label className="flex flex-col gap-1 text-xs text-gray-500">
-        รหัสพนักงาน
-        <div className="w-72">
-          <SearchableSelect
-            value={empCode}
-            onChange={(code) => {
-              setEmpCode(code);
-              load(code);
-            }}
-            options={employees.map((e) => ({ code: e.EmpCode, label: `${e.EmpCode} — ${e.FullName}` }))}
-            placeholder="ค้นหารหัส/ชื่อพนักงาน"
-          />
-        </div>
-      </label>
+      <div className="flex flex-wrap items-end gap-3 rounded-lg border border-gray-200 bg-white p-4">
+        <label className="flex flex-col gap-1 text-xs text-gray-500">
+          บริษัท
+          <select value={companyCode} onChange={(e) => handleSelectCompany(e.target.value)} className="w-48 rounded border border-gray-300 px-2 py-1 text-sm text-gray-900">
+            <option value="">- ทั้งหมด -</option>
+            {companies.map((c) => (
+              <option key={c.CompanyCode} value={c.CompanyCode}>
+                {c.CompanyName}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="flex flex-col gap-1 text-xs text-gray-500">
+          ประเภทพนักงาน
+          <select value={employeeType} onChange={(e) => handleSelectType(e.target.value)} className="w-40 rounded border border-gray-300 px-2 py-1 text-sm text-gray-900">
+            <option value="">-- เลือก --</option>
+            {EMPLOYEE_TYPE_VALUES.map((v) => (
+              <option key={v} value={v}>
+                {EMPLOYEE_TYPE_LABELS[v]}
+              </option>
+            ))}
+          </select>
+        </label>
+      </div>
 
-      {loading && <p className="text-sm text-gray-400">กำลังโหลด...</p>}
+      {employeeType && !period && <p className="text-sm text-red-600">ไม่มีงวดปัจจุบันสำหรับประเภทพนักงานนี้ — ไปตั้งค่าที่หน้า งวดการจ่าย</p>}
       {message && <p className="text-sm text-red-600">{message}</p>}
 
-      {period && transaction && (
+      {period && (
         <>
-          <div className="grid grid-cols-4 gap-3 rounded-lg border border-gray-200 bg-white p-4 text-sm">
-            <div>
-              <div className="text-gray-500">งวดปัจจุบัน</div>
-              <div className="font-medium">
-                {period.PeriodMonth}/{toBuddhistYear(period.PeriodYear)}
-              </div>
-            </div>
-            <div>
-              <div className="text-gray-500">ช่วงวันที่</div>
-              <div>
-                {new Date(period.StartDate).toLocaleDateString("th-TH")} - {new Date(period.EndDate).toLocaleDateString("th-TH")}
-              </div>
-            </div>
-            <div>
-              <div className="text-gray-500">จำนวนวันทำงาน (จาก Worksheet)</div>
-              <div>{transaction.WorkDays}</div>
-            </div>
-            <div>
-              <div className="text-gray-500">รายได้พื้นฐาน (GrossWage)</div>
-              <div>{Number(transaction.GrossWage).toLocaleString("th-TH", { minimumFractionDigits: 2 })}</div>
-            </div>
-          </div>
-
-          <div className="overflow-x-auto rounded-lg border border-gray-200 bg-white">
+          {/* No overflow-x-auto here — same fix as the หน่วยงาน (Site)
+              positions table (2026-09-21): this table's expanded row nests
+              TransactionDetailPanel's "รายการ" SearchableSelect dropdown,
+              and overflow-x-auto forces overflow-y to clip too (CSS spec),
+              cutting the dropdown off before the user can click an option —
+              reported as "กดเพิ่มรายการ ไม่ได้" but the real cause was never
+              actually selecting a code, not the button itself. This table's
+              columns are narrow enough that horizontal scroll isn't needed. */}
+          <div className="rounded-lg border border-gray-200 bg-white">
             <table className="w-full border-collapse text-sm">
               <thead className="border-b border-gray-200 bg-gray-50 text-left text-gray-500">
                 <tr>
-                  <th className="px-3 py-2 font-medium">ประเภท</th>
-                  <th className="px-3 py-2 font-medium">รายการ</th>
-                  <th className="px-3 py-2 font-medium text-right">ชม.</th>
-                  <th className="px-3 py-2 font-medium text-right">วัน</th>
-                  <th className="px-3 py-2 font-medium text-right">จำนวนเงิน</th>
-                  {canSave && <th className="px-3 py-2"></th>}
+                  <th className="px-3 py-2 font-medium">รหัสพนักงาน</th>
+                  <th className="px-3 py-2 font-medium">ชื่อพนักงาน</th>
+                  <th className="px-3 py-2 font-medium">แผนก</th>
+                  <th className="px-3 py-2 font-medium">หน่วยงานต้นสังกัด</th>
+                  <th className="px-3 py-2 font-medium text-right">จำนวนวันทำงานรวม</th>
+                  <th className="px-3 py-2 font-medium"></th>
                 </tr>
               </thead>
               <tbody>
-                {transaction.Details.map((d) => {
-                  const isEditing = editingId === d.DetailID;
+                {rows.map((r) => {
+                  const isExpanded = expandedEmpCode === r.EmpCode;
+                  const totalDays = Number(r.WorkDays) + Number(r.DoubleShiftDays) + Number(r.HolidayDays);
                   return (
-                    <tr key={d.DetailID} className="border-t border-gray-100 hover:bg-purple-50">
-                      <td className="px-3 py-2">{d.LineType === "INCOME" ? "รายได้" : "รายการหัก"}</td>
-                      <td className="px-3 py-2">{d.Description}</td>
-                      <td className="px-3 py-2 text-right">
-                        {isEditing ? (
-                          <input type="number" step="any" value={editForm.hours} onChange={(e) => setEditForm({ ...editForm, hours: e.target.value })} className="w-20 rounded border border-gray-300 px-2 py-1 text-right text-sm" />
-                        ) : (
-                          (d.Hours ?? "-")
-                        )}
-                      </td>
-                      <td className="px-3 py-2 text-right">
-                        {isEditing ? (
-                          <input type="number" step="any" value={editForm.days} onChange={(e) => setEditForm({ ...editForm, days: e.target.value })} className="w-20 rounded border border-gray-300 px-2 py-1 text-right text-sm" />
-                        ) : (
-                          (d.Days ?? "-")
-                        )}
-                      </td>
-                      <td className="px-3 py-2 text-right">
-                        {isEditing ? (
-                          <input type="number" step="any" value={editForm.amount} onChange={(e) => setEditForm({ ...editForm, amount: e.target.value })} className="w-24 rounded border border-gray-300 px-2 py-1 text-right text-sm" />
-                        ) : (
-                          Number(d.Amount).toLocaleString("th-TH", { minimumFractionDigits: 2 })
-                        )}
-                      </td>
-                      {canSave && (
-                        <td className="px-3 py-2 text-right">
-                          {isEditing ? (
-                            <div className="flex justify-end gap-2">
-                              <button onClick={() => saveEdit(d.DetailID)} className="text-gray-900 hover:underline">
-                                บันทึก
-                              </button>
-                              <button onClick={() => setEditingId(null)} className="text-gray-400 hover:underline">
-                                ยกเลิก
-                              </button>
-                            </div>
-                          ) : (
-                            <div className="flex justify-end gap-2">
-                              <button onClick={() => startEdit(d)} className="text-gray-500 hover:underline">
-                                แก้ไข
-                              </button>
-                              <button onClick={() => remove(d)} className="text-red-500 hover:underline">
+                    <Fragment key={r.TransactionID}>
+                      <tr className="border-t border-gray-100 hover:bg-gray-50">
+                        <td className="px-3 py-2">{r.EmpCode}</td>
+                        <td className="px-3 py-2">{r.Employee.FullName}</td>
+                        <td className="px-3 py-2">{r.Employee.Department?.DeptName ?? "-"}</td>
+                        <td className="px-3 py-2">{r.Employee.Site?.SiteName ?? "-"}</td>
+                        <td className="px-3 py-2 text-right">{totalDays}</td>
+                        <td className="px-3 py-2 text-right whitespace-nowrap">
+                          <div className="flex justify-end gap-2">
+                            <button onClick={() => toggleExpand(r.EmpCode)} className="text-gray-500 hover:underline">
+                              {isExpanded ? "▾ ซ่อน" : "▸ แก้ไข"}
+                            </button>
+                            {canDelete && (
+                              <button onClick={() => handleDelete(r)} className="text-red-500 hover:underline">
                                 ลบ
                               </button>
-                            </div>
-                          )}
+                            )}
+                          </div>
                         </td>
+                      </tr>
+                      {isExpanded && panelData[r.EmpCode] && (
+                        <tr className="border-t border-gray-100 bg-gray-50">
+                          <td colSpan={6} className="px-3 py-3">
+                            <TransactionDetailPanel
+                              empCode={r.EmpCode}
+                              initialPeriod={panelData[r.EmpCode].period}
+                              initialTransaction={panelData[r.EmpCode].transaction}
+                              incomeTypes={incomeTypes}
+                              deductionTypes={deductionTypes}
+                              canSave={canSave}
+                            />
+                          </td>
+                        </tr>
                       )}
-                    </tr>
+                    </Fragment>
                   );
                 })}
-                {transaction.Details.length === 0 && (
+                {rows.length === 0 && (
                   <tr>
-                    <td colSpan={canSave ? 6 : 5} className="px-3 py-6 text-center text-gray-400">
-                      ยังไม่มีรายการ
+                    <td colSpan={6} className="px-3 py-6 text-center text-gray-400">
+                      ยังไม่มีพนักงานในงวดนี้ตามเงื่อนไขที่เลือก
                     </td>
                   </tr>
                 )}
               </tbody>
-              <tfoot className="border-t border-gray-200 bg-gray-50 font-medium">
-                <tr>
-                  <td colSpan={4} className="px-3 py-2 text-right text-gray-500">
-                    รวมรายได้อื่น / รวมรายการหักอื่น
-                  </td>
-                  <td className="px-3 py-2 text-right">
-                    +{Number(transaction.OtherIncome).toLocaleString("th-TH", { minimumFractionDigits: 2 })} / -
-                    {Number(transaction.OtherDeduction).toLocaleString("th-TH", { minimumFractionDigits: 2 })}
-                  </td>
-                  {canSave && <td></td>}
-                </tr>
-              </tfoot>
             </table>
           </div>
 
           {canSave && (
             <div className="flex flex-wrap items-end gap-2 rounded-lg border border-dashed border-gray-300 p-3">
               <label className="flex flex-col gap-1 text-xs text-gray-500">
-                ประเภท
-                <select
-                  value={form.lineType}
-                  onChange={(e) => setForm({ ...emptyForm, lineType: e.target.value as "INCOME" | "DEDUCTION" })}
-                  className="rounded border border-gray-300 px-2 py-1 text-sm text-gray-900"
-                >
-                  <option value="INCOME">รายได้</option>
-                  <option value="DEDUCTION">รายการหัก</option>
-                </select>
-              </label>
-              <label className="flex flex-col gap-1 text-xs text-gray-500">
-                รายการ
-                <div className="w-56">
-                  <SearchableSelect value={form.code} onChange={(code) => setForm({ ...form, code })} options={typeOptions} placeholder="เลือกรายการ" />
+                เพิ่มพนักงานเข้างวดนี้
+                <div className="w-72">
+                  <SearchableSelect
+                    value={addEmpCode}
+                    onChange={setAddEmpCode}
+                    options={candidateEmployees.map((e) => ({ code: e.EmpCode, label: `${e.EmpCode} — ${e.FullName}` }))}
+                    placeholder="ค้นหารหัส/ชื่อพนักงาน"
+                  />
                 </div>
               </label>
-              <label className="flex flex-col gap-1 text-xs text-gray-500">
-                จำนวนชม.
-                <input type="number" step="any" value={form.hours} onChange={(e) => setForm({ ...form, hours: e.target.value })} className="w-20 rounded border border-gray-300 px-2 py-1 text-sm text-gray-900" />
-              </label>
-              <label className="flex flex-col gap-1 text-xs text-gray-500">
-                จำนวนวัน
-                <input type="number" step="any" value={form.days} onChange={(e) => setForm({ ...form, days: e.target.value })} className="w-20 rounded border border-gray-300 px-2 py-1 text-sm text-gray-900" />
-              </label>
-              <label className="flex flex-col gap-1 text-xs text-gray-500">
-                จำนวนเงิน
-                <input type="number" step="any" value={form.amount} onChange={(e) => setForm({ ...form, amount: e.target.value })} className="w-28 rounded border border-gray-300 px-2 py-1 text-sm text-gray-900" />
-              </label>
-              <button onClick={handleAdd} disabled={loading || !form.code || !form.amount} className="rounded-md bg-gray-900 px-3 py-1.5 text-sm text-white hover:bg-gray-700 disabled:opacity-50">
-                + เพิ่มรายการ
+              <button onClick={handleAddEmployee} disabled={loading || !addEmpCode} className="rounded-md bg-gray-900 px-3 py-1.5 text-sm text-white hover:bg-gray-700 disabled:opacity-50">
+                + เพิ่มพนักงาน
               </button>
             </div>
           )}
