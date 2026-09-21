@@ -15,6 +15,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   if (!user) redirect("/login");
 
   const [
+    canViewSystemConfig,
     canViewUsers,
     canViewAuditLog,
     canViewReference,
@@ -34,10 +35,12 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     canViewReturn,
     canApproveAnyStock,
     canViewSite,
+    canApproveWorksheet,
     canViewPayrollWorkspace,
     canViewLeaveRequest,
     company,
   ] = await Promise.all([
+    hasPermission(user, "SYS_CONFIG", "read"),
     hasPermission(user, "USER", "read"),
     hasPermission(user, "PROCESS_LOG", "read"),
     hasPermission(user, "REFERENCE", "read"),
@@ -63,6 +66,12 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       hasPermission(user, "STOCK_RETURN", "approve"),
     ]).then((r) => r.some(Boolean)),
     hasPermission(user, "SITE", "read"),
+    // No siteCode passed -> matches ANY sys_user_permission row for
+    // WORKSHEET+CanApprove (site-specific or SiteCode=NULL) per
+    // hasPermission's OR-clause, i.e. "can approve at least one site" — just
+    // for the menu-visibility gate; the pending-approval page itself scopes
+    // which sites' worksheets actually show.
+    hasPermission(user, "WORKSHEET", "approve"),
     Promise.all([
       hasPermission(user, "PAYROLL_TRANSACTION", "read"),
       hasPermission(user, "PAYROLL_CALCULATE", "save"),
@@ -77,6 +86,13 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   const companyShortName = company?.ShortName || DEFAULT_COMPANY_LABEL;
 
   const groups = [
+    {
+      // 2026-09-21: new top-most menu — singleton system default/startup
+      // settings (sys_config), unrelated to the original 9-module scope.
+      label: "System Configuration",
+      icon: "settings" as const,
+      items: canViewSystemConfig ? [{ href: "/system-config", label: "System Configuration" }] : [],
+    },
     {
       label: "ผู้ใช้งานและสิทธิ์",
       icon: "users" as const,
@@ -135,6 +151,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       items: [
         ...(canViewSite ? [{ href: "/payroll/sites", label: "หน่วยงาน (Site)" }] : []),
         { href: "/worksheet", label: "Worksheet" },
+        ...(canApproveWorksheet ? [{ href: "/worksheet/pending-approval", label: "รายการรออนุมัติ" }] : []),
       ],
     },
     {

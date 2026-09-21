@@ -40,7 +40,8 @@ export async function POST(request: NextRequest) {
     return apiSuccess({ employeeCount: result.employeeCount, totalAmount: result.totalAmount.toString(), documentNo });
   } catch (err) {
     if (err instanceof MissingRateDataError) {
-      return apiError(422, `MISSING_${err.kind}`, `No ${err.kind === "TAX_BRACKET" ? "ref_tax_bracket" : "ref_sso_base"} rows for year ${err.year}`, { year: err.year });
+      const table = err.kind === "TAX_BRACKET" ? "ref_tax_bracket" : err.kind === "SSO_BASE" ? "ref_sso_base" : "ref_welfare_fund";
+      return apiError(422, `MISSING_${err.kind}`, `No ${table} rows for year ${err.year}`, { year: err.year });
     }
     if (err instanceof Error && err.message === "PERIOD_NOT_FOUND") return apiError(404, "PERIOD_NOT_FOUND");
     if (err instanceof Error && err.message === "PERIOD_LOCKED") return apiError(409, "PERIOD_LOCKED");

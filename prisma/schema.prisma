@@ -103,6 +103,36 @@ model MstSitePositionIncome {
   @@map("mst_site_position_income")
 }
 
+// "รายได้พื้นฐาน" per position (2026-09-21) — same shape as
+// mst_site_position_income, one level up (no Site dimension). Two fallback
+// uses, both confirmed with user: (1) Worksheet — if an employee has no
+// mst_employee.DailyRate set, ONLY this position's IncomeCode="01" (ค่าแรง)
+// row is read as the effective daily rate for that employee's worksheet
+// snapshot (Worksheet has no OT/allowance concept at all — just
+// DailyRate × attendance PayMultiplier per day, so only "01" applies there).
+// (2) "อัตรากำลังพล" rate lookup for "รายการประจำงวด" — if a site+position
+// combo (mst_site_position_income) has no row for a given IncomeCode, fall
+// back to this table for that PositionCode+IncomeCode instead; applies
+// generically to whatever codes the user configures here (e.g. "05" โอที 1
+// for ค่า OT ต่อวัน, "15" ค่าตำแหน่ง), not hardcoded to just those two.
+model MstPositionIncome {
+  PositionIncomeID Int       @id(map: "PK_mst_position_income") @default(autoincrement())
+  PositionCode     String    @db.VarChar(10)
+  IncomeCode       String    @db.VarChar(10)
+  Amount           Decimal   @db.Decimal(10, 2)
+  RateBasis        String    @default("DAILY") @db.VarChar(10) // CHECK: DAILY | MONTHLY
+  CreatedDate      DateTime? @default(now()) @db.DateTime
+  CreatedBy        String?   @db.VarChar(20)
+  UpdatedDate      DateTime? @db.DateTime
+  UpdatedBy        String?   @db.VarChar(20)
+
+  Position   RefPosition   @relation(fields: [PositionCode], references: [PositionCode], map: "FK_mst_position_income_position", onUpdate: NoAction, onDelete: NoAction)
+  IncomeType RefIncomeType @relation(fields: [IncomeCode], references: [IncomeCode], map: "FK_mst_position_income_income_type", onUpdate: NoAction, onDelete: NoAction)
+
+  @@unique([PositionCode, IncomeCode], map: "UQ_mst_position_income")
+  @@map("mst_position_income")
+}
+
 // ============================================================
 // โมดูล 2: ตารางอ้างอิงพื้นฐาน
 // ============================================================
@@ -130,8 +160,10 @@ model RefPosition {
   UpdatedDate       DateTime? @db.DateTime
   UpdatedBy         String?   @db.VarChar(20)
 
-  Employees     MstEmployee[]
-  SitePositions MstSitePosition[]
+  Employees          MstEmployee[]
+  SitePositions      MstSitePosition[]
+  BaseIncomes        MstPositionIncome[]
+  WorksheetDetails   TrnWorksheetDetail[]
 
   @@map("ref_position")
 }
@@ -284,18 +316,26 @@ model RefIncomeType {
   UpdatedBy   String?   @db.VarChar(20)
 
   SitePositionIncomes MstSitePositionIncome[]
+  PositionIncomes     MstPositionIncome[]
 
   @@map("ref_income_type")
 }
 
 model RefDeductionType {
-  DeductionCode String    @id(map: "PK_ref_deduction_type") @db.VarChar(10)
-  DeductionName String    @db.NVarChar(100)
-  IsInstallment Boolean   @default(false)
-  CreatedDate   DateTime? @default(now()) @db.DateTime
-  CreatedBy     String?   @db.VarChar(20)
-  UpdatedDate   DateTime? @db.DateTime
-  UpdatedBy     String?   @db.VarChar(20)
+  DeductionCode    String    @id(map: "PK_ref_deduction_type") @db.VarChar(10)
+  DeductionName    String    @db.NVarChar(100)
+  IsInstallment    Boolean   @default(false)
+  // 2026-09-21 — deduction types the system already computes elsewhere
+  // (ภาษี → TaxWithheld, ประกันสังคม → SSOAmount via Calculate; กองทุน
+  // สงเคราะห์พนักงาน grouped in by the user alongside them) should not be
+  // offered as an ad-hoc manual line on the "รายการประจำงวด" screen — same
+  // rationale/pattern as IsInstallment excluding installment debts from
+  // there (those belong on the employee's "รายการหักต่องวด" tab instead).
+  IsAutoCalculated Boolean   @default(false)
+  CreatedDate      DateTime? @default(now()) @db.DateTime
+  CreatedBy        String?   @db.VarChar(20)
+  UpdatedDate      DateTime? @db.DateTime
+  UpdatedBy        String?   @db.VarChar(20)
 
   InstallmentDebts InvEmployeeDebt[]
 
@@ -416,6 +456,28 @@ model SysPeriod {
   @@map("sys_period")
 }
 
+// Added 2026-09-21 at the user's request — "System Configuration", a new
+// top-most sidebar menu for system-wide default/startup values. Singleton
+// table by design ("มีแต่บันทึก 1 record") — SysConfigID is always 1, no
+// UI ever creates a second row (getOrCreateSystemConfig() in
+// src/lib/system-config.ts is the only writer of a fresh row, and it always
+// targets ID 1). Field names/types are exactly as specified by the user.
+model SysConfig {
+  SysConfigID      Int       @id(map: "PK_sys_config") @default(1)
+  RegistrationCode String?   @db.NVarChar(100)
+  AccessKey        String?   @db.NVarChar(100)
+  PassChecking     Boolean   @default(false)
+  ContactPerson    String?   @db.NVarChar(100)
+  Tel              String?   @db.NVarChar(100)
+  FileFolder       String?   @db.NVarChar(100)
+  CreatedDate      DateTime? @default(now()) @db.DateTime
+  CreatedBy        String?   @db.VarChar(20)
+  UpdatedDate      DateTime? @db.DateTime
+  UpdatedBy        String?   @db.VarChar(20)
+
+  @@map("sys_config")
+}
+
 model SysProcessLog {
   LogID       BigInt    @id(map: "PK_sys_process_log") @default(autoincrement())
   UserID      String    @db.VarChar(20)
@@ -483,7 +545,12 @@ model MstEmployee {
   BankCode        String?   @db.VarChar(10)
   BankAccountNo   String?   @db.VarChar(20)
   DailyRate       Decimal?  @db.Decimal(10, 2)
+  // Both store a Google Drive file ID (2026-09-21), not a filesystem path
+  // despite the column name/original DDL intent — PhotoPath existed unused
+  // since the original 33-table design; IDCardPhotoPath is new. Never a
+  // public Drive link — see src/lib/google-drive.ts for why.
   PhotoPath       String?   @db.NVarChar(255)
+  IDCardPhotoPath String?   @db.NVarChar(255)
   IsActive        Boolean   @default(true)
   CreatedDate     DateTime  @default(now()) @db.DateTime
   CreatedBy       String?   @db.VarChar(20)
@@ -1227,6 +1294,17 @@ model TrnWorksheetDetail {
   WorksheetID       Int
   EmpCode           String                    @db.VarChar(15)
   EmpType           String                    @default("REGULAR") @db.VarChar(10) // ไม่มี CHECK ใน DDL ที่อนุมัติ (REGULAR/SPARE ตาม BRD)
+  // 2026-09-21 — ตำแหน่งที่พนักงานคนนี้มาทำ "สำหรับใบลงเวลานี้โดยเฉพาะ" ไม่ใช่
+  // ตำแหน่งประจำใน mst_employee เสมอไป (เช่น รปภ ประจำที่หน่วยงานหนึ่ง แต่ถูก
+  // เรียกไปเป็นคนสวนที่อีกหน่วยงานหนึ่งเดือนนี้ — คนละหน่วยงาน คนละตำแหน่งได้
+  // อิสระต่อใบ เพราะ Worksheet ผูกกับ 1 หน่วยงาน/เดือนอยู่แล้ว 1 คนจึงมีได้
+  // หลายแถวคนละ Worksheet ในเดือนเดียวกัน — โครงสร้างเดิมรองรับอยู่แล้ว ไม่ต้อง
+  // เพิ่มกลไกใหม่) — REGULAR snapshot จาก mst_employee.PositionCode ตอนดึงเข้า
+  // อัตโนมัติ, SPARE ผู้ใช้เลือกเองตอนเพิ่ม ใช้เป็นคีย์เดียวกับที่
+  // resolveEffectiveDailyRate ใช้หา rate ระดับหน่วยงาน/ตำแหน่ง (nullable เพราะ
+  // แถวเก่าก่อนมีคอลัมน์นี้ไม่มีค่า, พนักงานที่ไม่มีตำแหน่งใน mst_employee เลย
+  // ก็ยังเพิ่มเป็น REGULAR ได้ถ้ามี DailyRate ของตัวเอง)
+  PositionCode      String?                   @db.VarChar(10)
   DailyRate         Decimal                   @db.Decimal(10, 2)
   DisplayOrder      Int                       @default(0) @db.SmallInt
   CreatedDate       DateTime?                 @default(now()) @db.DateTime
@@ -1237,6 +1315,7 @@ model TrnWorksheetDetail {
 
   Header   TrnWorksheetHeader @relation(fields: [WorksheetID], references: [WorksheetID], map: "FK_trn_worksheet_detail_header", onUpdate: NoAction, onDelete: NoAction)
   Employee MstEmployee        @relation(fields: [EmpCode], references: [EmpCode], map: "FK_trn_worksheet_detail_employee", onUpdate: NoAction, onDelete: NoAction)
+  Position RefPosition?       @relation(fields: [PositionCode], references: [PositionCode], map: "FK_trn_worksheet_detail_position", onUpdate: NoAction, onDelete: NoAction)
 
   DailyRecords TrnWorksheetDaily[]
 
@@ -1285,6 +1364,18 @@ model TrnPayrollTransaction {
   GrossWage         Decimal   @default(0) @db.Decimal(12, 2)
   TaxWithheld       Decimal   @default(0) @db.Decimal(10, 2)
   SSOAmount         Decimal   @default(0) @db.Decimal(10, 2)
+  // 2026-09-21 — computed by Calculate, same lifecycle as TaxWithheld/
+  // SSOAmount (recomputed every run, zeroed by Cancel Calculate).
+  // WelfareFundAmount = GrossWage x ref_welfare_fund.EmployeeRate for the
+  // period's year (same base/shape as SSO, no min/max clamp — see
+  // calculateWelfareFund() in src/lib/payroll.ts). InstallmentDeduct = sum
+  // of this employee's OPEN inv_employee_debt rows (IsInstallment deduction
+  // types only) at min(DeductPerPeriod, RemainingAmount) each — a live
+  // PREVIEW recomputed fresh every Calculate run; Calculate never writes
+  // back to inv_employee_debt.RemainingAmount itself (that only happens on
+  // a future approval step, per the user — not built yet).
+  WelfareFundAmount Decimal   @default(0) @db.Decimal(10, 2)
+  InstallmentDeduct Decimal   @default(0) @db.Decimal(10, 2)
   OtherIncome       Decimal   @default(0) @db.Decimal(10, 2)
   OtherDeduction    Decimal   @default(0) @db.Decimal(10, 2)
   NetPay            Decimal   @default(0) @db.Decimal(12, 2)

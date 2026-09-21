@@ -22,7 +22,10 @@ export default async function PayrollTransactionsPage() {
       select: { EmpCode: true, FullName: true, EmployeeType: true, CompanyCode: true },
     }),
     prisma.refIncomeType.findMany({ orderBy: { IncomeCode: "asc" }, select: { IncomeCode: true, IncomeName: true } }),
-    prisma.refDeductionType.findMany({ orderBy: { DeductionCode: "asc" }, select: { DeductionCode: true, DeductionName: true } }),
+    prisma.refDeductionType.findMany({
+      orderBy: { DeductionCode: "asc" },
+      select: { DeductionCode: true, DeductionName: true, IsInstallment: true, IsAutoCalculated: true },
+    }),
   ]);
 
   const periods = JSON.parse(JSON.stringify(periodsRaw));

@@ -2,6 +2,7 @@
 
 import { Fragment, useState } from "react";
 import Swal from "sweetalert2";
+import { toBuddhistYear } from "@/lib/buddhist-year";
 import { EMPLOYEE_TYPE_VALUES, EMPLOYEE_TYPE_LABELS } from "@/lib/validation";
 import SearchableSelect from "../../searchable-select";
 import TransactionDetailPanel from "./transaction-detail-panel";
@@ -12,6 +13,8 @@ interface Period {
   PeriodYear: number;
   PeriodMonth: number;
   IsCurrent: boolean;
+  StartDate: string;
+  EndDate: string;
 }
 
 interface PeriodInfo {
@@ -54,6 +57,19 @@ async function confirmDeleteTransaction(label: string): Promise<boolean> {
   return result.isConfirmed;
 }
 
+async function confirmPullFromWorksheet(): Promise<boolean> {
+  const result = await Swal.fire({
+    html: "ดึงข้อมูลจาก Worksheet? ระบบจะเพิ่มพนักงานที่มีใบลงเวลาที่<b>อนุมัติแล้ว</b>ของงวดนี้ที่ยังไม่มีในตาราง และคำนวณจำนวนวัน/จำนวนเงินของรายการรายได้แบบรายวันใหม่ให้ทุกคน (ทับค่าเดิมที่เคยกรอกไว้ในรายการเหล่านั้น)",
+    icon: "warning",
+    showCancelButton: true,
+    confirmButtonText: "ยืนยัน",
+    cancelButtonText: "ยกเลิก",
+    confirmButtonColor: "#16a34a",
+    cancelButtonColor: "#9ca3af",
+  });
+  return result.isConfirmed;
+}
+
 export default function TransactionEntryView({
   periods,
   companies,
@@ -67,7 +83,7 @@ export default function TransactionEntryView({
   companies: { CompanyCode: string; CompanyName: string }[];
   employees: { EmpCode: string; FullName: string; EmployeeType: string; CompanyCode: string | null }[];
   incomeTypes: { IncomeCode: string; IncomeName: string }[];
-  deductionTypes: { DeductionCode: string; DeductionName: string }[];
+  deductionTypes: { DeductionCode: string; DeductionName: string; IsInstallment: boolean; IsAutoCalculated: boolean }[];
   canSave: boolean;
   canDelete: boolean;
 }) {
@@ -75,7 +91,7 @@ export default function TransactionEntryView({
   const [companyCode, setCompanyCode] = useState("");
   const [rows, setRows] = useState<Row[]>([]);
   const [expandedEmpCode, setExpandedEmpCode] = useState<string | null>(null);
-  const [panelData, setPanelData] = useState<Record<string, { period: PeriodInfo; transaction: FullTransaction }>>({});
+  const [panelData, setPanelData] = useState<Record<string, { period: PeriodInfo; transaction: FullTransaction; rateConfig: Record<string, { amount: string; rateBasis: string }> }>>({});
   const [addEmpCode, setAddEmpCode] = useState("");
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
@@ -136,6 +152,32 @@ export default function TransactionEntryView({
     }
   }
 
+  async function handlePullFromWorksheet() {
+    if (!period) return;
+    if (!(await confirmPullFromWorksheet())) return;
+    setMessage(null);
+    setLoading(true);
+    try {
+      const res = await fetch("/api/payroll/transactions/pull-from-worksheet", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ periodId: period.PeriodID, employeeType, companyCode: companyCode || undefined }),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setMessage(body.message || body.error);
+        return;
+      }
+      // Detail lines may have changed for anyone already expanded — force a
+      // re-fetch next time instead of showing stale cached Days/Amount.
+      setPanelData({});
+      setExpandedEmpCode(null);
+      await refreshRows(period.PeriodID, companyCode);
+    } finally {
+      setLoading(false);
+    }
+  }
+
   async function handleDelete(row: Row) {
     if (!(await confirmDeleteTransaction(`${row.EmpCode} — ${row.Employee.FullName}`))) return;
     setMessage(null);
@@ -184,6 +226,24 @@ export default function TransactionEntryView({
 
       {period && (
         <>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="text-sm">
+              <span className="text-gray-500">งวดปัจจุบัน: </span>
+              <span className="font-medium">
+                {period.PeriodMonth}/{toBuddhistYear(period.PeriodYear)} ({new Date(period.StartDate).toLocaleDateString("th-TH")} - {new Date(period.EndDate).toLocaleDateString("th-TH")})
+              </span>
+            </div>
+            {canSave && (
+              <button
+                onClick={handlePullFromWorksheet}
+                disabled={loading}
+                className="rounded-md bg-green-600 px-3 py-1.5 text-sm text-white hover:bg-green-700 disabled:opacity-50"
+              >
+                ดึงข้อมูลจาก Worksheet
+              </button>
+            )}
+          </div>
+
           {/* No overflow-x-auto here — same fix as the หน่วยงาน (Site)
               positions table (2026-09-21): this table's expanded row nests
               TransactionDetailPanel's "รายการ" SearchableSelect dropdown,
@@ -236,6 +296,7 @@ export default function TransactionEntryView({
                               empCode={r.EmpCode}
                               initialPeriod={panelData[r.EmpCode].period}
                               initialTransaction={panelData[r.EmpCode].transaction}
+                              rateConfig={panelData[r.EmpCode].rateConfig}
                               incomeTypes={incomeTypes}
                               deductionTypes={deductionTypes}
                               canSave={canSave}

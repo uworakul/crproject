@@ -14,6 +14,7 @@ import InstallmentDeductionTab from "./installment-deduction-tab";
 import HistoryTab from "./history-tab";
 import PayrollHistoryTab from "./payroll-history-tab";
 import LeaveHistoryTab from "./leave-history-tab";
+import EmployeePhotoUploads from "./employee-photo-uploads";
 import { getLeaveBalanceSummary } from "@/lib/leave-balance";
 
 export default async function EmployeeDetailPage({ params }: { params: Promise<{ empCode: string }> }) {
@@ -197,9 +198,17 @@ export default async function EmployeeDetailPage({ params }: { params: Promise<{
       <Link href="/employees" className="text-sm text-gray-500 hover:underline">
         ← กลับทะเบียนพนักงาน
       </Link>
-      <h1 className="mb-6 mt-2 text-lg font-semibold text-gray-900">
-        {employee.EmpCode} — {employee.FullName}
-      </h1>
+      <div className="mb-6 mt-2 flex items-start justify-between gap-4">
+        <h1 className="text-lg font-semibold text-gray-900">
+          {employee.EmpCode} — {employee.FullName}
+        </h1>
+        <EmployeePhotoUploads
+          empCode={empCode}
+          hasPhoto={!!employee.PhotoPath}
+          hasIdCardPhoto={!!employee.IDCardPhotoPath}
+          canSave={canSaveEmployee}
+        />
+      </div>
       <Tabs tabs={tabs} />
     </div>
   );

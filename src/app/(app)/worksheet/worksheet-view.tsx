@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import Swal from "sweetalert2";
 import { toBuddhistYear, toGregorianYear } from "@/lib/buddhist-year";
+import SearchableSelect from "../searchable-select";
 
 async function confirmDialog(html: string, confirmButtonColor = "#dc2626") {
   const result = await Swal.fire({
@@ -35,6 +36,8 @@ interface DetailRow {
   empCode: string;
   empName: string;
   empType: string;
+  positionCode: string | null;
+  positionName: string | null;
   dailyRate: string;
   days: DayCell[];
   total: string;
@@ -72,10 +75,14 @@ function fmtBaht(v: string | number) {
 // param-change is meant to happen in a Server Component instead.
 export default function WorksheetView({
   sites,
+  employees,
+  positions,
   initialData,
   initialError,
 }: {
   sites: Site[];
+  employees: { EmpCode: string; FullName: string }[];
+  positions: { PositionCode: string; PositionName: string }[];
   initialData: WorksheetData | null;
   initialError: string | null;
 }) {
@@ -87,6 +94,9 @@ export default function WorksheetView({
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [newEmpCode, setNewEmpCode] = useState("");
+  const [newPositionCode, setNewPositionCode] = useState("");
+  const [editingPositionEmpCode, setEditingPositionEmpCode] = useState<string | null>(null);
+  const [editPositionValue, setEditPositionValue] = useState("");
   const [rejectReasonInput, setRejectReasonInput] = useState("");
   const [fillFrom, setFillFrom] = useState(1);
   const [fillTo, setFillTo] = useState(1);
@@ -119,18 +129,22 @@ export default function WorksheetView({
   }
 
   const daysInMonth = useMemo(() => new Date(year, month, 0).getDate(), [year, month]);
-  const codeCycle = useMemo(() => [null, ...(data?.attendanceCodes.map((c) => c.Code) ?? [])], [data]);
 
-  function cycleCell(detailIdx: number, dayIdx: number) {
+  // 2026-09-21: clicking a cell now paints it directly with whatever code is
+  // currently selected in the "ใส่ช่วงวันที่" dropdown (fillCode — including
+  // its "- ว่าง -" option to clear a cell), instead of the old behavior of
+  // cycling D -> N -> D-N -> F -> blank on every click. That dropdown was
+  // already there for the bulk date-range fill; it now doubles as the
+  // "paint brush" for single-cell clicks too, so there's one place to pick
+  // the code from instead of clicking through the cycle to find it.
+  function paintCell(detailIdx: number, dayIdx: number) {
     if (!data || !data.canSave || data.status !== "DRAFT") return;
+    const next = fillCode || null;
     setData((prev) => {
       if (!prev) return prev;
       const details = [...prev.details];
       const detail = { ...details[detailIdx] };
       const days = [...detail.days];
-      const current = days[dayIdx].attendCode;
-      const currentPos = codeCycle.indexOf(current);
-      const next = codeCycle[(currentPos + 1) % codeCycle.length];
       days[dayIdx] = { ...days[dayIdx], attendCode: next };
       detail.days = days;
       details[detailIdx] = detail;
@@ -155,12 +169,12 @@ export default function WorksheetView({
   }
 
   async function addEmployee() {
-    if (!data || !newEmpCode.trim()) return;
+    if (!data || !newEmpCode.trim() || !newPositionCode) return;
     setMessage(null);
     const res = await fetch(`/api/worksheets/${data.worksheetId}/employees`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ empCode: newEmpCode.trim() }),
+      body: JSON.stringify({ empCode: newEmpCode.trim(), positionCode: newPositionCode }),
     });
     const body = await res.json().catch(() => ({}));
     if (!res.ok) {
@@ -168,6 +182,7 @@ export default function WorksheetView({
       return;
     }
     setNewEmpCode("");
+    setNewPositionCode("");
     load(siteCode, year, month);
   }
 
@@ -180,6 +195,30 @@ export default function WorksheetView({
     if (res.ok) load(siteCode, year, month);
   }
 
+  // 2026-09-21 — เปลี่ยนตำแหน่งของ SPARE row (แก้ไม่ได้สำหรับ REGULAR ตาม
+  // การออกแบบ — server บล็อกไว้อยู่แล้ว แต่ UI ไม่แสดงปุ่มนี้ให้ REGULAR เลย)
+  function startEditPosition(d: DetailRow) {
+    setEditingPositionEmpCode(d.empCode);
+    setEditPositionValue(d.positionCode ?? "");
+  }
+
+  async function saveEditPosition(empCode: string) {
+    if (!data || !editPositionValue) return;
+    setMessage(null);
+    const res = await fetch(`/api/worksheets/${data.worksheetId}/employees/${empCode}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ positionCode: editPositionValue }),
+    });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      setMessage(body.message || body.error);
+      return;
+    }
+    setEditingPositionEmpCode(null);
+    load(siteCode, year, month);
+  }
+
   async function removeAllEmployees() {
     if (!data) return;
     if (!(await confirmDialog(`ยืนยันลบพนักงานทั้งหมด (${data.details.length} คน) ออกจากใบลงเวลานี้?`))) return;
@@ -187,6 +226,22 @@ export default function WorksheetView({
     const body = await res.json().catch(() => ({}));
     setMessage(res.ok ? null : body.message || body.error);
     if (res.ok) load(siteCode, year, month);
+  }
+
+  // 2026-09-21 — re-runs the REGULAR auto-pull for a worksheet that already
+  // exists (only ran once, at creation, otherwise). Additive only, so no
+  // confirm dialog needed (nothing existing is touched/removed).
+  async function repullEmployees() {
+    if (!data) return;
+    setMessage(null);
+    const res = await fetch(`/api/worksheets/${data.worksheetId}/repull`, { method: "POST" });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      setMessage(body.message || body.error);
+      return;
+    }
+    setMessage(body.added > 0 ? `ดึงพนักงานเพิ่ม ${body.added} คน` : "ไม่มีพนักงานใหม่ให้ดึงเพิ่ม");
+    load(siteCode, year, month);
   }
 
   function fillRange() {
@@ -249,6 +304,12 @@ export default function WorksheetView({
   const grandTotal = data?.details.reduce((sum, d) => sum + Number(d.total), 0) ?? 0;
   const regularCount = data?.details.filter((d) => d.empType === "REGULAR").length ?? 0;
   const spareCount = data?.details.filter((d) => d.empType === "SPARE").length ?? 0;
+
+  // 2026-09-21 — "รหัสพนักงานสแปร์" ค้นหาได้จากทะเบียนพนักงานทั้งระบบ
+  // (สถานะปกติ/ทดลองงาน, ไม่กรองตามหน่วยงาน — สแปร์อาจเป็นคนหน่วยงานอื่นหรือ
+  // ยังไม่กำหนดหน่วยงานก็ได้) ตัดแค่คนที่มีอยู่ในใบนี้แล้วออกจากตัวเลือก
+  const existingEmpCodes = new Set(data?.details.map((d) => d.empCode) ?? []);
+  const spareCandidateEmployees = employees.filter((e) => !existingEmpCodes.has(e.EmpCode));
 
   return (
     <div className="flex flex-col gap-4">
@@ -317,7 +378,7 @@ export default function WorksheetView({
           {/* Bulk fill a date range with one code, for one or all employees — local edit only, click บันทึก to save */}
           {data.canSave && data.status === "DRAFT" && (
             <div className="flex flex-wrap items-center gap-2 rounded border border-dashed border-gray-300 p-2 text-sm">
-              <span className="text-gray-500">ใส่ช่วงวันที่:</span>
+              <span className="text-gray-500">ใส่กะตามช่วงวันที่:</span>
               <select value={fillFrom} onChange={(e) => setFillFrom(Number(e.target.value))} className="rounded border border-gray-300 px-1.5 py-1 text-sm">
                 {Array.from({ length: daysInMonth }, (_, i) => i + 1).map((d) => (
                   <option key={d} value={d}>
@@ -350,7 +411,7 @@ export default function WorksheetView({
                 ))}
               </select>
               <button onClick={fillRange} className="rounded border border-gray-300 px-3 py-1 text-sm text-gray-700 hover:bg-gray-50">
-                ใส่ช่วงวันที่
+                ใส่กะตามช่วงวันที่
               </button>
             </div>
           )}
@@ -362,7 +423,7 @@ export default function WorksheetView({
                 <tr className="border-b border-gray-200 text-left text-gray-600">
                   <th className="sticky left-0 bg-white px-2 py-1">พนักงาน</th>
                   <th className="px-2 py-1">ประเภท</th>
-                  <th className="px-2 py-1 text-right">ค่าแรง/วัน</th>
+                  <th className="px-2 py-1">ตำแหน่ง</th>
                   {Array.from({ length: daysInMonth }, (_, i) => (
                     <th key={i} className="px-1 py-1 text-center">
                       {i + 1}
@@ -385,12 +446,44 @@ export default function WorksheetView({
                         {d.empType === "REGULAR" ? "ประจำ" : "สแปร์"}
                       </span>
                     </td>
-                    <td className="px-2 py-1 text-right">{fmtBaht(d.dailyRate)}</td>
+                    <td className="px-2 py-1 whitespace-nowrap">
+                      {editingPositionEmpCode === d.empCode ? (
+                        <div className="flex items-center gap-1">
+                          <select
+                            value={editPositionValue}
+                            onChange={(e) => setEditPositionValue(e.target.value)}
+                            className="rounded border border-gray-300 px-1 py-0.5 text-xs"
+                          >
+                            <option value="">- เลือกตำแหน่ง -</option>
+                            {positions.map((p) => (
+                              <option key={p.PositionCode} value={p.PositionCode}>
+                                {p.PositionName}
+                              </option>
+                            ))}
+                          </select>
+                          <button onClick={() => saveEditPosition(d.empCode)} className="text-[10px] text-gray-900 hover:underline">
+                            บันทึก
+                          </button>
+                          <button onClick={() => setEditingPositionEmpCode(null)} className="text-[10px] text-gray-400 hover:underline">
+                            ยกเลิก
+                          </button>
+                        </div>
+                      ) : (
+                        <span className="flex items-center gap-1">
+                          {d.positionName ?? "-"}
+                          {d.empType === "SPARE" && data.canSave && data.status === "DRAFT" && (
+                            <button onClick={() => startEditPosition(d)} className="text-[10px] text-gray-400 hover:underline">
+                              แก้ไข
+                            </button>
+                          )}
+                        </span>
+                      )}
+                    </td>
                     {d.days.map((day, dayIdx) => (
                       <td key={day.day} className="px-0.5 py-0.5 text-center">
                         <button
                           type="button"
-                          onClick={() => cycleCell(detailIdx, dayIdx)}
+                          onClick={() => paintCell(detailIdx, dayIdx)}
                           disabled={!data.canSave || data.status !== "DRAFT"}
                           className={`h-6 w-6 rounded border text-[10px] ${
                             day.attendCode ? (CODE_COLORS[day.attendCode] ?? "bg-gray-100") : "border-dashed border-gray-200"
@@ -414,16 +507,30 @@ export default function WorksheetView({
             </table>
           </div>
 
-          {/* Add spare employee */}
+          {/* Add spare employee / re-pull REGULAR employees */}
           {data.canSave && data.status === "DRAFT" && (
             <div className="flex items-center gap-2">
-              <input
-                value={newEmpCode}
-                onChange={(e) => setNewEmpCode(e.target.value)}
-                placeholder="รหัสพนักงานสแปร์"
-                className="rounded border border-dashed border-gray-300 px-2 py-1 text-sm"
-              />
-              <button onClick={addEmployee} className="rounded border border-dashed border-gray-300 px-3 py-1 text-sm text-gray-600">
+              <div className="w-72">
+                <SearchableSelect
+                  value={newEmpCode}
+                  onChange={setNewEmpCode}
+                  options={spareCandidateEmployees.map((e) => ({ code: e.EmpCode, label: `${e.EmpCode} — ${e.FullName}` }))}
+                  placeholder="ค้นหารหัส/ชื่อพนักงานสแปร์"
+                />
+              </div>
+              <select value={newPositionCode} onChange={(e) => setNewPositionCode(e.target.value)} className="rounded border border-dashed border-gray-300 px-2 py-1 text-sm">
+                <option value="">- ตำแหน่งที่มาทำ -</option>
+                {positions.map((p) => (
+                  <option key={p.PositionCode} value={p.PositionCode}>
+                    {p.PositionName}
+                  </option>
+                ))}
+              </select>
+              <button
+                onClick={addEmployee}
+                disabled={!newEmpCode || !newPositionCode}
+                className="rounded border border-dashed border-gray-300 px-3 py-1 text-sm text-gray-600 disabled:opacity-50"
+              >
                 + เพิ่มพนักงานสแปร์
               </button>
               {data.details.length > 0 && (
@@ -431,6 +538,9 @@ export default function WorksheetView({
                   ลบพนักงานทั้งหมด
                 </button>
               )}
+              <button onClick={repullEmployees} className="rounded border border-dashed border-gray-300 px-3 py-1 text-sm text-gray-600">
+                ↻ ดึงรายชื่อพนักงานอีกครั้ง
+              </button>
             </div>
           )}
 

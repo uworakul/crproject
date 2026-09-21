@@ -123,6 +123,8 @@ export default async function ReferencePage() {
                 canDelete={canDelete}
                 allowExport
                 allowImport
+                detailLinkBase="/reference/positions"
+                detailLinkLabel="รายได้พื้นฐาน"
                 initialRows={positions}
               />
             ),

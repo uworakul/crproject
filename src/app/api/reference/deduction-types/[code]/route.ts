@@ -15,7 +15,7 @@ export async function PUT(request: NextRequest, ctx: RouteContext<"/api/referenc
   const existing = await prisma.refDeductionType.findUnique({ where: { DeductionCode: code } });
   if (!existing) return apiError(404, "DEDUCTION_TYPE_NOT_FOUND");
 
-  let body: { deductionName?: unknown; isInstallment?: unknown };
+  let body: { deductionName?: unknown; isInstallment?: unknown; isAutoCalculated?: unknown };
   try {
     body = await request.json();
   } catch {
@@ -27,6 +27,7 @@ export async function PUT(request: NextRequest, ctx: RouteContext<"/api/referenc
     data: {
       DeductionName: typeof body.deductionName === "string" ? body.deductionName.trim() : undefined,
       IsInstallment: typeof body.isInstallment === "boolean" ? body.isInstallment : undefined,
+      IsAutoCalculated: typeof body.isAutoCalculated === "boolean" ? body.isAutoCalculated : undefined,
       UpdatedBy: user.userId,
       UpdatedDate: new Date(),
     },

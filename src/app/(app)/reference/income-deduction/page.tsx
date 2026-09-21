@@ -13,6 +13,7 @@ const deductionFields: FieldDef[] = [
   { key: "DeductionCode", label: "รหัสรายการหัก", type: "text", isKey: true },
   { key: "DeductionName", label: "ชื่อรายการหัก", type: "text" },
   { key: "IsInstallment", label: "หักเป็นงวด", type: "checkbox" },
+  { key: "IsAutoCalculated", label: "คำนวณอัตโนมัติ", type: "checkbox" },
 ];
 
 export default async function IncomeDeductionPage() {

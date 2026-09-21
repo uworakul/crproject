@@ -63,6 +63,8 @@ export async function PUT(request: NextRequest, ctx: RouteContext<"/api/payroll/
     Number(merged.GrossWage) -
     Number(merged.TaxWithheld) -
     Number(merged.SSOAmount) -
+    Number(merged.WelfareFundAmount) -
+    Number(merged.InstallmentDeduct) -
     Number(merged.AdvanceDeduct) -
     Number(merged.LoanDeduct) -
     Number(merged.TrainingDeduct) -

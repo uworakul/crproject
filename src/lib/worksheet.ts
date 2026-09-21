@@ -6,15 +6,110 @@ function daysInMonth(year: number, month: number) {
   return new Date(year, month, 0).getDate();
 }
 
+// REGULAR employees eligible for a site's worksheet in a given month
+// (2026-09-21, extended for RESIGNED handling — shared by
+// getOrCreateDraftWorksheet's initial pull and repullWorksheetEmployees'
+// manual re-pull, so both use exactly the same eligibility rule). A usable
+// daily rate must exist, in order of specificity: (1) the employee's own
+// mst_employee.DailyRate, (2) this worksheet's Site+Position อัตรากำลังพล
+// rate (mst_site_position_income, IncomeCode="01" ค่าแรง, RateBasis=DAILY —
+// e.g. the user set ค่าแรง=500/day for ตำแหน่ง 114 at หน่วยงาน 201 through
+// "หน่วยงาน (Site) -> จัดการตำแหน่ง" already, so that should be picked up
+// here without also having to duplicate it in the Position-level fallback),
+// (3) the Position's own generic "รายได้พื้นฐาน" (mst_position_income,
+// same IncomeCode/RateBasis) for when neither the employee nor this
+// specific site has a rate set. Only "01"/DAILY is read at any tier since
+// Worksheet has no OT/allowance concept at all (just DailyRate × attendance
+// PayMultiplier per day) — a MONTHLY rate wouldn't mean anything to
+// Worksheet's per-day model, so it's deliberately ignored, not misapplied
+// as a daily figure. Currently-employed statuses (ACTIVE/PROBATION/
+// SUSPENDED) are always eligible; RESIGNED is eligible only for the
+// worksheet covering their last month (ResignDate falls inside [1st, last
+// day] of WorkYear/WorkMonth) so their final partial month's attendance can
+// still be recorded; TERMINATED is never eligible (no equivalent "last
+// active month" date field exists for it, unlike ResignDate). This
+// EmployeeStatus check didn't exist before — the original query (built
+// 2026-09-16, three days before EmployeeStatus grew beyond ACTIVE/RESIGNED)
+// had no status filter at all, so RESIGNED/TERMINATED staff would have kept
+// appearing on every new worksheet indefinitely.
+async function findRegularEmployeesForWorksheet(
+  siteCode: string,
+  year: number,
+  month: number,
+): Promise<{ EmpCode: string; DailyRate: Prisma.Decimal; PositionCode: string | null }[]> {
+  const monthStart = new Date(Date.UTC(year, month - 1, 1));
+  const monthEnd = new Date(Date.UTC(year, month, 0, 23, 59, 59, 999));
+  const candidates = await prisma.mstEmployee.findMany({
+    where: {
+      DefaultSiteCode: siteCode,
+      IsActive: true,
+      OR: [{ EmployeeStatus: { notIn: ["RESIGNED", "TERMINATED"] } }, { EmployeeStatus: "RESIGNED", ResignDate: { gte: monthStart, lte: monthEnd } }],
+    },
+    select: { EmpCode: true, DailyRate: true, PositionCode: true },
+  });
+
+  const positionCodesNeedingFallback = [...new Set(candidates.filter((e) => e.DailyRate === null && e.PositionCode).map((e) => e.PositionCode as string))];
+  const [siteRates, positionRates] = positionCodesNeedingFallback.length
+    ? await Promise.all([
+        prisma.mstSitePositionIncome.findMany({
+          where: { IncomeCode: "01", RateBasis: "DAILY", SitePosition: { SiteCode: siteCode, PositionCode: { in: positionCodesNeedingFallback } } },
+          select: { Amount: true, SitePosition: { select: { PositionCode: true } } },
+        }),
+        prisma.mstPositionIncome.findMany({
+          where: { PositionCode: { in: positionCodesNeedingFallback }, IncomeCode: "01", RateBasis: "DAILY" },
+          select: { PositionCode: true, Amount: true },
+        }),
+      ])
+    : [[], []];
+  const siteRateByPosition = new Map(siteRates.map((r) => [r.SitePosition.PositionCode, r.Amount]));
+  const positionRateByPosition = new Map(positionRates.map((r) => [r.PositionCode, r.Amount]));
+
+  return candidates
+    .map((e) => ({
+      EmpCode: e.EmpCode,
+      DailyRate: e.DailyRate ?? (e.PositionCode ? (siteRateByPosition.get(e.PositionCode) ?? positionRateByPosition.get(e.PositionCode) ?? null) : null),
+      PositionCode: e.PositionCode,
+    }))
+    .filter((e): e is { EmpCode: string; DailyRate: Prisma.Decimal; PositionCode: string | null } => e.DailyRate !== null);
+}
+
+// 3-tier rate fallback (employee's own DailyRate -> this worksheet's
+// Site+Position อัตรากำลังพล -> the Position's generic "รายได้พื้นฐาน") —
+// used both by findRegularEmployeesForWorksheet above (REGULAR auto-pull,
+// always using the employee's own PositionCode) and directly by the SPARE
+// add/edit endpoints (2026-09-21: a spare's position for THIS worksheet can
+// differ entirely from their home mst_employee.PositionCode — "ตำแหน่ง
+// ปัจจุบันเป็น รปภ แต่ไปเป็น คนสวน ในอีกหน่วยงานก็ได้" — so positionCode here
+// is whatever was CHOSEN for this assignment, not necessarily the
+// employee's own). siteCode is always the WORKSHEET's site, not the
+// employee's DefaultSiteCode — matches what "อัตรากำลังพล" means: what this
+// site pays for this position.
+export async function resolveEffectiveDailyRate(siteCode: string, employeeDailyRate: Prisma.Decimal | null, positionCode: string | null): Promise<Prisma.Decimal | null> {
+  if (employeeDailyRate) return employeeDailyRate;
+  if (!positionCode) return null;
+  const siteRate = await prisma.mstSitePositionIncome.findFirst({
+    where: { IncomeCode: "01", RateBasis: "DAILY", SitePosition: { SiteCode: siteCode, PositionCode: positionCode } },
+    select: { Amount: true },
+  });
+  if (siteRate) return siteRate.Amount;
+  const positionRate = await prisma.mstPositionIncome.findFirst({
+    where: { PositionCode: positionCode, IncomeCode: "01", RateBasis: "DAILY" },
+    select: { Amount: true },
+  });
+  return positionRate?.Amount ?? null;
+}
+
 /**
  * GET /api/worksheets?site=&year=&month= semantics: find the one worksheet
  * for (site, year, month) — UNIQUE(SiteCode, WorkYear, WorkMonth) — or
- * create a DRAFT and auto-pull REGULAR employees from
- * mst_employee.DefaultSiteCode, snapshotting DailyRate at add-time (FSD:
- * rate must not silently change if the employee's master rate changes
- * later). Employees with no DailyRate set can't be snapshotted and are
- * skipped — Employee Master isn't built yet, so this can only happen with
- * incompletely-seeded data.
+ * create a DRAFT and auto-pull eligible REGULAR employees (see
+ * findRegularEmployeesForWorksheet above), snapshotting the resolved daily
+ * rate at add-time (FSD: rate must not silently change if the employee's
+ * master rate — or the Position's รายได้พื้นฐาน fallback — changes later).
+ * Employees with no usable rate at all (no DailyRate AND no Position base
+ * rate) can't be snapshotted and are skipped — fill in DailyRate at Employee
+ * Master (or set a รายได้พื้นฐาน rate on their Position), then use
+ * repullWorksheetEmployees() below if the worksheet already exists.
  */
 export async function getOrCreateDraftWorksheet(siteCode: string, year: number, month: number, userId: string) {
   const existing = await prisma.trnWorksheetHeader.findUnique({
@@ -22,10 +117,7 @@ export async function getOrCreateDraftWorksheet(siteCode: string, year: number, 
   });
   if (existing) return existing.WorksheetID;
 
-  const regulars = await prisma.mstEmployee.findMany({
-    where: { DefaultSiteCode: siteCode, IsActive: true, DailyRate: { not: null } },
-    select: { EmpCode: true, DailyRate: true },
-  });
+  const regulars = await findRegularEmployeesForWorksheet(siteCode, year, month);
 
   // Raw INSERT, not prisma.trnWorksheetHeader.create(): Prisma 7 omits
   // .create()/.upsert() entirely from the generated client for any model
@@ -42,8 +134,8 @@ export async function getOrCreateDraftWorksheet(siteCode: string, year: number, 
     for (let i = 0; i < regulars.length; i++) {
       const e = regulars[i];
       await tx.$executeRaw`
-        INSERT INTO trn_worksheet_detail (WorksheetID, EmpCode, EmpType, DailyRate, DisplayOrder, CreatedBy)
-        VALUES (${id}, ${e.EmpCode}, 'REGULAR', ${e.DailyRate}, ${i}, ${userId})
+        INSERT INTO trn_worksheet_detail (WorksheetID, EmpCode, EmpType, PositionCode, DailyRate, DisplayOrder, CreatedBy)
+        VALUES (${id}, ${e.EmpCode}, 'REGULAR', ${e.PositionCode}, ${e.DailyRate}, ${i}, ${userId})
       `;
     }
 
@@ -51,6 +143,43 @@ export async function getOrCreateDraftWorksheet(siteCode: string, year: number, 
   });
 
   return worksheetId;
+}
+
+/**
+ * "ดึงรายชื่อพนักงานอีกครั้ง" (2026-09-21) — re-runs the same eligibility
+ * query getOrCreateDraftWorksheet used at creation, for an ALREADY-EXISTING
+ * DRAFT worksheet that never auto-refreshes on its own otherwise (e.g. an
+ * employee's DailyRate got filled in at Employee Master, or someone new was
+ * assigned to this site, after the worksheet was first created empty).
+ * Skips anyone already on the sheet (by EmpCode) — additive only, never
+ * removes or touches an existing row. Caller (the route handler) is
+ * responsible for the DRAFT-only / permission checks, same split as every
+ * other mutating worksheet.ts function.
+ */
+export async function repullWorksheetEmployees(worksheetId: number, siteCode: string, year: number, month: number, userId: string): Promise<{ added: number }> {
+  const [existing, candidates] = await Promise.all([
+    prisma.trnWorksheetDetail.findMany({ where: { WorksheetID: worksheetId }, select: { EmpCode: true, DisplayOrder: true } }),
+    findRegularEmployeesForWorksheet(siteCode, year, month),
+  ]);
+  const existingCodes = new Set(existing.map((d) => d.EmpCode));
+  const toAdd = candidates.filter((e) => !existingCodes.has(e.EmpCode));
+  if (toAdd.length === 0) return { added: 0 };
+
+  let nextOrder = existing.reduce((max, d) => Math.max(max, d.DisplayOrder), -1) + 1;
+
+  // Raw INSERT — same Prisma 7 / Unsupported("rowversion") workaround as
+  // getOrCreateDraftWorksheet above.
+  await prisma.$transaction(async (tx) => {
+    for (const e of toAdd) {
+      await tx.$executeRaw`
+        INSERT INTO trn_worksheet_detail (WorksheetID, EmpCode, EmpType, PositionCode, DailyRate, DisplayOrder, CreatedBy)
+        VALUES (${worksheetId}, ${e.EmpCode}, 'REGULAR', ${e.PositionCode}, ${e.DailyRate}, ${nextOrder}, ${userId})
+      `;
+      nextOrder++;
+    }
+  });
+
+  return { added: toAdd.length };
 }
 
 export async function getWorksheetDetail(worksheetId: number) {
@@ -62,6 +191,7 @@ export async function getWorksheetDetail(worksheetId: number) {
         orderBy: { DisplayOrder: "asc" },
         include: {
           Employee: { select: { FullName: true } },
+          Position: { select: { PositionName: true } },
           DailyRecords: { select: { WorkDate: true, AttendCode: true, Remark: true } },
         },
       },
@@ -96,6 +226,8 @@ export async function getWorksheetDetail(worksheetId: number) {
       empCode: d.EmpCode,
       empName: d.Employee.FullName,
       empType: d.EmpType,
+      positionCode: d.PositionCode,
+      positionName: d.Position?.PositionName ?? null,
       dailyRate: d.DailyRate,
       days,
       total,

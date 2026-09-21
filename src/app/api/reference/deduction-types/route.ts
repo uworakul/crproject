@@ -21,7 +21,7 @@ export async function POST(request: NextRequest) {
   const denied = await requirePermission(user, "INCOME_DEDUCTION", "save");
   if (denied) return denied;
 
-  let body: { deductionCode?: unknown; deductionName?: unknown; isInstallment?: unknown };
+  let body: { deductionCode?: unknown; deductionName?: unknown; isInstallment?: unknown; isAutoCalculated?: unknown };
   try {
     body = await request.json();
   } catch {
@@ -36,7 +36,13 @@ export async function POST(request: NextRequest) {
   if (existing) return apiError(409, "DEDUCTION_TYPE_ALREADY_EXISTS", undefined, { deductionCode });
 
   const created = await prisma.refDeductionType.create({
-    data: { DeductionCode: deductionCode, DeductionName: deductionName, IsInstallment: body.isInstallment === true, CreatedBy: user.userId },
+    data: {
+      DeductionCode: deductionCode,
+      DeductionName: deductionName,
+      IsInstallment: body.isInstallment === true,
+      IsAutoCalculated: body.isAutoCalculated === true,
+      CreatedBy: user.userId,
+    },
   });
   await logAction(user.userId, "CREATE_DEDUCTION_TYPE", { targetTable: "ref_deduction_type", targetId: deductionCode });
   return apiSuccess(created, 201);

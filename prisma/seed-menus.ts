@@ -9,6 +9,10 @@
  * so all of Worksheet's leaves share one row.
  */
 export const menuSeed = [
+  // System Configuration (2026-09-21) — new top-most menu, not part of the
+  // original 9-module scope. Singleton settings row (sys_config).
+  { DocumentType: "SYS_CONFIG", MenuNameTH: "ตั้งค่าระบบ", MenuNameEN: "System Configuration", ModuleGroup: "SYS_CONFIG" },
+
   // Module 1 — ผู้ใช้งานและสิทธิ์ (BR-001–004)
   { DocumentType: "AUTHORIZATION", MenuNameTH: "ภาพรวมสิทธิ์", MenuNameEN: "Authorization Overview", ModuleGroup: "AUTHORIZATION" },
   { DocumentType: "USER", MenuNameTH: "ผู้ใช้งาน", MenuNameEN: "User", ModuleGroup: "AUTHORIZATION" },

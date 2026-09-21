@@ -48,6 +48,36 @@ async function confirmDeleteLine(name: string): Promise<boolean> {
 
 const emptyForm = { lineType: "INCOME" as "INCOME" | "DEDUCTION", code: "", hours: "", days: "", amount: "" };
 
+type RateConfig = Record<string, { amount: string; rateBasis: string }>;
+
+function periodDayCount(p: PeriodInfo): number {
+  const start = new Date(p.StartDate);
+  const end = new Date(p.EndDate);
+  return Math.round((end.getTime() - start.getTime()) / 86400000) + 1;
+}
+
+// 2026-09-21: auto-calculate "จำนวนเงิน" from "จำนวนวัน" whenever the line's
+// Code matches a configured rate in อัตรากำลังพล (mst_site_position_income)
+// for this employee's site+position — for ANY line, not just auto-loaded
+// ones (confirmed with user). DAILY rate: Amount = days × rate. MONTHLY
+// rate: prorated by the fraction of the period's calendar days worked
+// (Amount = days/periodDayCount × rate) — both confirmed choices. Hours is
+// not part of either formula (no hourly rate concept exists in the
+// system — RateBasis is DAILY|MONTHLY only) so it stays purely informational.
+// Returns null (meaning "don't touch Amount") when the code has no
+// configured rate, so manual entry keeps working exactly as before.
+function computeAmountFromDays(code: string, days: string, rateConfig: RateConfig, dayCount: number): string | null {
+  const rate = rateConfig[code];
+  if (!rate) return null;
+  const d = Number(days) || 0;
+  const rateAmount = Number(rate.amount);
+  if (rate.rateBasis === "MONTHLY") {
+    if (dayCount <= 0) return null;
+    return ((d / dayCount) * rateAmount).toFixed(2);
+  }
+  return (d * rateAmount).toFixed(2);
+}
+
 // Expandable-row content for a single employee's transaction — receives its
 // initial period+transaction as props (fetched by the parent's row-click
 // handler, same "own slice, refresh() after mutation" convention as
@@ -56,6 +86,7 @@ export default function TransactionDetailPanel({
   empCode,
   initialPeriod,
   initialTransaction,
+  rateConfig: initialRateConfig,
   incomeTypes,
   deductionTypes,
   canSave,
@@ -63,17 +94,21 @@ export default function TransactionDetailPanel({
   empCode: string;
   initialPeriod: PeriodInfo;
   initialTransaction: Transaction;
+  rateConfig: RateConfig;
   incomeTypes: { IncomeCode: string; IncomeName: string }[];
-  deductionTypes: { DeductionCode: string; DeductionName: string }[];
+  deductionTypes: { DeductionCode: string; DeductionName: string; IsInstallment: boolean; IsAutoCalculated: boolean }[];
   canSave: boolean;
 }) {
   const [period, setPeriod] = useState(initialPeriod);
   const [transaction, setTransaction] = useState(initialTransaction);
+  const [rateConfig, setRateConfig] = useState(initialRateConfig);
   const [form, setForm] = useState(emptyForm);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [editForm, setEditForm] = useState({ hours: "", days: "", amount: "" });
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+
+  const dayCount = periodDayCount(period);
 
   async function refresh() {
     const res = await fetch(`/api/payroll/transactions/by-employee?empCode=${encodeURIComponent(empCode)}`);
@@ -81,12 +116,18 @@ export default function TransactionDetailPanel({
       const body = await res.json();
       setPeriod(body.period);
       setTransaction(body.transaction);
+      setRateConfig(body.rateConfig);
     }
   }
 
   const usedCodes = new Set(transaction.Details.filter((d) => d.LineType === form.lineType).map((d) => d.Code));
+  // 2026-09-21: deduction types marked IsInstallment (belong on the employee's
+  // "รายการหักต่องวด" tab instead) or IsAutoCalculated (ภาษี/ปกส/กองทุนสงเคราะห์ —
+  // already computed elsewhere in Payroll Calculate) are excluded from this
+  // ad-hoc manual-entry dropdown entirely.
   const typeOptions = (form.lineType === "INCOME" ? incomeTypes : deductionTypes)
     .filter((t) => !usedCodes.has("IncomeCode" in t ? t.IncomeCode : t.DeductionCode))
+    .filter((t) => "IncomeCode" in t || !(t.IsInstallment || t.IsAutoCalculated))
     .map((t) => ("IncomeCode" in t ? { code: t.IncomeCode, label: t.IncomeName } : { code: t.DeductionCode, label: t.DeductionName }));
 
   async function handleAdd() {
@@ -204,7 +245,17 @@ export default function TransactionDetailPanel({
                   </td>
                   <td className="px-3 py-2 text-right">
                     {isEditing ? (
-                      <input type="number" step="any" value={editForm.days} onChange={(e) => setEditForm({ ...editForm, days: e.target.value })} className="w-20 rounded border border-gray-300 px-2 py-1 text-right text-sm" />
+                      <input
+                        type="number"
+                        step="any"
+                        value={editForm.days}
+                        onChange={(e) => {
+                          const days = e.target.value;
+                          const computed = computeAmountFromDays(d.Code, days, rateConfig, dayCount);
+                          setEditForm({ ...editForm, days, ...(computed !== null ? { amount: computed } : {}) });
+                        }}
+                        className="w-20 rounded border border-gray-300 px-2 py-1 text-right text-sm"
+                      />
                     ) : (
                       (d.Days ?? "-")
                     )}
@@ -281,7 +332,15 @@ export default function TransactionDetailPanel({
           <label className="flex flex-col gap-1 text-xs text-gray-500">
             รายการ
             <div className="w-72">
-              <SearchableSelect value={form.code} onChange={(code) => setForm({ ...form, code })} options={typeOptions} placeholder="เลือกรายการ" />
+              <SearchableSelect
+                value={form.code}
+                onChange={(code) => {
+                  const computed = computeAmountFromDays(code, form.days, rateConfig, dayCount);
+                  setForm({ ...form, code, ...(computed !== null ? { amount: computed } : {}) });
+                }}
+                options={typeOptions}
+                placeholder="เลือกรายการ"
+              />
             </div>
           </label>
           <label className="flex flex-col gap-1 text-xs text-gray-500">
@@ -290,13 +349,26 @@ export default function TransactionDetailPanel({
           </label>
           <label className="flex flex-col gap-1 text-xs text-gray-500">
             จำนวนวัน
-            <input type="number" step="any" value={form.days} onChange={(e) => setForm({ ...form, days: e.target.value })} className="w-20 rounded border border-gray-300 px-2 py-1 text-sm text-gray-900" />
+            <input
+              type="number"
+              step="any"
+              value={form.days}
+              onChange={(e) => {
+                const days = e.target.value;
+                const computed = computeAmountFromDays(form.code, days, rateConfig, dayCount);
+                setForm({ ...form, days, ...(computed !== null ? { amount: computed } : {}) });
+              }}
+              className="w-20 rounded border border-gray-300 px-2 py-1 text-sm text-gray-900"
+            />
           </label>
           <label className="flex flex-col gap-1 text-xs text-gray-500">
             จำนวนเงิน
             <input type="number" step="any" value={form.amount} onChange={(e) => setForm({ ...form, amount: e.target.value })} className="w-28 rounded border border-gray-300 px-2 py-1 text-sm text-gray-900" />
           </label>
-          <button onClick={handleAdd} disabled={loading || !form.code || !form.amount} className="rounded-md bg-gray-900 px-3 py-1.5 text-sm text-white hover:bg-gray-700 disabled:opacity-50">
+          {/* Only รายการ (code) is required — 2026-09-21: an empty ชม./วัน/จำนวนเงิน
+              defaults to 0 (Number("") === 0, which the API already accepts)
+              instead of silently blocking the button with no explanation. */}
+          <button onClick={handleAdd} disabled={loading || !form.code} className="rounded-md bg-gray-900 px-3 py-1.5 text-sm text-white hover:bg-gray-700 disabled:opacity-50">
             + เพิ่มรายการ
           </button>
         </div>

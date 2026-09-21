@@ -30,6 +30,8 @@ interface TransactionRow {
   OtherIncome: string;
   TaxWithheld: string;
   SSOAmount: string;
+  WelfareFundAmount: string;
+  InstallmentDeduct: string;
   AdvanceDeduct: string;
   LoanDeduct: string;
   TrainingDeduct: string;
@@ -47,12 +49,28 @@ interface DetailRow {
   Amount: string;
 }
 
+interface InstallmentLine {
+  debtId: number;
+  code: string;
+  label: string;
+  amount: string;
+  remainingAmount: string;
+}
+
 function totalIncome(t: TransactionRow) {
   return Number(t.GrossWage) + Number(t.OTAmount) + Number(t.PositionAllowance) + Number(t.ShiftAllowance) + Number(t.OtherIncome);
 }
 function totalDeduction(t: TransactionRow) {
   return (
-    Number(t.TaxWithheld) + Number(t.SSOAmount) + Number(t.AdvanceDeduct) + Number(t.LoanDeduct) + Number(t.TrainingDeduct) + Number(t.UniformDeduct) + Number(t.OtherDeduction)
+    Number(t.TaxWithheld) +
+    Number(t.SSOAmount) +
+    Number(t.WelfareFundAmount) +
+    Number(t.InstallmentDeduct) +
+    Number(t.AdvanceDeduct) +
+    Number(t.LoanDeduct) +
+    Number(t.TrainingDeduct) +
+    Number(t.UniformDeduct) +
+    Number(t.OtherDeduction)
   );
 }
 function money(n: number) {
@@ -89,6 +107,7 @@ export default function PayrollCalculateView({
   const [lockInfo, setLockInfo] = useState<{ isLocked: boolean; lockedBy: string | null; employeeCount: number; totalNetPay: string } | null>(null);
   const [expandedId, setExpandedId] = useState<number | null>(null);
   const [detailsById, setDetailsById] = useState<Record<number, DetailRow[]>>({});
+  const [installmentsById, setInstallmentsById] = useState<Record<number, InstallmentLine[]>>({});
   const [lastResult, setLastResult] = useState<{ documentNo: string | null; employeeCount: number; totalAmount: string } | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
@@ -170,7 +189,7 @@ export default function PayrollCalculateView({
 
   async function handleCancelCalculate() {
     if (!period) return;
-    if (!(await confirmDialog("ยืนยันยกเลิกผลการคำนวณของงวดนี้? (ภาษี/ประกันสังคมจะถูกล้างเป็น 0)", "ยืนยันยกเลิก", "#dc2626"))) return;
+    if (!(await confirmDialog("ยืนยันยกเลิกผลการคำนวณของงวดนี้? (ภาษี/ประกันสังคม/กองทุนสงเคราะห์พนักงาน/หักเป็นงวดจะถูกล้างเป็น 0)", "ยืนยันยกเลิก", "#dc2626"))) return;
     setMessage(null);
     const res = await fetch("/api/payroll/calculate/cancel", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ periodId: period.PeriodID }) });
     const body = await res.json().catch(() => ({}));
@@ -218,6 +237,10 @@ export default function PayrollCalculateView({
     if (!detailsById[t.TransactionID]) {
       const res = await fetch(`/api/payroll/transaction-details?transactionId=${t.TransactionID}`);
       if (res.ok) setDetailsById({ ...detailsById, [t.TransactionID]: await res.json() });
+    }
+    if (!installmentsById[t.TransactionID]) {
+      const res = await fetch(`/api/payroll/installment-deductions?empCode=${encodeURIComponent(t.EmpCode)}`);
+      if (res.ok) setInstallmentsById({ ...installmentsById, [t.TransactionID]: await res.json() });
     }
   }
 
@@ -369,84 +392,106 @@ export default function PayrollCalculateView({
                         </button>
                       </td>
                     </tr>
-                    {isExpanded && (
-                      <tr className="border-t border-gray-100 bg-gray-50">
-                        <td colSpan={8} className="px-3 py-3">
-                          <div className="grid grid-cols-2 gap-4 text-xs">
-                            <div>
-                              <p className="mb-1 font-medium text-gray-700">รายได้</p>
-                              <table className="w-full">
-                                <tbody>
-                                  <tr>
-                                    <td className="py-0.5 text-gray-500">ค่าแรงพื้นฐาน (GrossWage)</td>
-                                    <td className="py-0.5 text-right">{money(Number(t.GrossWage))}</td>
-                                  </tr>
-                                  <tr>
-                                    <td className="py-0.5 text-gray-500">ค่าล่วงเวลา (OT)</td>
-                                    <td className="py-0.5 text-right">{money(Number(t.OTAmount))}</td>
-                                  </tr>
-                                  <tr>
-                                    <td className="py-0.5 text-gray-500">เงินประจำตำแหน่ง</td>
-                                    <td className="py-0.5 text-right">{money(Number(t.PositionAllowance))}</td>
-                                  </tr>
-                                  <tr>
-                                    <td className="py-0.5 text-gray-500">เบี้ยกะ</td>
-                                    <td className="py-0.5 text-right">{money(Number(t.ShiftAllowance))}</td>
-                                  </tr>
-                                  {details
-                                    .filter((d) => d.LineType === "INCOME")
-                                    .map((d) => (
-                                      <tr key={d.DetailID}>
-                                        <td className="py-0.5 text-gray-500">{d.Description}</td>
-                                        <td className="py-0.5 text-right">{money(Number(d.Amount))}</td>
+                    {isExpanded &&
+                      (() => {
+                        const installments = installmentsById[t.TransactionID] ?? [];
+                        // Legacy Worksheet-era fields (GrossWage/OT/PositionAllowance/
+                        // ShiftAllowance, AdvanceDeduct/LoanDeduct/TrainingDeduct/
+                        // UniformDeduct) still count toward the row/grand totals and
+                        // NetPay — hidden here only when zero so a transaction created
+                        // entirely from "รายการประจำงวด" doesn't show a wall of 0.00
+                        // rows, while a Worksheet-sourced transaction still shows where
+                        // its GrossWage came from (2026-09-21).
+                        const legacyIncome = [
+                          { label: "ค่าแรงพื้นฐาน (GrossWage)", value: t.GrossWage },
+                          { label: "ค่าล่วงเวลา (OT)", value: t.OTAmount },
+                          { label: "เงินประจำตำแหน่ง", value: t.PositionAllowance },
+                          { label: "เบี้ยกะ", value: t.ShiftAllowance },
+                        ].filter((r) => Number(r.value) !== 0);
+                        const legacyDeduction = [
+                          { label: "หักเบิกล่วงหน้า", value: t.AdvanceDeduct },
+                          { label: "หักเงินกู้", value: t.LoanDeduct },
+                          { label: "หักค่าอบรม", value: t.TrainingDeduct },
+                          { label: "หักเครื่องแบบ", value: t.UniformDeduct },
+                        ].filter((r) => Number(r.value) !== 0);
+                        return (
+                          <tr className="border-t border-gray-100 bg-gray-50">
+                            <td colSpan={8} className="px-3 py-3">
+                              <div className="grid grid-cols-2 gap-4 text-xs">
+                                <div>
+                                  <p className="mb-1 font-medium text-gray-700">รายได้</p>
+                                  <table className="w-full">
+                                    <tbody>
+                                      {legacyIncome.map((r) => (
+                                        <tr key={r.label}>
+                                          <td className="py-0.5 text-gray-500">{r.label}</td>
+                                          <td className="py-0.5 text-right">{money(Number(r.value))}</td>
+                                        </tr>
+                                      ))}
+                                      {details
+                                        .filter((d) => d.LineType === "INCOME")
+                                        .map((d) => (
+                                          <tr key={d.DetailID}>
+                                            <td className="py-0.5 text-gray-500">{d.Description}</td>
+                                            <td className="py-0.5 text-right">{money(Number(d.Amount))}</td>
+                                          </tr>
+                                        ))}
+                                      {legacyIncome.length === 0 && details.filter((d) => d.LineType === "INCOME").length === 0 && (
+                                        <tr>
+                                          <td colSpan={2} className="py-0.5 text-gray-400">
+                                            ไม่มีรายการ
+                                          </td>
+                                        </tr>
+                                      )}
+                                    </tbody>
+                                  </table>
+                                </div>
+                                <div>
+                                  <p className="mb-1 font-medium text-gray-700">รายการหัก</p>
+                                  <table className="w-full">
+                                    <tbody>
+                                      <tr>
+                                        <td className="py-0.5 text-gray-500">ภาษีหัก ณ ที่จ่าย</td>
+                                        <td className="py-0.5 text-right">{money(Number(t.TaxWithheld))}</td>
                                       </tr>
-                                    ))}
-                                </tbody>
-                              </table>
-                            </div>
-                            <div>
-                              <p className="mb-1 font-medium text-gray-700">รายการหัก</p>
-                              <table className="w-full">
-                                <tbody>
-                                  <tr>
-                                    <td className="py-0.5 text-gray-500">ภาษีหัก ณ ที่จ่าย</td>
-                                    <td className="py-0.5 text-right">{money(Number(t.TaxWithheld))}</td>
-                                  </tr>
-                                  <tr>
-                                    <td className="py-0.5 text-gray-500">ประกันสังคม</td>
-                                    <td className="py-0.5 text-right">{money(Number(t.SSOAmount))}</td>
-                                  </tr>
-                                  <tr>
-                                    <td className="py-0.5 text-gray-500">หักเบิกล่วงหน้า</td>
-                                    <td className="py-0.5 text-right">{money(Number(t.AdvanceDeduct))}</td>
-                                  </tr>
-                                  <tr>
-                                    <td className="py-0.5 text-gray-500">หักเงินกู้</td>
-                                    <td className="py-0.5 text-right">{money(Number(t.LoanDeduct))}</td>
-                                  </tr>
-                                  <tr>
-                                    <td className="py-0.5 text-gray-500">หักค่าอบรม</td>
-                                    <td className="py-0.5 text-right">{money(Number(t.TrainingDeduct))}</td>
-                                  </tr>
-                                  <tr>
-                                    <td className="py-0.5 text-gray-500">หักเครื่องแบบ</td>
-                                    <td className="py-0.5 text-right">{money(Number(t.UniformDeduct))}</td>
-                                  </tr>
-                                  {details
-                                    .filter((d) => d.LineType === "DEDUCTION")
-                                    .map((d) => (
-                                      <tr key={d.DetailID}>
-                                        <td className="py-0.5 text-gray-500">{d.Description}</td>
-                                        <td className="py-0.5 text-right">{money(Number(d.Amount))}</td>
+                                      <tr>
+                                        <td className="py-0.5 text-gray-500">ประกันสังคม</td>
+                                        <td className="py-0.5 text-right">{money(Number(t.SSOAmount))}</td>
                                       </tr>
-                                    ))}
-                                </tbody>
-                              </table>
-                            </div>
-                          </div>
-                        </td>
-                      </tr>
-                    )}
+                                      <tr>
+                                        <td className="py-0.5 text-gray-500">กองทุนสงเคราะห์พนักงาน</td>
+                                        <td className="py-0.5 text-right">{money(Number(t.WelfareFundAmount))}</td>
+                                      </tr>
+                                      {legacyDeduction.map((r) => (
+                                        <tr key={r.label}>
+                                          <td className="py-0.5 text-gray-500">{r.label}</td>
+                                          <td className="py-0.5 text-right">{money(Number(r.value))}</td>
+                                        </tr>
+                                      ))}
+                                      {details
+                                        .filter((d) => d.LineType === "DEDUCTION")
+                                        .map((d) => (
+                                          <tr key={d.DetailID}>
+                                            <td className="py-0.5 text-gray-500">{d.Description}</td>
+                                            <td className="py-0.5 text-right">{money(Number(d.Amount))}</td>
+                                          </tr>
+                                        ))}
+                                      {installments.map((line) => (
+                                        <tr key={line.debtId}>
+                                          <td className="py-0.5 text-gray-500">
+                                            {line.label} <span className="text-gray-400">(หักเป็นงวด, คงเหลือ {money(Number(line.remainingAmount))})</span>
+                                          </td>
+                                          <td className="py-0.5 text-right">{money(Number(line.amount))}</td>
+                                        </tr>
+                                      ))}
+                                    </tbody>
+                                  </table>
+                                </div>
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })()}
                   </Fragment>
                 );
               })}
