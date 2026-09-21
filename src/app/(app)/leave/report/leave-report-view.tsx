@@ -6,6 +6,7 @@ import { toBuddhistYear, toGregorianYear } from "@/lib/buddhist-year";
 
 interface HistoryRow {
   LeaveID: number;
+  DocumentNo: string | null;
   Employee: { FullName: string };
   LeaveType: { LeaveTypeName: string };
   StartDate: string;
@@ -14,14 +15,20 @@ interface HistoryRow {
   Status: string;
 }
 
+// Balance summary is computed live (2026-09-21, see getLeaveBalanceSummary)
+// and only returned by the API when both empCode and year are selected —
+// it's a per-employee/per-year computation, unlike the raw history list
+// which can span "ทั้งหมด".
 interface BalanceRow {
-  BalanceID: number;
-  Employee: { FullName: string };
-  LeaveType: { LeaveTypeName: string };
-  Year: number;
-  Entitled: string;
-  Used: string;
-  Remaining: string;
+  leaveTypeCode: string;
+  leaveTypeName: string;
+  empCode: string;
+  employeeName: string;
+  year: number;
+  eligible: boolean;
+  entitled: string;
+  used: string;
+  remaining: string;
 }
 
 export default function LeaveReportView({ employees }: { employees: { EmpCode: string; FullName: string }[] }) {
@@ -85,19 +92,19 @@ export default function LeaveReportView({ employees }: { employees: { EmpCode: s
                 </thead>
                 <tbody>
                   {balances.map((b) => (
-                    <tr key={b.BalanceID} className="border-t border-gray-100">
-                      <td className="px-3 py-2">{b.Employee.FullName}</td>
-                      <td className="px-3 py-2">{b.LeaveType.LeaveTypeName}</td>
-                      <td className="px-3 py-2">{toBuddhistYear(b.Year)}</td>
-                      <td className="px-3 py-2 text-right">{b.Entitled}</td>
-                      <td className="px-3 py-2 text-right">{b.Used}</td>
-                      <td className="px-3 py-2 text-right font-medium">{b.Remaining}</td>
+                    <tr key={`${b.year}-${b.leaveTypeCode}`} className="border-t border-gray-100">
+                      <td className="px-3 py-2">{b.employeeName}</td>
+                      <td className="px-3 py-2">{b.leaveTypeName}</td>
+                      <td className="px-3 py-2">{toBuddhistYear(b.year)}</td>
+                      <td className="px-3 py-2 text-right">{b.eligible ? b.entitled : "-"}</td>
+                      <td className="px-3 py-2 text-right">{b.eligible ? b.used : "-"}</td>
+                      <td className="px-3 py-2 text-right font-medium">{b.eligible ? b.remaining : "-"}</td>
                     </tr>
                   ))}
                   {balances.length === 0 && (
                     <tr>
                       <td colSpan={6} className="px-3 py-6 text-center text-gray-400">
-                        ยังไม่มีข้อมูล
+                        {empCode ? "ยังไม่มีข้อมูล" : "เลือกพนักงานและปี เพื่อดูสรุปสิทธิวันลา"}
                       </td>
                     </tr>
                   )}

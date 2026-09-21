@@ -4,6 +4,7 @@ import { verifySession } from "@/lib/dal";
 import { requirePermission } from "@/lib/authorize";
 import { logAction } from "@/lib/audit-log";
 import { apiError, apiSuccess } from "@/lib/api-response";
+import { LEAVE_HOURS_PER_DAY } from "@/lib/leave";
 
 export async function GET(_req: NextRequest, ctx: RouteContext<"/api/leave/requests/[id]">) {
   const user = await verifySession();
@@ -39,7 +40,7 @@ export async function PUT(request: NextRequest, ctx: RouteContext<"/api/leave/re
     return apiError(409, "LEAVE_REQUEST_LOCKED", "Only a DRAFT leave request can be edited", { status: existing.Status });
   }
 
-  let body: { startDate?: unknown; endDate?: unknown; totalDays?: unknown; hasMedicalCert?: unknown };
+  let body: { startDate?: unknown; endDate?: unknown; isFullDay?: unknown; hoursRequested?: unknown; hasMedicalCert?: unknown };
   try {
     body = await request.json();
   } catch {
@@ -47,21 +48,38 @@ export async function PUT(request: NextRequest, ctx: RouteContext<"/api/leave/re
   }
 
   const startDate = typeof body.startDate === "string" && body.startDate ? new Date(body.startDate) : existing.StartDate;
-  const endDate = typeof body.endDate === "string" && body.endDate ? new Date(body.endDate) : existing.EndDate;
-  if (Number.isNaN(startDate.getTime()) || Number.isNaN(endDate.getTime()) || endDate < startDate) {
-    return apiError(400, "VALIDATION_FAILED", "endDate must be on or after startDate");
-  }
+  if (Number.isNaN(startDate.getTime())) return apiError(400, "VALIDATION_FAILED", "startDate is invalid");
+  const isFullDay = typeof body.isFullDay === "boolean" ? body.isFullDay : existing.IsFullDay;
+  const endDateInput = typeof body.endDate === "string" && body.endDate ? new Date(body.endDate) : isFullDay ? existing.EndDate : startDate;
+  const hoursRequested =
+    body.hoursRequested !== undefined ? Number(body.hoursRequested) : existing.HoursRequested !== null ? Number(existing.HoursRequested) : undefined;
 
-  const totalDays = body.totalDays !== undefined ? Number(body.totalDays) : Number(existing.TotalDays);
-  if (!Number.isFinite(totalDays) || totalDays <= 0) return apiError(400, "VALIDATION_FAILED", "totalDays must be a positive number");
-  const spanDays = Math.floor((endDate.getTime() - startDate.getTime()) / 86400000) + 1;
-  if (totalDays > spanDays) return apiError(400, "VALIDATION_FAILED", "totalDays cannot exceed the number of calendar days between startDate and endDate", { spanDays });
+  let endDate: Date;
+  let totalDays: number;
+  let hoursRequestedToStore: number | null;
+  if (isFullDay) {
+    if (Number.isNaN(endDateInput.getTime()) || endDateInput < startDate) {
+      return apiError(400, "VALIDATION_FAILED", "endDate must be on or after startDate");
+    }
+    endDate = endDateInput;
+    totalDays = Math.floor((endDate.getTime() - startDate.getTime()) / 86400000) + 1;
+    hoursRequestedToStore = null;
+  } else {
+    if (!Number.isFinite(hoursRequested) || hoursRequested === undefined || hoursRequested <= 0 || hoursRequested > 24) {
+      return apiError(400, "VALIDATION_FAILED", "hoursRequested must be a number between 0 and 24 when isFullDay is false");
+    }
+    endDate = startDate;
+    totalDays = hoursRequested / LEAVE_HOURS_PER_DAY;
+    hoursRequestedToStore = hoursRequested;
+  }
 
   const updated = await prisma.trnLeaveRequest.update({
     where: { LeaveID: leaveId },
     data: {
       StartDate: startDate,
       EndDate: endDate,
+      IsFullDay: isFullDay,
+      HoursRequested: hoursRequestedToStore,
       TotalDays: totalDays,
       HasMedicalCert: typeof body.hasMedicalCert === "boolean" ? body.hasMedicalCert : existing.HasMedicalCert,
       UpdatedBy: user.userId,

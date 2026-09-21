@@ -4,6 +4,8 @@ import { verifySession } from "@/lib/dal";
 import { requirePermission } from "@/lib/authorize";
 import { logAction } from "@/lib/audit-log";
 import { apiError, apiSuccess } from "@/lib/api-response";
+import { isValidTenureCountFrom } from "@/lib/leave";
+import { isValidEmployeeType } from "@/lib/validation";
 
 export async function GET() {
   const user = await verifySession();
@@ -27,6 +29,8 @@ export async function POST(request: NextRequest) {
     maxDaysPerYear?: unknown;
     requireMedicalCert?: unknown;
     basedOnTenure?: unknown;
+    eligibleEmployeeType?: unknown;
+    tenureCountFrom?: unknown;
   };
   try {
     body = await request.json();
@@ -40,6 +44,16 @@ export async function POST(request: NextRequest) {
   if (!leaveTypeCode || !leaveTypeName) return apiError(400, "INVALID_PARAMS", "leaveTypeCode and leaveTypeName are required");
   if (!Number.isInteger(maxDaysPerYear) || maxDaysPerYear < 0) return apiError(400, "VALIDATION_FAILED", "maxDaysPerYear must be a non-negative integer");
 
+  const eligibleEmployeeType = typeof body.eligibleEmployeeType === "string" && body.eligibleEmployeeType ? body.eligibleEmployeeType : null;
+  if (eligibleEmployeeType !== null && !isValidEmployeeType(eligibleEmployeeType)) {
+    return apiError(400, "VALIDATION_FAILED", "eligibleEmployeeType must be a valid EmployeeType or omitted");
+  }
+  const basedOnTenure = body.basedOnTenure === true;
+  const tenureCountFrom = typeof body.tenureCountFrom === "string" && body.tenureCountFrom ? body.tenureCountFrom : null;
+  if (basedOnTenure && !isValidTenureCountFrom(tenureCountFrom)) {
+    return apiError(400, "VALIDATION_FAILED", "tenureCountFrom is required and must be START_DATE or PROBATION_PASS_DATE when basedOnTenure is true");
+  }
+
   const existing = await prisma.mstLeaveType.findUnique({ where: { LeaveTypeCode: leaveTypeCode } });
   if (existing) return apiError(409, "LEAVE_TYPE_ALREADY_EXISTS", undefined, { leaveTypeCode });
 
@@ -49,7 +63,9 @@ export async function POST(request: NextRequest) {
       LeaveTypeName: leaveTypeName,
       MaxDaysPerYear: maxDaysPerYear,
       RequireMedicalCert: body.requireMedicalCert === true,
-      BasedOnTenure: body.basedOnTenure === true,
+      BasedOnTenure: basedOnTenure,
+      EligibleEmployeeType: eligibleEmployeeType,
+      TenureCountFrom: basedOnTenure ? tenureCountFrom : null,
       CreatedBy: user.userId,
     },
   });

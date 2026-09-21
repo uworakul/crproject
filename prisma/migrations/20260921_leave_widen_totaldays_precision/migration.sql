@@ -1,0 +1,20 @@
+BEGIN TRY
+
+BEGIN TRAN;
+
+-- AlterTable
+ALTER TABLE [dbo].[trn_leave_request] ALTER COLUMN [TotalDays] DECIMAL(5,2) NOT NULL;
+ALTER TABLE [dbo].[trn_leave_request] ALTER COLUMN [HoursRequested] DECIMAL(5,2) NULL;
+
+COMMIT TRAN;
+
+END TRY
+BEGIN CATCH
+
+IF @@TRANCOUNT > 0
+BEGIN
+    ROLLBACK TRAN;
+END;
+THROW
+
+END CATCH

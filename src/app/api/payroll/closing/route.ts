@@ -40,7 +40,14 @@ export async function POST(request: NextRequest) {
   if (!lock || !lock.IsLocked) return apiError(409, "PERIOD_NOT_LOCKED", "Lock the period before closing it");
 
   await prisma.$transaction([
-    prisma.sysPeriod.update({ where: { PeriodID: periodId }, data: { Status: "CLOSED", UpdatedBy: user.userId, UpdatedDate: new Date() } }),
+    // IsCurrent cleared here too (2026-09-21, "ปิดสิ้นงวด" — "เอาสถานะงวด
+    // ปัจจุบันออกแล้วเปลี่ยนเป็นปิดงวดแล้ว") — a closed period is never the
+    // current one anymore. Does not auto-promote any other period to
+    // current; that's still a deliberate separate action on /periods.
+    prisma.sysPeriod.update({
+      where: { PeriodID: periodId },
+      data: { Status: "CLOSED", IsCurrent: false, UpdatedBy: user.userId, UpdatedDate: new Date() },
+    }),
     prisma.trnPayrollLock.update({
       where: { LockID: lock.LockID },
       data: { IsLocked: true, LockedBy: user.userId, LockedDate: new Date(), UpdatedBy: user.userId, UpdatedDate: new Date() },

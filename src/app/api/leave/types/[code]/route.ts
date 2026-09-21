@@ -4,6 +4,8 @@ import { verifySession } from "@/lib/dal";
 import { requirePermission } from "@/lib/authorize";
 import { logAction } from "@/lib/audit-log";
 import { apiError, apiSuccess } from "@/lib/api-response";
+import { isValidTenureCountFrom } from "@/lib/leave";
+import { isValidEmployeeType } from "@/lib/validation";
 
 export async function PUT(request: NextRequest, ctx: RouteContext<"/api/leave/types/[code]">) {
   const user = await verifySession();
@@ -15,7 +17,14 @@ export async function PUT(request: NextRequest, ctx: RouteContext<"/api/leave/ty
   const existing = await prisma.mstLeaveType.findUnique({ where: { LeaveTypeCode: code } });
   if (!existing) return apiError(404, "LEAVE_TYPE_NOT_FOUND");
 
-  let body: { leaveTypeName?: unknown; maxDaysPerYear?: unknown; requireMedicalCert?: unknown; basedOnTenure?: unknown };
+  let body: {
+    leaveTypeName?: unknown;
+    maxDaysPerYear?: unknown;
+    requireMedicalCert?: unknown;
+    basedOnTenure?: unknown;
+    eligibleEmployeeType?: unknown;
+    tenureCountFrom?: unknown;
+  };
   try {
     body = await request.json();
   } catch {
@@ -27,13 +36,35 @@ export async function PUT(request: NextRequest, ctx: RouteContext<"/api/leave/ty
   const maxDaysPerYear = Number(body.maxDaysPerYear);
   if (!Number.isInteger(maxDaysPerYear) || maxDaysPerYear < 0) return apiError(400, "VALIDATION_FAILED", "maxDaysPerYear must be a non-negative integer");
 
+  const eligibleEmployeeType =
+    body.eligibleEmployeeType === undefined
+      ? existing.EligibleEmployeeType
+      : typeof body.eligibleEmployeeType === "string" && body.eligibleEmployeeType
+        ? body.eligibleEmployeeType
+        : null;
+  if (eligibleEmployeeType !== null && !isValidEmployeeType(eligibleEmployeeType)) {
+    return apiError(400, "VALIDATION_FAILED", "eligibleEmployeeType must be a valid EmployeeType or omitted");
+  }
+  const basedOnTenure = typeof body.basedOnTenure === "boolean" ? body.basedOnTenure : existing.BasedOnTenure;
+  const tenureCountFrom =
+    body.tenureCountFrom === undefined
+      ? existing.TenureCountFrom
+      : typeof body.tenureCountFrom === "string" && body.tenureCountFrom
+        ? body.tenureCountFrom
+        : null;
+  if (basedOnTenure && !isValidTenureCountFrom(tenureCountFrom)) {
+    return apiError(400, "VALIDATION_FAILED", "tenureCountFrom is required and must be START_DATE or PROBATION_PASS_DATE when basedOnTenure is true");
+  }
+
   const updated = await prisma.mstLeaveType.update({
     where: { LeaveTypeCode: code },
     data: {
       LeaveTypeName: leaveTypeName,
       MaxDaysPerYear: maxDaysPerYear,
       RequireMedicalCert: typeof body.requireMedicalCert === "boolean" ? body.requireMedicalCert : existing.RequireMedicalCert,
-      BasedOnTenure: typeof body.basedOnTenure === "boolean" ? body.basedOnTenure : existing.BasedOnTenure,
+      BasedOnTenure: basedOnTenure,
+      EligibleEmployeeType: eligibleEmployeeType,
+      TenureCountFrom: basedOnTenure ? tenureCountFrom : null,
       UpdatedBy: user.userId,
       UpdatedDate: new Date(),
     },

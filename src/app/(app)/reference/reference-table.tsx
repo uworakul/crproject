@@ -1,6 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
+import Link from "next/link";
 import Swal from "sweetalert2";
 import { toBuddhistYear, toGregorianYear } from "@/lib/buddhist-year";
 import SearchableSelect from "../searchable-select";
@@ -83,6 +84,8 @@ interface Props {
   showRowNumber?: boolean; // true adds a leading "ลำดับ" column showing each row's position in the current (unsorted, unless sortable) order
   allowExport?: boolean; // shows a "ส่งออก Excel" button hitting GET {apiBase}/export
   allowImport?: boolean; // shows a "นำเข้า Excel" button hitting POST {apiBase}/import (canSave-gated)
+  detailLinkBase?: string; // e.g. "/payroll/sites" — adds a link per row to `${detailLinkBase}/${id}`, always shown (not gated by canSave/canDelete — a sub-screen the row's own read access already covers)
+  detailLinkLabel?: string; // default "จัดการ"
   initialRows: Record<string, unknown>[];
 }
 
@@ -145,6 +148,8 @@ export default function ReferenceTable({
   showRowNumber = false,
   allowExport = false,
   allowImport = false,
+  detailLinkBase,
+  detailLinkLabel = "จัดการ",
   initialRows,
 }: Props) {
   const [rows, setRows] = useState(initialRows);
@@ -409,7 +414,7 @@ export default function ReferenceTable({
                   </th>
                 ),
               )}
-              {(canSave || canDelete) && <th className="px-3 py-2"></th>}
+              {(canSave || canDelete || detailLinkBase) && <th className="px-3 py-2"></th>}
             </tr>
           </thead>
           <tbody>
@@ -465,7 +470,7 @@ export default function ReferenceTable({
                       )}
                     </td>
                   ))}
-                  {(canSave || canDelete) && (
+                  {(canSave || canDelete || detailLinkBase) && (
                     <td className="whitespace-nowrap px-3 py-2 text-right">
                       {isEditing ? (
                         <div className="flex justify-end gap-2">
@@ -478,6 +483,11 @@ export default function ReferenceTable({
                         </div>
                       ) : (
                         <div className="flex justify-end gap-2">
+                          {detailLinkBase && (
+                            <Link href={`${detailLinkBase}/${encodeURIComponent(id)}`} className="text-gray-500 hover:text-gray-900 hover:underline">
+                              {detailLinkLabel}
+                            </Link>
+                          )}
                           {canSave && (
                             <button onClick={() => startEdit(row)} className="text-gray-500 hover:text-gray-900 hover:underline">
                               แก้ไข

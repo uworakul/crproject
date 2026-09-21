@@ -32,11 +32,10 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     canViewTransfer,
     canViewIssue,
     canViewReturn,
-    canApproveCount,
+    canApproveAnyStock,
     canViewSite,
     canViewPayrollWorkspace,
     canViewLeaveRequest,
-    canViewLeaveReport,
     company,
   ] = await Promise.all([
     hasPermission(user, "USER", "read"),
@@ -56,7 +55,13 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     hasPermission(user, "STOCK_TRANSFER", "read"),
     hasPermission(user, "STOCK_ISSUE", "read"),
     hasPermission(user, "STOCK_RETURN", "read"),
-    hasPermission(user, "STOCK_COUNT", "approve"),
+    Promise.all([
+      hasPermission(user, "STOCK_COUNT", "approve"),
+      hasPermission(user, "STOCK_PURCHASE", "approve"),
+      hasPermission(user, "STOCK_TRANSFER", "approve"),
+      hasPermission(user, "STOCK_ISSUE", "approve"),
+      hasPermission(user, "STOCK_RETURN", "approve"),
+    ]).then((r) => r.some(Boolean)),
     hasPermission(user, "SITE", "read"),
     Promise.all([
       hasPermission(user, "PAYROLL_TRANSACTION", "read"),
@@ -65,7 +70,6 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       hasPermission(user, "PAYROLL_REPORT", "read"),
     ]).then((r) => r.some(Boolean)),
     hasPermission(user, "LEAVE_REQUEST", "read"),
-    hasPermission(user, "LEAVE_REPORT", "read"),
     prisma.refCompany.findFirst({ orderBy: { CompanyCode: "asc" } }),
   ]);
   const canViewInventoryMaster = canViewSupplier || canViewWarehouse || canViewProduct;
@@ -111,8 +115,19 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       items: [
         ...(canViewInventoryMaster ? [{ href: "/inventory", label: "ข้อมูลหลัก" }] : []),
         ...(canViewTransactions ? [{ href: "/inventory/transactions", label: "บันทึกรายการสต๊อก" }] : []),
-        ...(canApproveCount ? [{ href: "/inventory/stock-count-approvals", label: "รายการรออนุมัติ" }] : []),
+        ...(canApproveAnyStock ? [{ href: "/inventory/stock-count-approvals", label: "รายการรออนุมัติ" }] : []),
       ],
+    },
+    {
+      label: "การลา",
+      icon: "leave" as const,
+      // /leave/balances menu removed 2026-09-21 — Entitled is now computed
+      // live from mst_leave_type (+ mst_leave_tenure_tier for BasedOnTenure
+      // types) instead of a per-employee manually-set value, so there's
+      // nothing left for that screen to configure. The page/API route are
+      // still there (unlinked), same "disconnect but don't delete" precedent
+      // used elsewhere in this project.
+      items: [...(canViewLeaveRequest ? [{ href: "/leave", label: "บันทึกใบลา" }] : [])],
     },
     {
       label: "ใบลงเวลาปฏิบัติงาน",
@@ -123,19 +138,18 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       ],
     },
     {
-      label: "คำนวณและจ่ายเงินเดือน",
+      // Renamed from "คำนวณและจ่ายเงินเดือน" 2026-09-21, split from the
+      // single "ประมวลผลเงินเดือน" page into 3 screens — the old page
+      // (/payroll/period) still works if visited directly (unlinked, same
+      // "disconnect but don't delete" precedent used elsewhere), kept as a
+      // fallback bundling Transaction grid + Calculate + Lock + Closing +
+      // Report all in one place.
+      label: "การประมวลผล",
       icon: "payroll" as const,
       items: [
-        ...(canViewPayrollWorkspace ? [{ href: "/payroll/period", label: "ประมวลผลเงินเดือน" }] : []),
-      ],
-    },
-    {
-      label: "การลา",
-      icon: "leave" as const,
-      items: [
-        ...(canViewLeaveRequest ? [{ href: "/leave", label: "ใบลา" }] : []),
-        ...(canViewLeaveRequest ? [{ href: "/leave/balances", label: "สิทธิวันลาพนักงาน" }] : []),
-        ...(canViewLeaveReport ? [{ href: "/leave/report", label: "รายงานประวัติการลา" }] : []),
+        ...(canViewPayrollWorkspace ? [{ href: "/payroll/transactions", label: "รายการประจำงวด" }] : []),
+        ...(canViewPayrollWorkspace ? [{ href: "/payroll/calculate", label: "คำนวณเงินได้ประจำงวด" }] : []),
+        ...(canViewPayrollWorkspace ? [{ href: "/payroll/closing", label: "ปิดสิ้นงวด" }] : []),
       ],
     },
   ].filter((g) => g.items.length > 0);

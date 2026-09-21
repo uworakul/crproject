@@ -230,7 +230,7 @@ export default function WorksheetView({
       body: JSON.stringify({ reason: rejectReasonInput.trim() }),
     });
     const body = await res.json().catch(() => ({}));
-    setMessage(res.ok ? "ตีกลับแล้ว" : body.message || body.error);
+    setMessage(res.ok ? "ไม่อนุมัติแล้ว" : body.message || body.error);
     if (res.ok) {
       setRejectReasonInput("");
       load(siteCode, year, month);
@@ -300,7 +300,7 @@ export default function WorksheetView({
       {loading && <p className="text-sm text-gray-500">กำลังโหลด...</p>}
       {error && <p className="text-sm text-red-600">{error}</p>}
       {data?.rejectReason && (
-        <p className="rounded border border-red-200 bg-red-50 p-2 text-sm text-red-700">ถูกตีกลับ: {data.rejectReason}</p>
+        <p className="rounded border border-red-200 bg-red-50 p-2 text-sm text-red-700">ถูกไม่อนุมัติ: {data.rejectReason}</p>
       )}
 
       {data && (
@@ -465,11 +465,11 @@ export default function WorksheetView({
                   <input
                     value={rejectReasonInput}
                     onChange={(e) => setRejectReasonInput(e.target.value)}
-                    placeholder="เหตุผลที่ตีกลับ"
+                    placeholder="เหตุผลที่ไม่อนุมัติ"
                     className="rounded border border-gray-300 px-2 py-1 text-sm"
                   />
                   <button onClick={reject} className="rounded border border-red-300 px-4 py-2 text-sm text-red-600">
-                    ตีกลับ
+                    ไม่อนุมัติ
                   </button>
                 </div>
               </>

@@ -41,7 +41,7 @@ const STATUS_LABEL: Record<string, string> = {
   DRAFT: "แบบร่าง",
   SUBMITTED: "รออนุมัติ",
   APPROVED: "อนุมัติแล้ว",
-  REJECTED: "ตีกลับ",
+  REJECTED: "ไม่อนุมัติ",
 };
 
 const EMP_STATUS_LABEL: Record<string, string> = {
@@ -162,7 +162,7 @@ export default function RequestDetailView({
       </div>
 
       {request.RejectReason && (
-        <p className="rounded border border-red-200 bg-red-50 p-2 text-sm text-red-700">ถูกตีกลับ: {request.RejectReason}</p>
+        <p className="rounded border border-red-200 bg-red-50 p-2 text-sm text-red-700">ถูกไม่อนุมัติ: {request.RejectReason}</p>
       )}
 
       <div className="overflow-x-auto rounded-lg border border-gray-200 bg-white">
@@ -321,14 +321,14 @@ export default function RequestDetailView({
               <input
                 value={rejectReason}
                 onChange={(e) => setRejectReason(e.target.value)}
-                placeholder="เหตุผลที่ตีกลับ"
+                placeholder="เหตุผลที่ไม่อนุมัติ"
                 className="rounded border border-gray-300 px-2 py-1 text-sm"
               />
               <button
                 onClick={() => call("/reject", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ reason: rejectReason }) })}
                 className="rounded-md border border-red-300 px-4 py-2 text-sm text-red-600 hover:bg-red-50"
               >
-                ตีกลับ
+                ไม่อนุมัติ
               </button>
             </div>
           </>

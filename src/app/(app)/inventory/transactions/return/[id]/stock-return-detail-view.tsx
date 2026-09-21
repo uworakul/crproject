@@ -20,13 +20,13 @@ async function confirmDialog(html: string) {
 
 async function confirmReject(): Promise<string | null> {
   const { value, isConfirmed } = await Swal.fire({
-    title: "ตีกลับเอกสารคืนสินค้า",
+    title: "ไม่อนุมัติเอกสารคืนสินค้า",
     input: "text",
-    inputLabel: "ระบุเหตุผลที่ตีกลับ",
-    inputValidator: (v) => (!v || !v.trim() ? "กรุณาระบุเหตุผลที่ตีกลับ" : undefined),
+    inputLabel: "ระบุเหตุผลที่ไม่อนุมัติ",
+    inputValidator: (v) => (!v || !v.trim() ? "กรุณาระบุเหตุผลที่ไม่อนุมัติ" : undefined),
     icon: "warning",
     showCancelButton: true,
-    confirmButtonText: "ยืนยันตีกลับ",
+    confirmButtonText: "ยืนยันไม่อนุมัติ",
     cancelButtonText: "ยกเลิก",
     confirmButtonColor: "#dc2626",
     cancelButtonColor: "#9ca3af",
@@ -163,7 +163,9 @@ export default function StockReturnDetailView({
         </div>
         <div>
           <div className="text-gray-500">สถานะ</div>
-          <div>{STATUS_LABEL[stockReturn.Status] ?? stockReturn.Status}</div>
+          <div className={stockReturn.Status === "DRAFT" && stockReturn.RejectReason ? "text-red-600" : undefined}>
+            {stockReturn.Status === "DRAFT" && stockReturn.RejectReason ? "ไม่อนุมัติ" : (STATUS_LABEL[stockReturn.Status] ?? stockReturn.Status)}
+          </div>
         </div>
         <div>
           <div className="text-gray-500">คลังที่รับคืน</div>
@@ -209,7 +211,7 @@ export default function StockReturnDetailView({
       </div>
 
       {stockReturn.RejectReason && (
-        <p className="rounded border border-red-200 bg-red-50 p-2 text-sm text-red-700">ถูกตีกลับ: {stockReturn.RejectReason}</p>
+        <p className="rounded border border-red-200 bg-red-50 p-2 text-sm text-red-700">ถูกไม่อนุมัติ: {stockReturn.RejectReason}</p>
       )}
 
       <div className="overflow-x-auto rounded-lg border border-gray-200 bg-white">
@@ -390,7 +392,7 @@ export default function StockReturnDetailView({
               }}
               className="rounded-md border border-red-300 px-4 py-2 text-sm text-red-600 hover:bg-red-50"
             >
-              ตีกลับ
+              ไม่อนุมัติ
             </button>
           </>
         )}

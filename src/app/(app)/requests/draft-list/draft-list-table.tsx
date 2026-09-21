@@ -37,14 +37,14 @@ async function confirmApprove(label: string): Promise<boolean> {
 // point splitting it into two separate prompts.
 async function confirmReject(label: string): Promise<string | null> {
   const { value, isConfirmed } = await Swal.fire({
-    title: `ตีกลับเอกสาร ${label}`,
+    title: `ไม่อนุมัติเอกสาร ${label}`,
     input: "text",
-    inputLabel: "ระบุเหตุผลที่ตีกลับ",
+    inputLabel: "ระบุเหตุผลที่ไม่อนุมัติ",
     inputPlaceholder: "เช่น ข้อมูลไม่ครบ, ยอดเงินผิด ฯลฯ",
-    inputValidator: (v) => (!v || !v.trim() ? "กรุณาระบุเหตุผลที่ตีกลับ" : undefined),
+    inputValidator: (v) => (!v || !v.trim() ? "กรุณาระบุเหตุผลที่ไม่อนุมัติ" : undefined),
     icon: "warning",
     showCancelButton: true,
-    confirmButtonText: "ยืนยันตีกลับ",
+    confirmButtonText: "ยืนยันไม่อนุมัติ",
     cancelButtonText: "ยกเลิก",
     confirmButtonColor: "#dc2626",
     cancelButtonColor: "#9ca3af",
@@ -149,7 +149,7 @@ export default function DraftListTable({ rows, canApproveByCode }: { rows: Heade
                           disabled={busy}
                           className="rounded-md border border-red-300 px-3 py-1 text-xs text-red-600 hover:bg-red-50 disabled:opacity-50"
                         >
-                          ตีกลับ
+                          ไม่อนุมัติ
                         </button>
                       </div>
                     )}

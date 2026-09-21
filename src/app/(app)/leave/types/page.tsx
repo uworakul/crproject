@@ -11,16 +11,18 @@ export default async function LeaveTypesPage() {
   const canRead = await hasPermission(user, "REFERENCE", "read");
   if (!canRead) redirect("/");
 
-  const [canSave, canDelete, types] = await Promise.all([
+  const [canSave, canDelete, types, tiersRaw] = await Promise.all([
     hasPermission(user, "REFERENCE", "save"),
     hasPermission(user, "REFERENCE", "delete"),
     prisma.mstLeaveType.findMany({ orderBy: { LeaveTypeCode: "asc" } }),
+    prisma.mstLeaveTenureTier.findMany({ orderBy: [{ LeaveTypeCode: "asc" }, { MinYearsOfService: "asc" }] }),
   ]);
+  const tiers = JSON.parse(JSON.stringify(tiersRaw));
 
   return (
     <div className="w-full px-6 py-8">
       <h1 className="mb-6 text-lg font-semibold text-gray-900">ประเภทและสิทธิการลา</h1>
-      <LeaveTypesView initialRows={types} canSave={canSave} canDelete={canDelete} />
+      <LeaveTypesView initialRows={types} initialTiers={tiers} canSave={canSave} canDelete={canDelete} />
     </div>
   );
 }

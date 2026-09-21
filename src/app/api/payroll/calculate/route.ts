@@ -4,6 +4,7 @@ import { requirePermission } from "@/lib/authorize";
 import { logAction } from "@/lib/audit-log";
 import { apiError, apiSuccess } from "@/lib/api-response";
 import { runPayrollCalculate, MissingRateDataError } from "@/lib/payroll";
+import { consumeDocumentNumber } from "@/lib/document-number";
 
 export async function POST(request: NextRequest) {
   const user = await verifySession();
@@ -11,7 +12,7 @@ export async function POST(request: NextRequest) {
   const denied = await requirePermission(user, "PAYROLL_CALCULATE", "save");
   if (denied) return denied;
 
-  let body: { periodId?: unknown; empCodeFrom?: unknown; empCodeTo?: unknown };
+  let body: { periodId?: unknown; empCodeFrom?: unknown; empCodeTo?: unknown; companyCode?: unknown; deptCode?: unknown; empCode?: unknown };
   try {
     body = await request.json();
   } catch {
@@ -20,13 +21,23 @@ export async function POST(request: NextRequest) {
 
   const periodId = Number(body.periodId);
   if (!Number.isInteger(periodId)) return apiError(400, "INVALID_PARAMS", "periodId is required and must be an integer");
-  const empCodeFrom = typeof body.empCodeFrom === "string" && body.empCodeFrom.trim() ? body.empCodeFrom.trim() : undefined;
-  const empCodeTo = typeof body.empCodeTo === "string" && body.empCodeTo.trim() ? body.empCodeTo.trim() : undefined;
+  const str = (v: unknown) => (typeof v === "string" && v.trim() ? v.trim() : undefined);
+  const filters = {
+    empCodeFrom: str(body.empCodeFrom),
+    empCodeTo: str(body.empCodeTo),
+    companyCode: str(body.companyCode),
+    deptCode: str(body.deptCode),
+    empCode: str(body.empCode),
+  };
 
   try {
-    const result = await runPayrollCalculate(periodId, user.userId, empCodeFrom, empCodeTo);
-    await logAction(user.userId, "PAYROLL_CALCULATE", { targetTable: "trn_payroll_transaction", targetId: String(periodId) });
-    return apiSuccess({ employeeCount: result.employeeCount, totalAmount: result.totalAmount.toString() });
+    // Running number off ref_document_number code "PAYROLL" — consumed once
+    // per Calculate run (2026-09-21, "คำนวณเงินได้ประจำงวด"), not per
+    // employee/transaction.
+    const documentNo = await consumeDocumentNumber("PAYROLL", "คำนวณเงินได้ประจำงวด");
+    const result = await runPayrollCalculate(periodId, user.userId, filters, documentNo);
+    await logAction(user.userId, "PAYROLL_CALCULATE", { targetTable: "trn_payroll_transaction", targetId: String(periodId), detail: documentNo ?? undefined });
+    return apiSuccess({ employeeCount: result.employeeCount, totalAmount: result.totalAmount.toString(), documentNo });
   } catch (err) {
     if (err instanceof MissingRateDataError) {
       return apiError(422, `MISSING_${err.kind}`, `No ${err.kind === "TAX_BRACKET" ? "ref_tax_bracket" : "ref_sso_base"} rows for year ${err.year}`, { year: err.year });

@@ -20,14 +20,14 @@ async function confirmDialog(html: string) {
 
 async function confirmReject(): Promise<string | null> {
   const { value, isConfirmed } = await Swal.fire({
-    title: "ตีกลับเอกสารซื้อสินค้า",
+    title: "ไม่อนุมัติเอกสารซื้อสินค้า",
     input: "text",
-    inputLabel: "ระบุเหตุผลที่ตีกลับ",
+    inputLabel: "ระบุเหตุผลที่ไม่อนุมัติ",
     inputPlaceholder: "เช่น ราคาไม่ตรง, จำนวนไม่ตรง ฯลฯ",
-    inputValidator: (v) => (!v || !v.trim() ? "กรุณาระบุเหตุผลที่ตีกลับ" : undefined),
+    inputValidator: (v) => (!v || !v.trim() ? "กรุณาระบุเหตุผลที่ไม่อนุมัติ" : undefined),
     icon: "warning",
     showCancelButton: true,
-    confirmButtonText: "ยืนยันตีกลับ",
+    confirmButtonText: "ยืนยันไม่อนุมัติ",
     cancelButtonText: "ยกเลิก",
     confirmButtonColor: "#dc2626",
     cancelButtonColor: "#9ca3af",
@@ -187,7 +187,9 @@ export default function StockPurchaseDetailView({
         </div>
         <div>
           <div className="text-gray-500">สถานะ</div>
-          <div>{STATUS_LABEL[purchase.Status] ?? purchase.Status}</div>
+          <div className={purchase.Status === "DRAFT" && purchase.RejectReason ? "text-red-600" : undefined}>
+            {purchase.Status === "DRAFT" && purchase.RejectReason ? "ไม่อนุมัติ" : (STATUS_LABEL[purchase.Status] ?? purchase.Status)}
+          </div>
         </div>
         <label className="flex flex-col gap-1">
           <span className="text-gray-500">เลขที่ใบส่งสินค้า</span>
@@ -221,7 +223,7 @@ export default function StockPurchaseDetailView({
       </div>
 
       {purchase.RejectReason && (
-        <p className="rounded border border-red-200 bg-red-50 p-2 text-sm text-red-700">ถูกตีกลับ: {purchase.RejectReason}</p>
+        <p className="rounded border border-red-200 bg-red-50 p-2 text-sm text-red-700">ถูกไม่อนุมัติ: {purchase.RejectReason}</p>
       )}
 
       <div className="overflow-x-auto rounded-lg border border-gray-200 bg-white">
@@ -393,7 +395,7 @@ export default function StockPurchaseDetailView({
               }}
               className="rounded-md border border-red-300 px-4 py-2 text-sm text-red-600 hover:bg-red-50"
             >
-              ตีกลับ
+              ไม่อนุมัติ
             </button>
           </>
         )}

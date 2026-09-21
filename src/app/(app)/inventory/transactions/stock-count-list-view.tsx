@@ -25,6 +25,7 @@ interface HeaderRow {
   CountDate: string;
   Remark: string | null;
   Status: string;
+  RejectReason: string | null;
   Details: { StockCountDetailID: number }[];
 }
 
@@ -120,7 +121,9 @@ export default function StockCountListView({
                 <td className="px-3 py-2 text-gray-500">{new Date(r.CountDate).toLocaleDateString("th-TH")}</td>
                 <td className="px-3 py-2 text-gray-500">{r.Remark ?? "-"}</td>
                 <td className="px-3 py-2 text-right">{r.Details.length}</td>
-                <td className="px-3 py-2">{STATUS_LABEL[r.Status] ?? r.Status}</td>
+                <td className={`px-3 py-2 ${r.Status === "DRAFT" && r.RejectReason ? "text-red-600" : ""}`}>
+                  {r.Status === "DRAFT" && r.RejectReason ? "ไม่อนุมัติ" : (STATUS_LABEL[r.Status] ?? r.Status)}
+                </td>
                 {canDelete && (
                   <td className="px-3 py-2 text-right">
                     {r.Status === "DRAFT" && (

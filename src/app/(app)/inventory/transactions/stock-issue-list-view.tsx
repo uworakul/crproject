@@ -30,6 +30,7 @@ interface HeaderRow {
   CashReceived: string;
   Remark: string | null;
   Status: string;
+  RejectReason: string | null;
   Details: { IssueDetailID: number; Amount: string; IsWelfare: boolean }[];
 }
 
@@ -139,7 +140,9 @@ export default function StockIssueListView({
                   <td className="px-3 py-2 text-gray-500">{r.Employee.Site?.SiteName ?? "-"}</td>
                   <td className="px-3 py-2 text-gray-500">{new Date(r.DeliveryDate).toLocaleDateString("th-TH")}</td>
                   <td className="px-3 py-2 text-right">{money(total)}</td>
-                  <td className="px-3 py-2">{STATUS_LABEL[r.Status] ?? r.Status}</td>
+                  <td className={`px-3 py-2 ${r.Status === "DRAFT" && r.RejectReason ? "text-red-600" : ""}`}>
+                    {r.Status === "DRAFT" && r.RejectReason ? "ไม่อนุมัติ" : (STATUS_LABEL[r.Status] ?? r.Status)}
+                  </td>
                   {canDelete && (
                     <td className="px-3 py-2 text-right">
                       {r.Status === "DRAFT" && (

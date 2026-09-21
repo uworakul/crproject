@@ -20,14 +20,14 @@ async function confirmDialog(html: string) {
 
 async function confirmReject(): Promise<string | null> {
   const { value, isConfirmed } = await Swal.fire({
-    title: "ตีกลับเอกสารตรวจนับสต๊อก",
+    title: "ไม่อนุมัติเอกสารตรวจนับสต๊อก",
     input: "text",
-    inputLabel: "ระบุเหตุผลที่ตีกลับ",
+    inputLabel: "ระบุเหตุผลที่ไม่อนุมัติ",
     inputPlaceholder: "เช่น นับจำนวนผิด, ต้องตรวจซ้ำ ฯลฯ",
-    inputValidator: (v) => (!v || !v.trim() ? "กรุณาระบุเหตุผลที่ตีกลับ" : undefined),
+    inputValidator: (v) => (!v || !v.trim() ? "กรุณาระบุเหตุผลที่ไม่อนุมัติ" : undefined),
     icon: "warning",
     showCancelButton: true,
-    confirmButtonText: "ยืนยันตีกลับ",
+    confirmButtonText: "ยืนยันไม่อนุมัติ",
     cancelButtonText: "ยกเลิก",
     confirmButtonColor: "#dc2626",
     cancelButtonColor: "#9ca3af",
@@ -182,7 +182,9 @@ export default function StockCountDetailView({
         </div>
         <div>
           <div className="text-gray-500">สถานะ</div>
-          <div>{STATUS_LABEL[stockCount.Status] ?? stockCount.Status}</div>
+          <div className={stockCount.Status === "DRAFT" && stockCount.RejectReason ? "text-red-600" : undefined}>
+            {stockCount.Status === "DRAFT" && stockCount.RejectReason ? "ไม่อนุมัติ" : (STATUS_LABEL[stockCount.Status] ?? stockCount.Status)}
+          </div>
         </div>
         <label className="col-span-2 flex flex-col gap-1">
           <span className="text-gray-500">หมายเหตุ</span>
@@ -203,7 +205,7 @@ export default function StockCountDetailView({
       </div>
 
       {stockCount.RejectReason && (
-        <p className="rounded border border-red-200 bg-red-50 p-2 text-sm text-red-700">ถูกตีกลับ: {stockCount.RejectReason}</p>
+        <p className="rounded border border-red-200 bg-red-50 p-2 text-sm text-red-700">ถูกไม่อนุมัติ: {stockCount.RejectReason}</p>
       )}
 
       <div className="overflow-x-auto rounded-lg border border-gray-200 bg-white">
@@ -372,7 +374,7 @@ export default function StockCountDetailView({
               }}
               className="rounded-md border border-red-300 px-4 py-2 text-sm text-red-600 hover:bg-red-50"
             >
-              ตีกลับ
+              ไม่อนุมัติ
             </button>
           </>
         )}

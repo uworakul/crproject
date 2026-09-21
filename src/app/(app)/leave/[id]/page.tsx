@@ -29,7 +29,7 @@ export default async function LeaveDetailPage({ params }: { params: Promise<{ id
 
   return (
     <div className="mx-auto max-w-2xl p-8">
-      <h1 className="mb-6 text-lg font-semibold text-gray-900">รายละเอียดใบลา</h1>
+      <h1 className="mb-6 text-lg font-semibold text-gray-900">รายละเอียดใบลา {leave.DocumentNo ? `#${leave.DocumentNo}` : `#${leave.LeaveID}`}</h1>
       <LeaveDetailView leave={leave} canSave={canSave} canApprove={canApprove} />
     </div>
   );

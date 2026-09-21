@@ -20,13 +20,13 @@ async function confirmDialog(html: string) {
 
 async function confirmReject(): Promise<string | null> {
   const { value, isConfirmed } = await Swal.fire({
-    title: "ตีกลับเอกสารโอนสินค้า",
+    title: "ไม่อนุมัติเอกสารโอนสินค้า",
     input: "text",
-    inputLabel: "ระบุเหตุผลที่ตีกลับ",
-    inputValidator: (v) => (!v || !v.trim() ? "กรุณาระบุเหตุผลที่ตีกลับ" : undefined),
+    inputLabel: "ระบุเหตุผลที่ไม่อนุมัติ",
+    inputValidator: (v) => (!v || !v.trim() ? "กรุณาระบุเหตุผลที่ไม่อนุมัติ" : undefined),
     icon: "warning",
     showCancelButton: true,
-    confirmButtonText: "ยืนยันตีกลับ",
+    confirmButtonText: "ยืนยันไม่อนุมัติ",
     cancelButtonText: "ยกเลิก",
     confirmButtonColor: "#dc2626",
     cancelButtonColor: "#9ca3af",
@@ -160,7 +160,9 @@ export default function StockTransferDetailView({
         </div>
         <div>
           <div className="text-gray-500">สถานะ</div>
-          <div>{STATUS_LABEL[transfer.Status] ?? transfer.Status}</div>
+          <div className={transfer.Status === "DRAFT" && transfer.RejectReason ? "text-red-600" : undefined}>
+            {transfer.Status === "DRAFT" && transfer.RejectReason ? "ไม่อนุมัติ" : (STATUS_LABEL[transfer.Status] ?? transfer.Status)}
+          </div>
         </div>
         <div>
           <div className="text-gray-500">คลังต้นทาง</div>
@@ -206,7 +208,7 @@ export default function StockTransferDetailView({
       </div>
 
       {transfer.RejectReason && (
-        <p className="rounded border border-red-200 bg-red-50 p-2 text-sm text-red-700">ถูกตีกลับ: {transfer.RejectReason}</p>
+        <p className="rounded border border-red-200 bg-red-50 p-2 text-sm text-red-700">ถูกไม่อนุมัติ: {transfer.RejectReason}</p>
       )}
 
       <div className="overflow-x-auto rounded-lg border border-gray-200 bg-white">
@@ -371,7 +373,7 @@ export default function StockTransferDetailView({
               }}
               className="rounded-md border border-red-300 px-4 py-2 text-sm text-red-600 hover:bg-red-50"
             >
-              ตีกลับ
+              ไม่อนุมัติ
             </button>
           </>
         )}

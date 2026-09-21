@@ -87,24 +87,44 @@ export interface CalculateResult {
   totalAmount: Prisma.Decimal;
 }
 
+export interface CalculateFilters {
+  empCodeFrom?: string;
+  empCodeTo?: string;
+  companyCode?: string; // mst_employee.CompanyCode — "คำนวณเฉพาะบริษัท" (2026-09-21, คำนวณเงินได้ประจำงวด)
+  deptCode?: string; // mst_employee.DeptCode — "คำนวณเฉพาะแผนก"
+  empCode?: string; // single specific employee — "รหัสพนักงานเฉพาะคน"
+}
+
 // BR-030: select EmployeeType + Period (+ optional employee code range),
 // "สามารถคำนวณซ้ำได้ตลอด" (re-runnable at will) — each run fully
 // recomputes TaxWithheld/SSOAmount/NetPay from the current GrossWage and
 // whatever Advance/Loan/Training/Uniform/Other fields are already on the
 // row (those are edited separately on the Transaction screen, not owned by
-// Calculate itself).
-export async function runPayrollCalculate(periodId: number, calculatedBy: string, empCodeFrom?: string, empCodeTo?: string): Promise<CalculateResult> {
+// Calculate itself). Filters are AND-combined — e.g. companyCode + deptCode
+// together narrows to that department within that company; empCode (single)
+// takes precedence as an exact match alongside whatever else is set.
+export async function runPayrollCalculate(
+  periodId: number,
+  calculatedBy: string,
+  filters: CalculateFilters = {},
+  documentNo?: string | null,
+): Promise<CalculateResult> {
   const period = await prisma.sysPeriod.findUnique({ where: { PeriodID: periodId } });
   if (!period) throw new Error("PERIOD_NOT_FOUND");
 
   const lock = await prisma.trnPayrollLock.findFirst({ where: { PeriodID: periodId, IsLocked: true } });
   if (lock) throw new Error("PERIOD_LOCKED");
 
+  const { empCodeFrom, empCodeTo, companyCode, deptCode, empCode } = filters;
   const transactions = await prisma.trnPayrollTransaction.findMany({
     where: {
       PeriodID: periodId,
       ...(empCodeFrom ? { EmpCode: { gte: empCodeFrom } } : {}),
       ...(empCodeTo ? { EmpCode: { lte: empCodeTo } } : {}),
+      ...(empCode ? { EmpCode: empCode } : {}),
+      ...(companyCode || deptCode
+        ? { Employee: { ...(companyCode ? { CompanyCode: companyCode } : {}), ...(deptCode ? { DeptCode: deptCode } : {}) } }
+        : {}),
     },
   });
 
@@ -127,6 +147,7 @@ export async function runPayrollCalculate(periodId: number, calculatedBy: string
     ...updates,
     prisma.trnPayrollCalculateLog.create({
       data: {
+        DocumentNo: documentNo ?? null,
         PeriodID: periodId,
         EmployeeType: period.EmployeeType,
         CalculatedBy: calculatedBy,
@@ -179,4 +200,29 @@ export async function cancelPayrollCalculate(periodId: number, calculatedBy: str
   ]);
 
   return { employeeCount: transactions.length, totalAmount };
+}
+
+// Re-derives OtherIncome/OtherDeduction from trn_payroll_transaction_detail
+// (2026-09-21, "รายการประจำงวด") and recomputes NetPay — called after every
+// detail-line add/edit/delete. Runs inside the caller's own $transaction so
+// the detail-line write and this rollup commit atomically together.
+export async function recomputeTransactionOtherTotals(tx: Prisma.TransactionClient, transactionId: number, updatedBy: string) {
+  const [transaction, details] = await Promise.all([
+    tx.trnPayrollTransaction.findUniqueOrThrow({ where: { TransactionID: transactionId } }),
+    tx.trnPayrollTransactionDetail.findMany({ where: { TransactionID: transactionId } }),
+  ]);
+
+  let otherIncome = new Prisma.Decimal(0);
+  let otherDeduction = new Prisma.Decimal(0);
+  for (const d of details) {
+    if (d.LineType === "INCOME") otherIncome = otherIncome.add(d.Amount);
+    else otherDeduction = otherDeduction.add(d.Amount);
+  }
+
+  const netPay = computeNetPay({ ...transaction, OtherIncome: otherIncome, OtherDeduction: otherDeduction });
+
+  await tx.trnPayrollTransaction.update({
+    where: { TransactionID: transactionId },
+    data: { OtherIncome: otherIncome, OtherDeduction: otherDeduction, NetPay: netPay, UpdatedBy: updatedBy, UpdatedDate: new Date() },
+  });
 }

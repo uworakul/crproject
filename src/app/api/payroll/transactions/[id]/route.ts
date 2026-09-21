@@ -7,9 +7,14 @@ import { apiError, apiSuccess } from "@/lib/api-response";
 
 // Fields the Transaction screen can edit directly (allowances, OT, manual
 // deductions, other income/deduction). TaxWithheld/SSOAmount are owned by
-// Calculate, not editable here — WorkDays/DoubleShiftDays/HolidayDays/
-// GrossWage are owned by Worksheet approve.
+// Calculate, not editable here — DoubleShiftDays/HolidayDays/GrossWage are
+// owned by Worksheet approve. WorkDays is the one exception (2026-09-21,
+// "คำนวณเงินได้ประจำงวด" screen — "แสดงจำนวนวันทำงาน แต่ให้สามารถแก้ไขได้"):
+// editable here as a manual correction, but this does NOT recompute
+// GrossWage (no day-rate formula was specified for that — GrossWage stays
+// whatever Worksheet last posted until Worksheet is re-approved).
 const EDITABLE_FIELDS = [
+  "WorkDays",
   "OTHours",
   "OTAmount",
   "PositionAllowance",

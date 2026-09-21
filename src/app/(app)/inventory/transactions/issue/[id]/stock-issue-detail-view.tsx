@@ -20,13 +20,13 @@ async function confirmDialog(html: string) {
 
 async function confirmReject(): Promise<string | null> {
   const { value, isConfirmed } = await Swal.fire({
-    title: "ตีกลับเอกสารจำหน่ายสินค้า",
+    title: "ไม่อนุมัติเอกสารจำหน่ายสินค้า",
     input: "text",
-    inputLabel: "ระบุเหตุผลที่ตีกลับ",
-    inputValidator: (v) => (!v || !v.trim() ? "กรุณาระบุเหตุผลที่ตีกลับ" : undefined),
+    inputLabel: "ระบุเหตุผลที่ไม่อนุมัติ",
+    inputValidator: (v) => (!v || !v.trim() ? "กรุณาระบุเหตุผลที่ไม่อนุมัติ" : undefined),
     icon: "warning",
     showCancelButton: true,
-    confirmButtonText: "ยืนยันตีกลับ",
+    confirmButtonText: "ยืนยันไม่อนุมัติ",
     cancelButtonText: "ยกเลิก",
     confirmButtonColor: "#dc2626",
     cancelButtonColor: "#9ca3af",
@@ -180,7 +180,9 @@ export default function StockIssueDetailView({
         </div>
         <div>
           <div className="text-gray-500">สถานะ</div>
-          <div>{STATUS_LABEL[issue.Status] ?? issue.Status}</div>
+          <div className={issue.Status === "DRAFT" && issue.RejectReason ? "text-red-600" : undefined}>
+            {issue.Status === "DRAFT" && issue.RejectReason ? "ไม่อนุมัติ" : (STATUS_LABEL[issue.Status] ?? issue.Status)}
+          </div>
         </div>
         <div>
           <div className="text-gray-500">คลังที่เบิกจำหน่าย</div>
@@ -248,7 +250,7 @@ export default function StockIssueDetailView({
       </div>
 
       {issue.RejectReason && (
-        <p className="rounded border border-red-200 bg-red-50 p-2 text-sm text-red-700">ถูกตีกลับ: {issue.RejectReason}</p>
+        <p className="rounded border border-red-200 bg-red-50 p-2 text-sm text-red-700">ถูกไม่อนุมัติ: {issue.RejectReason}</p>
       )}
 
       <div className="overflow-x-auto rounded-lg border border-gray-200 bg-white">
@@ -466,7 +468,7 @@ export default function StockIssueDetailView({
               }}
               className="rounded-md border border-red-300 px-4 py-2 text-sm text-red-600 hover:bg-red-50"
             >
-              ตีกลับ
+              ไม่อนุมัติ
             </button>
           </>
         )}

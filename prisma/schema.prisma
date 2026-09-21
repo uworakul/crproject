@@ -57,8 +57,50 @@ model MstSite {
   Employees           MstEmployee[]
   WorksheetHeaders    TrnWorksheetHeader[]
   PayrollTransactions TrnPayrollTransaction[]
+  RequiredPositions   MstSitePosition[]
 
   @@map("mst_site")
+}
+
+// Which positions a site needs, and what each one pays there (2026-09-21) —
+// a staffing/pay-rate plan per site, separate from mst_employee.DailyRate
+// (an individual employee's actual rate). Informational only for now: not
+// wired into Worksheet/Payroll calculation, same as ref_income_type itself
+// wasn't wired into trn_payroll_transaction — that would be a separate,
+// larger decision.
+model MstSitePosition {
+  SitePositionID Int       @id(map: "PK_mst_site_position") @default(autoincrement())
+  SiteCode       String    @db.VarChar(10)
+  PositionCode   String    @db.VarChar(10)
+  CreatedDate    DateTime? @default(now()) @db.DateTime
+  CreatedBy      String?   @db.VarChar(20)
+  UpdatedDate    DateTime? @db.DateTime
+  UpdatedBy      String?   @db.VarChar(20)
+
+  Site       MstSite                 @relation(fields: [SiteCode], references: [SiteCode], map: "FK_mst_site_position_site", onUpdate: NoAction, onDelete: NoAction)
+  Position   RefPosition             @relation(fields: [PositionCode], references: [PositionCode], map: "FK_mst_site_position_position", onUpdate: NoAction, onDelete: NoAction)
+  IncomeRows MstSitePositionIncome[]
+
+  @@unique([SiteCode, PositionCode], map: "UQ_mst_site_position")
+  @@map("mst_site_position")
+}
+
+model MstSitePositionIncome {
+  SitePositionIncomeID Int       @id(map: "PK_mst_site_position_income") @default(autoincrement())
+  SitePositionID       Int
+  IncomeCode           String    @db.VarChar(10)
+  Amount               Decimal   @db.Decimal(10, 2)
+  RateBasis            String    @default("DAILY") @db.VarChar(10) // CHECK: DAILY | MONTHLY
+  CreatedDate          DateTime? @default(now()) @db.DateTime
+  CreatedBy            String?   @db.VarChar(20)
+  UpdatedDate          DateTime? @db.DateTime
+  UpdatedBy            String?   @db.VarChar(20)
+
+  SitePosition MstSitePosition @relation(fields: [SitePositionID], references: [SitePositionID], map: "FK_mst_site_position_income_site_position", onUpdate: NoAction, onDelete: NoAction)
+  IncomeType   RefIncomeType   @relation(fields: [IncomeCode], references: [IncomeCode], map: "FK_mst_site_position_income_income_type", onUpdate: NoAction, onDelete: NoAction)
+
+  @@unique([SitePositionID, IncomeCode], map: "UQ_mst_site_position_income")
+  @@map("mst_site_position_income")
 }
 
 // ============================================================
@@ -88,7 +130,8 @@ model RefPosition {
   UpdatedDate       DateTime? @db.DateTime
   UpdatedBy         String?   @db.VarChar(20)
 
-  Employees MstEmployee[]
+  Employees     MstEmployee[]
+  SitePositions MstSitePosition[]
 
   @@map("ref_position")
 }
@@ -239,6 +282,8 @@ model RefIncomeType {
   CreatedBy   String?   @db.VarChar(20)
   UpdatedDate DateTime? @db.DateTime
   UpdatedBy   String?   @db.VarChar(20)
+
+  SitePositionIncomes MstSitePositionIncome[]
 
   @@map("ref_income_type")
 }
@@ -1249,18 +1294,61 @@ model TrnPayrollTransaction {
   UpdatedDate       DateTime? @db.DateTime
   UpdatedBy         String?   @db.VarChar(20)
 
-  Employee        MstEmployee         @relation(fields: [EmpCode], references: [EmpCode], map: "FK_trn_payroll_transaction_employee", onUpdate: NoAction, onDelete: NoAction)
-  Period          SysPeriod           @relation(fields: [PeriodID], references: [PeriodID], map: "FK_trn_payroll_transaction_period", onUpdate: NoAction, onDelete: NoAction)
-  Site            MstSite             @relation(fields: [SiteCode], references: [SiteCode], map: "FK_trn_payroll_transaction_site", onUpdate: NoAction, onDelete: NoAction)
-  SourceWorksheet TrnWorksheetHeader? @relation(fields: [SourceWorksheetID], references: [WorksheetID], map: "FK_trn_payroll_transaction_worksheet", onUpdate: NoAction, onDelete: NoAction)
+  Employee        MstEmployee                  @relation(fields: [EmpCode], references: [EmpCode], map: "FK_trn_payroll_transaction_employee", onUpdate: NoAction, onDelete: NoAction)
+  Period          SysPeriod                    @relation(fields: [PeriodID], references: [PeriodID], map: "FK_trn_payroll_transaction_period", onUpdate: NoAction, onDelete: NoAction)
+  Site            MstSite                      @relation(fields: [SiteCode], references: [SiteCode], map: "FK_trn_payroll_transaction_site", onUpdate: NoAction, onDelete: NoAction)
+  SourceWorksheet TrnWorksheetHeader?           @relation(fields: [SourceWorksheetID], references: [WorksheetID], map: "FK_trn_payroll_transaction_worksheet", onUpdate: NoAction, onDelete: NoAction)
+  Details         TrnPayrollTransactionDetail[]
 
   @@unique([EmpCode, PeriodID], map: "UQ_trn_payroll_transaction")
   @@index([PeriodID, SiteCode], map: "IX_trn_payroll_transaction_Period_Site")
   @@map("trn_payroll_transaction")
 }
 
+// Itemized income/deduction lines per transaction (2026-09-21, "รายการประจำงวด")
+// — additive alongside the flat columns above, NOT a replacement (kept them
+// exactly as-is; still edited directly via PUT /api/payroll/transactions/[id]
+// same as before — see CLAUDE.md for why). Code has no enforced FK: it's
+// either an IncomeCode or a DeductionCode depending on LineType, i.e. two
+// possible parent tables — same "free-text cross-reference, validated at the
+// application layer" pattern already used elsewhere in this project (e.g.
+// mst_employee.BlacklistCode). Description is a snapshot of the type's name
+// at entry time (same rationale as Worksheet's DailyRate snapshot — survives
+// the reference row being renamed/deleted later).
+//
+// Whenever a row here is added/edited/deleted, the parent transaction's
+// OtherIncome (= sum of LineType=INCOME rows) / OtherDeduction (= sum of
+// LineType=DEDUCTION rows) / NetPay are recomputed and written back — see
+// recomputeTransactionOtherTotals() in src/lib/payroll.ts. Editing
+// OtherIncome/OtherDeduction directly via the old endpoint still works, but
+// the next detail-line change here will overwrite it (last write wins,
+// documented in CLAUDE.md).
+model TrnPayrollTransactionDetail {
+  DetailID      Int       @id(map: "PK_trn_payroll_transaction_detail") @default(autoincrement())
+  TransactionID Int
+  LineType      String    @db.VarChar(10) // CHECK: INCOME | DEDUCTION
+  Code          String    @db.VarChar(10) // ref_income_type.IncomeCode or ref_deduction_type.DeductionCode, per LineType
+  Description   String    @db.NVarChar(100)
+  Hours         Decimal?  @db.Decimal(6, 2)
+  Days          Decimal?  @db.Decimal(5, 2)
+  Amount        Decimal   @db.Decimal(10, 2)
+  CreatedDate   DateTime? @default(now()) @db.DateTime
+  CreatedBy     String?   @db.VarChar(20)
+  UpdatedDate   DateTime? @db.DateTime
+  UpdatedBy     String?   @db.VarChar(20)
+
+  Transaction TrnPayrollTransaction @relation(fields: [TransactionID], references: [TransactionID], map: "FK_trn_payroll_transaction_detail_transaction", onUpdate: NoAction, onDelete: NoAction)
+
+  @@unique([TransactionID, LineType, Code], map: "UQ_trn_payroll_transaction_detail")
+  @@map("trn_payroll_transaction_detail")
+}
+
 model TrnPayrollCalculateLog {
   LogID          Int       @id(map: "PK_trn_payroll_calculate_log") @default(autoincrement())
+  // Running number off ref_document_number code "PAYROLL" (2026-09-21,
+  // "คำนวณเงินได้ประจำงวด" screen) — consumed once per Calculate run, not
+  // per employee/transaction. Nullable: existing rows predate this field.
+  DocumentNo     String?   @db.VarChar(20)
   PeriodID       Int
   EmployeeType   String    @db.VarChar(20)
   CalculatedBy   String    @db.VarChar(20)
@@ -1300,37 +1388,97 @@ model TrnPayrollLock {
 // โมดูล 7: การลาและประวัติการลา (Leave)
 // ============================================================
 model MstLeaveType {
-  LeaveTypeCode      String    @id(map: "PK_mst_leave_type") @db.VarChar(10)
-  LeaveTypeName      String    @db.NVarChar(100)
-  MaxDaysPerYear     Int       @db.TinyInt
-  RequireMedicalCert Boolean   @default(false)
-  BasedOnTenure      Boolean   @default(false)
-  CreatedDate        DateTime? @default(now()) @db.DateTime
-  CreatedBy          String?   @db.VarChar(20)
-  UpdatedDate        DateTime? @db.DateTime
-  UpdatedBy          String?   @db.VarChar(20)
+  LeaveTypeCode        String    @id(map: "PK_mst_leave_type") @db.VarChar(10)
+  LeaveTypeName        String    @db.NVarChar(100)
+  MaxDaysPerYear       Int       @db.TinyInt
+  RequireMedicalCert   Boolean   @default(false)
+  BasedOnTenure        Boolean   @default(false)
+  // Company-wide entitlement cap (2026-09-21): MaxDaysPerYear is the same for
+  // every employee of this type — no per-employee override anymore (see
+  // MstEmployeeLeaveBalance.Entitled, which is no longer read as the source
+  // of truth). null = every EmployeeType may request this leave type; a
+  // value ("DAILY"/"MONTHLY", per EMPLOYEE_TYPE_VALUES) restricts it to only
+  // that one — e.g. annual/vacation leave restricted to "MONTHLY".
+  EligibleEmployeeType String?   @db.VarChar(20)
+  // Which mst_employee date field "years of service" counts from when
+  // BasedOnTenure=true — "START_DATE" or "PROBATION_PASS_DATE" (see
+  // LEAVE_TENURE_COUNT_FROM_VALUES in src/lib/leave.ts). Meaningless (left
+  // null) when BasedOnTenure=false.
+  TenureCountFrom      String?   @db.VarChar(20)
+  CreatedDate          DateTime? @default(now()) @db.DateTime
+  CreatedBy            String?   @db.VarChar(20)
+  UpdatedDate          DateTime? @db.DateTime
+  UpdatedBy            String?   @db.VarChar(20)
 
   LeaveRequests TrnLeaveRequest[]
   LeaveBalances MstEmployeeLeaveBalance[]
+  TenureTiers   MstLeaveTenureTier[]
 
   @@map("mst_leave_type")
+}
+
+// Step table for BasedOnTenure leave types (2026-09-21, e.g. ลาพักร้อน):
+// "at MinYearsOfService completed years of service or more, entitlement is
+// EntitledDays" — entitlement lookup takes the highest-threshold row whose
+// MinYearsOfService <= the employee's actual completed years (e.g. rows for
+// 1yr=6days, 2yr=7days: an employee with 1.9 years gets 6, not 7, until they
+// cross the 2-year mark). Below the lowest threshold, entitlement is 0.
+model MstLeaveTenureTier {
+  TenureTierID      Int       @id(map: "PK_mst_leave_tenure_tier") @default(autoincrement())
+  LeaveTypeCode     String    @db.VarChar(10)
+  MinYearsOfService Int       @db.SmallInt
+  EntitledDays      Decimal   @db.Decimal(4, 1)
+  CreatedDate       DateTime? @default(now()) @db.DateTime
+  CreatedBy         String?   @db.VarChar(20)
+  UpdatedDate       DateTime? @db.DateTime
+  UpdatedBy         String?   @db.VarChar(20)
+
+  LeaveType MstLeaveType @relation(fields: [LeaveTypeCode], references: [LeaveTypeCode], map: "FK_mst_leave_tenure_tier_type", onUpdate: NoAction, onDelete: NoAction)
+
+  @@unique([LeaveTypeCode, MinYearsOfService], map: "UQ_mst_leave_tenure_tier")
+  @@map("mst_leave_tenure_tier")
 }
 
 model TrnLeaveRequest {
   LeaveID        Int       @id(map: "PK_trn_leave_request") @default(autoincrement())
   EmpCode        String    @db.VarChar(15)
   LeaveTypeCode  String    @db.VarChar(10)
-  StartDate      DateTime  @db.Date
-  EndDate        DateTime  @db.Date
-  TotalDays      Decimal   @db.Decimal(4, 1)
-  HasMedicalCert Boolean   @default(false)
-  Status         String    @default("DRAFT") @db.VarChar(15) // CHECK: DRAFT | SUBMITTED | APPROVED | REJECTED
-  CreatedBy      String    @db.VarChar(20)
-  CreatedDate    DateTime  @default(now()) @db.DateTime
-  ApprovedBy     String?   @db.VarChar(20)
-  ApprovedDate   DateTime? @db.DateTime
-  UpdatedDate    DateTime? @db.DateTime
-  UpdatedBy      String?   @db.VarChar(20)
+  // 2026-09-21 workflow overhaul (mirrors Request & Approve's approve/reject
+  // cycle, but NOT its header+detail restructure — still 1 row = 1 employee's
+  // 1 leave request, per explicit user decision). DocumentNo runs off
+  // ref_document_number code "LEAVE". IsFullDay=false means the request was
+  // entered in hours (HoursRequested populated, single day only, TotalDays
+  // derived as HoursRequested/8 — the approved 8h=1day conversion); TotalDays
+  // is always the canonical day-equivalent value balance checks compare
+  // against, regardless of entry mode.
+  DocumentNo      String?   @db.VarChar(20)
+  StartDate       DateTime  @db.Date
+  EndDate         DateTime  @db.Date
+  IsFullDay       Boolean   @default(true)
+  // Decimal(5,2), not (4,1) like every other day-count column in this
+  // project (e.g. mst_employee_leave_balance) — found via testing 2026-09-21
+  // that HoursRequested/8 for ordinary whole-hour inputs (1h,2h,3h,5h,6h,7h)
+  // needs 2 decimal places (e.g. 2h -> 0.25) and Decimal(4,1) was silently
+  // rounding it (0.25 -> 0.3), corrupting the balance math. Only these two
+  // columns needed widening — MstLeaveTenureTier.EntitledDays stays (4,1)
+  // since tenure tiers are configured in whole/half days, not hours.
+  HoursRequested  Decimal?  @db.Decimal(5, 2)
+  TotalDays       Decimal   @db.Decimal(5, 2)
+  HasMedicalCert  Boolean   @default(false)
+  Status          String    @default("DRAFT") @db.VarChar(15) // CHECK: DRAFT | SUBMITTED | APPROVED | REJECTED
+  CreatedBy       String    @db.VarChar(20)
+  CreatedDate     DateTime  @default(now()) @db.DateTime
+  ApprovedBy      String?   @db.VarChar(20)
+  ApprovedDate    DateTime? @db.DateTime
+  // Reject now bounces Status back to DRAFT (like trn_request) instead of a
+  // terminal REJECTED value — RejectReason/RejectedBy/RejectedDate persist as
+  // audit trail even after a later resubmission, same convention as
+  // trn_request_header.
+  RejectReason    String?   @db.NVarChar(500)
+  RejectedBy      String?   @db.VarChar(20)
+  RejectedDate    DateTime? @db.DateTime
+  UpdatedDate     DateTime? @db.DateTime
+  UpdatedBy       String?   @db.VarChar(20)
 
   Employee  MstEmployee  @relation(fields: [EmpCode], references: [EmpCode], map: "FK_trn_leave_request_employee", onUpdate: NoAction, onDelete: NoAction)
   LeaveType MstLeaveType @relation(fields: [LeaveTypeCode], references: [LeaveTypeCode], map: "FK_trn_leave_request_type", onUpdate: NoAction, onDelete: NoAction)

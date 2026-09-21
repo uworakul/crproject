@@ -34,6 +34,8 @@ export default async function SitesPage() {
         canDelete={canDelete}
         allowExport
         allowImport
+        detailLinkBase="/payroll/sites"
+        detailLinkLabel="อัตรากำลังพล"
         initialRows={sites}
       />
     </div>

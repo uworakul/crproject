@@ -35,7 +35,7 @@ const STATUS_LABEL: Record<string, string> = {
   DRAFT: "แบบร่าง",
   SUBMITTED: "รออนุมัติ",
   APPROVED: "อนุมัติแล้ว",
-  REJECTED: "ตีกลับ",
+  REJECTED: "ไม่อนุมัติ",
 };
 
 function money(v: number) {
@@ -119,8 +119,8 @@ export default function RequestGroupView({
               <th className="px-3 py-2 font-medium text-right">จำนวนรายการ</th>
               <th className="px-3 py-2 font-medium text-right">ยอดเงินรวม</th>
               <th className="px-3 py-2 font-medium">สถานะ</th>
-              <th className="px-3 py-2 font-medium">วันที่อนุมัติ/ตีกลับ</th>
-              <th className="min-w-[200px] px-3 py-2 font-medium">เหตุผลตีกลับ</th>
+              <th className="px-3 py-2 font-medium">วันที่อนุมัติ/ไม่อนุมัติ</th>
+              <th className="min-w-[200px] px-3 py-2 font-medium">เหตุผลไม่อนุมัติ</th>
               {canDelete && <th className="px-3 py-2"></th>}
             </tr>
           </thead>

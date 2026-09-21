@@ -13,6 +13,8 @@ import TrainingExperienceTab from "./training-experience-tab";
 import InstallmentDeductionTab from "./installment-deduction-tab";
 import HistoryTab from "./history-tab";
 import PayrollHistoryTab from "./payroll-history-tab";
+import LeaveHistoryTab from "./leave-history-tab";
+import { getLeaveBalanceSummary } from "@/lib/leave-balance";
 
 export default async function EmployeeDetailPage({ params }: { params: Promise<{ empCode: string }> }) {
   const user = await verifySession();
@@ -37,10 +39,12 @@ export default async function EmployeeDetailPage({ params }: { params: Promise<{
     installmentDeductionTypesRaw,
     historyRaw,
     payrollHistoryRaw,
+    leaveHistoryRaw,
     canSaveEmployee,
     canReadHistory,
     canSaveHistory,
     canReadPayroll,
+    canReadLeaveReport,
   ] = await Promise.all([
     prisma.mstEmployee.findUnique({ where: { EmpCode: empCode } }),
     prisma.refDepartment.findMany({ where: { IsActive: true }, orderBy: { DeptCode: "asc" } }),
@@ -66,13 +70,28 @@ export default async function EmployeeDetailPage({ params }: { params: Promise<{
       include: { Period: true, Site: { select: { SiteName: true } } },
       orderBy: { CreatedDate: "desc" },
     }),
+    prisma.trnLeaveRequest.findMany({
+      where: { EmpCode: empCode },
+      include: { LeaveType: { select: { LeaveTypeName: true } } },
+      orderBy: { StartDate: "desc" },
+    }),
     hasPermission(user, "EMPLOYEE", "save"),
     hasPermission(user, "EMPLOYEE_HISTORY", "read"),
     hasPermission(user, "EMPLOYEE_HISTORY", "save"),
     hasPermission(user, "EMPLOYEE_PAYROLL", "read"),
+    hasPermission(user, "LEAVE_REPORT", "read"),
   ]);
 
   if (!employeeRaw) notFound();
+
+  // mst_employee_leave_balance is no longer the source of truth (2026-09-21)
+  // — Entitled/Used/Remaining are computed live per year via
+  // getLeaveBalanceSummary(). Every year that appears in this employee's own
+  // leave history gets a row, plus the current year (so a brand-new employee
+  // with no history yet still sees this year's entitlement).
+  const leaveYears = Array.from(new Set([...leaveHistoryRaw.map((h) => h.StartDate.getUTCFullYear()), new Date().getUTCFullYear()]));
+  const leaveBalancesByYear = await Promise.all(leaveYears.map((y) => getLeaveBalanceSummary(empCode, y).then((entries) => entries.map((e) => ({ ...e, year: y })))));
+  const leaveBalances = leaveBalancesByYear.flat().sort((a, b) => b.year - a.year || a.leaveTypeCode.localeCompare(b.leaveTypeCode));
 
   // Prisma.Decimal and BigInt (mst_employee_history.HistoryID) aren't plain
   // values React Server Components can pass to a Client Component —
@@ -92,6 +111,7 @@ export default async function EmployeeDetailPage({ params }: { params: Promise<{
     installmentDeductionTypes,
     history,
     payrollHistory,
+    leaveHistory,
   ] = JSON.parse(
     JSON.stringify(
       [
@@ -108,6 +128,7 @@ export default async function EmployeeDetailPage({ params }: { params: Promise<{
         installmentDeductionTypesRaw,
         historyRaw,
         payrollHistoryRaw,
+        leaveHistoryRaw,
       ],
       (_key, value) => (typeof value === "bigint" ? value.toString() : value),
     ),
@@ -161,6 +182,9 @@ export default async function EmployeeDetailPage({ params }: { params: Promise<{
     },
   ];
 
+  if (canReadLeaveReport) {
+    tabs.push({ label: "ประวัติการลา", content: <LeaveHistoryTab history={leaveHistory} balances={leaveBalances} /> });
+  }
   if (canReadPayroll) {
     tabs.push({ label: "ประวัติการจ่าย", content: <PayrollHistoryTab rows={payrollHistory} /> });
   }

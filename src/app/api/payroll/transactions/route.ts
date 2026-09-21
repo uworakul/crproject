@@ -13,9 +13,18 @@ export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
   const periodId = Number(searchParams.get("periodId"));
   if (!Number.isInteger(periodId)) return apiError(400, "INVALID_PARAMS", "periodId is required and must be an integer");
+  const companyCode = searchParams.get("companyCode") || undefined;
+  const deptCode = searchParams.get("deptCode") || undefined;
+  const empCode = searchParams.get("empCode") || undefined;
 
   const transactions = await prisma.trnPayrollTransaction.findMany({
-    where: { PeriodID: periodId },
+    where: {
+      PeriodID: periodId,
+      ...(empCode ? { EmpCode: empCode } : {}),
+      ...(companyCode || deptCode
+        ? { Employee: { ...(companyCode ? { CompanyCode: companyCode } : {}), ...(deptCode ? { DeptCode: deptCode } : {}) } }
+        : {}),
+    },
     include: { Employee: { select: { EmpCode: true, FullName: true } }, Site: { select: { SiteCode: true, SiteName: true } } },
     orderBy: { EmpCode: "asc" },
   });
