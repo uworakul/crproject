@@ -41,7 +41,19 @@ interface FullTransaction {
   OtherIncome: string;
   OtherDeduction: string;
   NetPay: string;
-  Details: { DetailID: number; LineType: "INCOME" | "DEDUCTION"; Code: string; Description: string; Hours: string | null; Days: string | null; Amount: string }[];
+  Details: {
+    DetailID: number;
+    LineType: "INCOME" | "DEDUCTION";
+    Code: string;
+    Description: string;
+    SiteCode: string | null;
+    PositionCode: string | null;
+    Site: { SiteName: string } | null;
+    Position: { PositionName: string } | null;
+    Hours: string | null;
+    Days: string | null;
+    Amount: string;
+  }[];
 }
 
 async function confirmDeleteTransaction(label: string): Promise<boolean> {
@@ -267,7 +279,16 @@ export default function TransactionEntryView({
               <tbody>
                 {rows.map((r) => {
                   const isExpanded = expandedEmpCode === r.EmpCode;
-                  const totalDays = Number(r.WorkDays) + Number(r.DoubleShiftDays) + Number(r.HolidayDays);
+                  // 2026-09-22: must match the SAME counting rule the user
+                  // specified for pullPayrollFromWorksheet() itself (D=1,
+                  // N=1, D-N=2, F=0 — HolidayDays never counted at all) —
+                  // this column previously added HolidayDays in too, which
+                  // made it disagree with the sum of the "ค่าแรง" detail
+                  // lines it's meant to summarize (e.g. 16 shown here vs 14
+                  // in the lines below, confusing the user into thinking the
+                  // total was miscalculated when it was just counting a
+                  // different thing).
+                  const totalDays = Number(r.WorkDays) + Number(r.DoubleShiftDays) * 2;
                   return (
                     <Fragment key={r.TransactionID}>
                       <tr className="border-t border-gray-100 hover:bg-gray-50">

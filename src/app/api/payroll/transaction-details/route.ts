@@ -58,14 +58,21 @@ export async function POST(request: NextRequest) {
   if (!type) return apiError(404, lineType === "INCOME" ? "INCOME_TYPE_NOT_FOUND" : "DEDUCTION_TYPE_NOT_FOUND", undefined, { code });
   const description = lineType === "INCOME" ? (type as { IncomeName: string }).IncomeName : (type as { DeductionName: string }).DeductionName;
 
-  const existing = await prisma.trnPayrollTransactionDetail.findUnique({
-    where: { TransactionID_LineType_Code: { TransactionID: transactionId, LineType: lineType, Code: code } },
+  // SiteCode: null explicitly — this is the manual "+ เพิ่มรายการ" entry
+  // point, never tied to a Worksheet site (see schema comment on
+  // trn_payroll_transaction_detail). findFirst rather than findUnique
+  // because the compound unique key's SiteCode is nullable and
+  // pullPayrollFromWorksheet() may already own rows with the same
+  // (TransactionID, LineType, Code) but a real SiteCode — those aren't
+  // duplicates of a manual entry, only another SiteCode:null row would be.
+  const existing = await prisma.trnPayrollTransactionDetail.findFirst({
+    where: { TransactionID: transactionId, LineType: lineType, Code: code, SiteCode: null },
   });
   if (existing) return apiError(409, "TRANSACTION_DETAIL_ALREADY_EXISTS", undefined, { transactionId, lineType, code });
 
   const created = await prisma.$transaction(async (tx) => {
     const row = await tx.trnPayrollTransactionDetail.create({
-      data: { TransactionID: transactionId, LineType: lineType, Code: code, Description: description, Hours: hours, Days: days, Amount: amount, CreatedBy: user.userId },
+      data: { TransactionID: transactionId, LineType: lineType, Code: code, Description: description, SiteCode: null, Hours: hours, Days: days, Amount: amount, CreatedBy: user.userId },
     });
     await recomputeTransactionOtherTotals(tx, transactionId, user.userId);
     return row;

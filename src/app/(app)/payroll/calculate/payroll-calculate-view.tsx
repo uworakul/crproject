@@ -425,20 +425,22 @@ export default function PayrollCalculateView({
                                       {legacyIncome.map((r) => (
                                         <tr key={r.label}>
                                           <td className="py-0.5 text-gray-500">{r.label}</td>
+                                          <td></td>
                                           <td className="py-0.5 text-right">{money(Number(r.value))}</td>
                                         </tr>
                                       ))}
                                       {details
-                                        .filter((d) => d.LineType === "INCOME")
+                                        .filter((d) => d.LineType === "INCOME" && Number(d.Amount) !== 0)
                                         .map((d) => (
                                           <tr key={d.DetailID}>
                                             <td className="py-0.5 text-gray-500">{d.Description}</td>
+                                            <td className="py-0.5 text-right text-gray-400">{d.Days !== null ? `${d.Days} วัน` : d.Hours !== null ? `${d.Hours} ชม.` : "-"}</td>
                                             <td className="py-0.5 text-right">{money(Number(d.Amount))}</td>
                                           </tr>
                                         ))}
-                                      {legacyIncome.length === 0 && details.filter((d) => d.LineType === "INCOME").length === 0 && (
+                                      {legacyIncome.length === 0 && details.filter((d) => d.LineType === "INCOME" && Number(d.Amount) !== 0).length === 0 && (
                                         <tr>
-                                          <td colSpan={2} className="py-0.5 text-gray-400">
+                                          <td colSpan={3} className="py-0.5 text-gray-400">
                                             ไม่มีรายการ
                                           </td>
                                         </tr>
@@ -450,18 +452,24 @@ export default function PayrollCalculateView({
                                   <p className="mb-1 font-medium text-gray-700">รายการหัก</p>
                                   <table className="w-full">
                                     <tbody>
-                                      <tr>
-                                        <td className="py-0.5 text-gray-500">ภาษีหัก ณ ที่จ่าย</td>
-                                        <td className="py-0.5 text-right">{money(Number(t.TaxWithheld))}</td>
-                                      </tr>
-                                      <tr>
-                                        <td className="py-0.5 text-gray-500">ประกันสังคม</td>
-                                        <td className="py-0.5 text-right">{money(Number(t.SSOAmount))}</td>
-                                      </tr>
-                                      <tr>
-                                        <td className="py-0.5 text-gray-500">กองทุนสงเคราะห์พนักงาน</td>
-                                        <td className="py-0.5 text-right">{money(Number(t.WelfareFundAmount))}</td>
-                                      </tr>
+                                      {Number(t.TaxWithheld) !== 0 && (
+                                        <tr>
+                                          <td className="py-0.5 text-gray-500">ภาษีหัก ณ ที่จ่าย</td>
+                                          <td className="py-0.5 text-right">{money(Number(t.TaxWithheld))}</td>
+                                        </tr>
+                                      )}
+                                      {Number(t.SSOAmount) !== 0 && (
+                                        <tr>
+                                          <td className="py-0.5 text-gray-500">ประกันสังคม</td>
+                                          <td className="py-0.5 text-right">{money(Number(t.SSOAmount))}</td>
+                                        </tr>
+                                      )}
+                                      {Number(t.WelfareFundAmount) !== 0 && (
+                                        <tr>
+                                          <td className="py-0.5 text-gray-500">กองทุนสงเคราะห์พนักงาน</td>
+                                          <td className="py-0.5 text-right">{money(Number(t.WelfareFundAmount))}</td>
+                                        </tr>
+                                      )}
                                       {legacyDeduction.map((r) => (
                                         <tr key={r.label}>
                                           <td className="py-0.5 text-gray-500">{r.label}</td>
@@ -469,21 +477,35 @@ export default function PayrollCalculateView({
                                         </tr>
                                       ))}
                                       {details
-                                        .filter((d) => d.LineType === "DEDUCTION")
+                                        .filter((d) => d.LineType === "DEDUCTION" && Number(d.Amount) !== 0)
                                         .map((d) => (
                                           <tr key={d.DetailID}>
                                             <td className="py-0.5 text-gray-500">{d.Description}</td>
                                             <td className="py-0.5 text-right">{money(Number(d.Amount))}</td>
                                           </tr>
                                         ))}
-                                      {installments.map((line) => (
-                                        <tr key={line.debtId}>
-                                          <td className="py-0.5 text-gray-500">
-                                            {line.label} <span className="text-gray-400">(หักเป็นงวด, คงเหลือ {money(Number(line.remainingAmount))})</span>
-                                          </td>
-                                          <td className="py-0.5 text-right">{money(Number(line.amount))}</td>
-                                        </tr>
-                                      ))}
+                                      {installments
+                                        .filter((line) => Number(line.amount) !== 0)
+                                        .map((line) => (
+                                          <tr key={line.debtId}>
+                                            <td className="py-0.5 text-gray-500">
+                                              {line.label} <span className="text-gray-400">(หักเป็นงวด, คงเหลือ {money(Number(line.remainingAmount))})</span>
+                                            </td>
+                                            <td className="py-0.5 text-right">{money(Number(line.amount))}</td>
+                                          </tr>
+                                        ))}
+                                      {Number(t.TaxWithheld) === 0 &&
+                                        Number(t.SSOAmount) === 0 &&
+                                        Number(t.WelfareFundAmount) === 0 &&
+                                        legacyDeduction.length === 0 &&
+                                        details.filter((d) => d.LineType === "DEDUCTION" && Number(d.Amount) !== 0).length === 0 &&
+                                        installments.filter((line) => Number(line.amount) !== 0).length === 0 && (
+                                          <tr>
+                                            <td colSpan={2} className="py-0.5 text-gray-400">
+                                              ไม่มีรายการ
+                                            </td>
+                                          </tr>
+                                        )}
                                     </tbody>
                                   </table>
                                 </div>

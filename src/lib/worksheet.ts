@@ -1,6 +1,7 @@
 import "server-only";
 import { prisma } from "./prisma";
 import { Prisma } from "../../generated/prisma/client";
+import { recomputeTransactionOtherTotals } from "./payroll";
 
 function daysInMonth(year: number, month: number) {
   return new Date(year, month, 0).getDate();
@@ -464,7 +465,23 @@ export async function unapproveWorksheet(worksheetId: number, unapprovedBy: stri
     return { ok: false, error: { reason: "INVALID_STATUS_TRANSITION" } };
   }
 
-  const postings = await prisma.trnPayrollTransaction.findMany({ where: { SourceWorksheetID: worksheetId } });
+  const worksheetEmpCodes = (await prisma.trnWorksheetDetail.findMany({ where: { WorksheetID: worksheetId }, select: { EmpCode: true } })).map((d) => d.EmpCode);
+
+  // 2026-09-22: find affected transactions by this worksheet's own
+  // SiteCode + employees, NOT by trn_payroll_transaction.SourceWorksheetID —
+  // that field only remembers the LAST worksheet touched (an employee who
+  // worked two sites this period has both sites' days merged into one
+  // transaction row, and only one of the two worksheets "owns" that field).
+  // Filtering by SourceWorksheetID would silently find ZERO postings — and
+  // therefore do nothing at all — when un-approving the non-owning site's
+  // worksheet. trn_payroll_transaction_detail.SiteCode (added 2026-09-22
+  // alongside pullPayrollFromWorksheet()'s per-site rewrite) faithfully
+  // records which site each line actually came from regardless of which
+  // worksheet "wins" the legacy single-value field, so it's the correct
+  // thing to filter on here.
+  const postings = await prisma.trnPayrollTransaction.findMany({
+    where: { EmpCode: { in: worksheetEmpCodes }, Details: { some: { SiteCode: header.SiteCode } } },
+  });
 
   for (const p of postings) {
     const lock = await prisma.trnPayrollLock.findFirst({ where: { PeriodID: p.PeriodID, IsLocked: true } });
@@ -475,28 +492,51 @@ export async function unapproveWorksheet(worksheetId: number, unapprovedBy: stri
 
   await prisma.$transaction(async (tx) => {
     for (const p of postings) {
-      const netPay = new Prisma.Decimal(0)
-        .sub(p.AdvanceDeduct)
-        .sub(p.LoanDeduct)
-        .sub(p.TrainingDeduct)
-        .sub(p.UniformDeduct)
-        .add(p.OtherIncome)
-        .sub(p.OtherDeduction);
+      // Only zero the combined WorkDays/DoubleShiftDays/HolidayDays/
+      // GrossWage/TaxWithheld/SSOAmount fields if THIS worksheet is the one
+      // currently "owning" them (SourceWorksheetID still points here) — if
+      // some OTHER, still-approved worksheet (a different site) is the
+      // current owner, those combined fields legitimately represent that
+      // other site's data and must be left alone; only this site's own
+      // itemized detail line (below) gets cleared.
+      if (p.SourceWorksheetID === worksheetId) {
+        await tx.trnPayrollTransaction.update({
+          where: { EmpCode_PeriodID: { EmpCode: p.EmpCode, PeriodID: p.PeriodID } },
+          data: {
+            WorkDays: 0,
+            DoubleShiftDays: 0,
+            HolidayDays: 0,
+            GrossWage: 0,
+            TaxWithheld: 0,
+            SSOAmount: 0,
+            UpdatedBy: unapprovedBy,
+            UpdatedDate: new Date(),
+          },
+        });
+      }
 
-      await tx.trnPayrollTransaction.update({
-        where: { EmpCode_PeriodID: { EmpCode: p.EmpCode, PeriodID: p.PeriodID } },
-        data: {
-          WorkDays: 0,
-          DoubleShiftDays: 0,
-          HolidayDays: 0,
-          GrossWage: 0,
-          TaxWithheld: 0,
-          SSOAmount: 0,
-          NetPay: netPay,
-          UpdatedBy: unapprovedBy,
-          UpdatedDate: new Date(),
-        },
+      // 2026-09-22: also zero out this SITE's DAILY-rate "รายการประจำงวด"
+      // income detail line(s) ("ดึงข้อมูลจาก Worksheet",
+      // pullPayrollFromWorksheet() in src/lib/payroll.ts) could have
+      // written for this employee at THIS site specifically — scoped by
+      // SiteCode so an employee's OTHER site's line (if they worked two
+      // sites this period) is untouched. These lines are entirely owned by
+      // the pull mechanism (a future re-pull always overwrites them fresh),
+      // so leaving stale Days/Amount here after un-approving would keep
+      // showing income for a worksheet that's no longer approved — the same
+      // double-counting risk the pull's own GrossWage=0 step guards
+      // against, just in reverse.
+      await tx.trnPayrollTransactionDetail.updateMany({
+        where: { TransactionID: p.TransactionID, LineType: "INCOME", SiteCode: header.SiteCode },
+        data: { Days: 0, Amount: 0, UpdatedBy: unapprovedBy, UpdatedDate: new Date() },
       });
+
+      // Recomputes OtherIncome/OtherDeduction from the (now zeroed) detail
+      // lines and NetPay from the full formula — replaces the old hand-rolled
+      // partial NetPay calc that used to live here, which predated
+      // WelfareFundAmount/InstallmentDeduct and would have silently dropped
+      // them from NetPay after an unapprove.
+      await recomputeTransactionOtherTotals(tx, p.TransactionID, unapprovedBy);
     }
 
     await tx.trnWorksheetHeader.update({

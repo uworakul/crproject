@@ -10,6 +10,10 @@ interface DetailRow {
   LineType: "INCOME" | "DEDUCTION";
   Code: string;
   Description: string;
+  SiteCode: string | null;
+  PositionCode: string | null;
+  Site: { SiteName: string } | null;
+  Position: { PositionName: string } | null;
   Hours: string | null;
   Days: string | null;
   Amount: string;
@@ -223,6 +227,8 @@ export default function TransactionDetailPanel({
             <tr>
               <th className="px-3 py-2 font-medium">ประเภท</th>
               <th className="px-3 py-2 font-medium">รายการ</th>
+              <th className="px-3 py-2 font-medium">หน่วยงาน</th>
+              <th className="px-3 py-2 font-medium">ตำแหน่ง</th>
               <th className="px-3 py-2 font-medium text-right">ชม.</th>
               <th className="px-3 py-2 font-medium text-right">วัน</th>
               <th className="px-3 py-2 font-medium text-right">จำนวนเงิน</th>
@@ -236,6 +242,8 @@ export default function TransactionDetailPanel({
                 <tr key={d.DetailID} className="border-t border-gray-100 hover:bg-purple-50">
                   <td className="px-3 py-2">{d.LineType === "INCOME" ? "รายได้" : "รายการหัก"}</td>
                   <td className="px-3 py-2">{d.Description}</td>
+                  <td className="px-3 py-2 text-gray-500">{d.Site?.SiteName ?? "-"}</td>
+                  <td className="px-3 py-2 text-gray-500">{d.Position?.PositionName ?? "-"}</td>
                   <td className="px-3 py-2 text-right">
                     {isEditing ? (
                       <input type="number" step="any" value={editForm.hours} onChange={(e) => setEditForm({ ...editForm, hours: e.target.value })} className="w-20 rounded border border-gray-300 px-2 py-1 text-right text-sm" />
@@ -295,7 +303,7 @@ export default function TransactionDetailPanel({
             })}
             {transaction.Details.length === 0 && (
               <tr>
-                <td colSpan={canSave ? 6 : 5} className="px-3 py-6 text-center text-gray-400">
+                <td colSpan={canSave ? 8 : 7} className="px-3 py-6 text-center text-gray-400">
                   ยังไม่มีรายการ
                 </td>
               </tr>
@@ -303,7 +311,7 @@ export default function TransactionDetailPanel({
           </tbody>
           <tfoot className="border-t border-gray-200 bg-gray-50 font-medium">
             <tr>
-              <td colSpan={4} className="px-3 py-2 text-right text-gray-500">
+              <td colSpan={6} className="px-3 py-2 text-right text-gray-500">
                 รวมรายได้อื่น / รวมรายการหักอื่น
               </td>
               <td className="px-3 py-2 text-right">

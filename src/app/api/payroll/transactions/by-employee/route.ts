@@ -5,6 +5,11 @@ import { requirePermission } from "@/lib/authorize";
 import { apiError, apiSuccess } from "@/lib/api-response";
 import { getRateConfigForEmployee, recomputeTransactionOtherTotals } from "@/lib/payroll";
 
+// 2026-09-22 — each detail line's SiteCode/PositionCode (set only for lines
+// pulled from Worksheet, per-site) needs a display name; manual lines have
+// both null and the client shows "-" for those.
+const DETAIL_SITE_POSITION_INCLUDE = { Site: { select: { SiteName: true } }, Position: { select: { PositionName: true } } };
+
 // Find-or-create the trn_payroll_transaction row for an employee's current
 // period (2026-09-21, "รายการประจำงวด") — same idempotent-GET convention as
 // Worksheet's getOrCreateDraftWorksheet(). "Current period" = sys_period
@@ -30,7 +35,7 @@ export async function GET(request: NextRequest) {
 
   let transaction = await prisma.trnPayrollTransaction.findUnique({
     where: { EmpCode_PeriodID: { EmpCode: empCode, PeriodID: period.PeriodID } },
-    include: { Details: { orderBy: [{ LineType: "asc" }, { Code: "asc" }] } },
+    include: { Details: { orderBy: [{ LineType: "asc" }, { Code: "asc" }], include: DETAIL_SITE_POSITION_INCLUDE } },
   });
 
   // Rate config from this employee's Site+Position อัตรากำลังพล
@@ -94,7 +99,7 @@ export async function GET(request: NextRequest) {
 
       return tx.trnPayrollTransaction.findUniqueOrThrow({
         where: { TransactionID: created.TransactionID },
-        include: { Details: { orderBy: [{ LineType: "asc" }, { Code: "asc" }] } },
+        include: { Details: { orderBy: [{ LineType: "asc" }, { Code: "asc" }], include: DETAIL_SITE_POSITION_INCLUDE } },
       });
     });
   }

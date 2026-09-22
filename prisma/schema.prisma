@@ -52,12 +52,13 @@ model MstSite {
   UpdatedDate DateTime? @db.DateTime
   UpdatedBy   String?   @db.VarChar(20)
 
-  Users               SysUser[]
-  Permissions         SysUserPermission[]
-  Employees           MstEmployee[]
-  WorksheetHeaders    TrnWorksheetHeader[]
-  PayrollTransactions TrnPayrollTransaction[]
-  RequiredPositions   MstSitePosition[]
+  Users                     SysUser[]
+  Permissions               SysUserPermission[]
+  Employees                 MstEmployee[]
+  WorksheetHeaders          TrnWorksheetHeader[]
+  PayrollTransactions       TrnPayrollTransaction[]
+  RequiredPositions         MstSitePosition[]
+  PayrollTransactionDetails TrnPayrollTransactionDetail[]
 
   @@map("mst_site")
 }
@@ -160,10 +161,11 @@ model RefPosition {
   UpdatedDate       DateTime? @db.DateTime
   UpdatedBy         String?   @db.VarChar(20)
 
-  Employees          MstEmployee[]
-  SitePositions      MstSitePosition[]
-  BaseIncomes        MstPositionIncome[]
-  WorksheetDetails   TrnWorksheetDetail[]
+  Employees                 MstEmployee[]
+  SitePositions             MstSitePosition[]
+  BaseIncomes               MstPositionIncome[]
+  WorksheetDetails          TrnWorksheetDetail[]
+  PayrollTransactionDetails TrnPayrollTransactionDetail[]
 
   @@map("ref_position")
 }
@@ -1420,6 +1422,18 @@ model TrnPayrollTransactionDetail {
   LineType      String    @db.VarChar(10) // CHECK: INCOME | DEDUCTION
   Code          String    @db.VarChar(10) // ref_income_type.IncomeCode or ref_deduction_type.DeductionCode, per LineType
   Description   String    @db.NVarChar(100)
+  // 2026-09-22 — which site (and position) this line's Days/Amount actually
+  // came from, for employees who worked more than one site's Worksheet in
+  // the same period (a SPARE covering a shift elsewhere). NULL for lines
+  // added manually via "+ เพิ่มรายการ" (not tied to any Worksheet site) —
+  // SQL Server's unique index treats every NULL as distinct, so multiple
+  // manual lines never collide with each other on (TransactionID,LineType,
+  // Code,SiteCode) the way pullPayrollFromWorksheet()'s per-site rows do.
+  // PositionCode is informational only (not part of the unique key): within
+  // one site's Worksheet an employee has exactly one position for the whole
+  // month, so SiteCode alone is enough to keep pulled rows distinct.
+  SiteCode      String?   @db.VarChar(10)
+  PositionCode  String?   @db.VarChar(10)
   Hours         Decimal?  @db.Decimal(6, 2)
   Days          Decimal?  @db.Decimal(5, 2)
   Amount        Decimal   @db.Decimal(10, 2)
@@ -1429,8 +1443,10 @@ model TrnPayrollTransactionDetail {
   UpdatedBy     String?   @db.VarChar(20)
 
   Transaction TrnPayrollTransaction @relation(fields: [TransactionID], references: [TransactionID], map: "FK_trn_payroll_transaction_detail_transaction", onUpdate: NoAction, onDelete: NoAction)
+  Site        MstSite?              @relation(fields: [SiteCode], references: [SiteCode], map: "FK_trn_payroll_transaction_detail_site", onUpdate: NoAction, onDelete: NoAction)
+  Position    RefPosition?          @relation(fields: [PositionCode], references: [PositionCode], map: "FK_trn_payroll_transaction_detail_position", onUpdate: NoAction, onDelete: NoAction)
 
-  @@unique([TransactionID, LineType, Code], map: "UQ_trn_payroll_transaction_detail")
+  @@unique([TransactionID, LineType, Code, SiteCode], map: "UQ_trn_payroll_transaction_detail")
   @@map("trn_payroll_transaction_detail")
 }
 

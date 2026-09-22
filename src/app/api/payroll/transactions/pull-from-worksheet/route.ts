@@ -5,15 +5,15 @@ import { apiError, apiSuccess } from "@/lib/api-response";
 import { logAction } from "@/lib/audit-log";
 import { pullPayrollFromWorksheet } from "@/lib/payroll";
 
-// "ดึงข้อมูลจาก Worksheet" (2026-09-21, รายการประจำงวด) — confirmed with the
-// user this does both at once: adds detail lines for employees whose
-// Worksheet-derived attendance is on trn_payroll_transaction but never got
-// itemized (WorkDays/DoubleShiftDays only get set by approveWorksheet()'s
-// own upsert, which doesn't seed trn_payroll_transaction_detail the way
-// GET .../by-employee does), and refreshes already-itemized employees' Days/
-// Amount to match the current WorkDays/DoubleShiftDays. See
-// pullPayrollFromWorksheet() in src/lib/payroll.ts for the exact formula and
-// the APPROVED-only guard.
+// "ดึงข้อมูลจาก Worksheet" (2026-09-21, รายการประจำงวด; rewritten 2026-09-22 —
+// see pullPayrollFromWorksheet() in src/lib/payroll.ts) — re-derives
+// attendance straight from Worksheet's own APPROVED daily records every time
+// it's called, and find-or-creates the trn_payroll_transaction row itself —
+// safe to click any number of times, in any order relative to
+// delete/unapprove/re-approve on either side (the original version instead
+// trusted an already-existing trn_payroll_transaction row's WorkDays/
+// DoubleShiftDays, which silently broke once that row was deleted from
+// "รายการประจำงวด").
 export async function POST(request: NextRequest) {
   const user = await verifySession();
   if (!user) return apiError(401, "UNAUTHORIZED");
@@ -32,7 +32,14 @@ export async function POST(request: NextRequest) {
   if (!employeeType) return apiError(400, "INVALID_PARAMS", "employeeType is required");
   const companyCode = typeof body.companyCode === "string" && body.companyCode ? body.companyCode : null;
 
-  const result = await pullPayrollFromWorksheet(periodId, employeeType, companyCode, user.userId);
+  let result;
+  try {
+    result = await pullPayrollFromWorksheet(periodId, employeeType, companyCode, user.userId);
+  } catch (err) {
+    if (err instanceof Error && err.message === "PERIOD_NOT_FOUND") return apiError(404, "PERIOD_NOT_FOUND");
+    if (err instanceof Error && err.message === "PERIOD_LOCKED") return apiError(409, "PERIOD_LOCKED", "งวดนี้ถูกล็อกแล้ว ไม่สามารถดึงข้อมูลจาก Worksheet ได้");
+    throw err;
+  }
 
   await logAction(user.userId, "PULL_PAYROLL_FROM_WORKSHEET", {
     targetTable: "trn_payroll_transaction",
