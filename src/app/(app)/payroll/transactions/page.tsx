@@ -11,9 +11,10 @@ export default async function PayrollTransactionsPage() {
   const canRead = await hasPermission(user, "PAYROLL_TRANSACTION", "read");
   if (!canRead) redirect("/");
 
-  const [canSave, canDelete, periodsRaw, companies, employees, incomeTypes, deductionTypes] = await Promise.all([
+  const [canSave, canDelete, canReadLock, periodsRaw, companies, employees, incomeTypes, deductionTypes] = await Promise.all([
     hasPermission(user, "PAYROLL_TRANSACTION", "save"),
     hasPermission(user, "PAYROLL_TRANSACTION", "delete"),
+    hasPermission(user, "PAYROLL_LOCK", "read"),
     prisma.sysPeriod.findMany({ orderBy: { PeriodID: "desc" } }),
     prisma.refCompany.findMany({ orderBy: { CompanyCode: "asc" }, select: { CompanyCode: true, CompanyName: true } }),
     prisma.mstEmployee.findMany({
@@ -41,6 +42,7 @@ export default async function PayrollTransactionsPage() {
         deductionTypes={deductionTypes}
         canSave={canSave}
         canDelete={canDelete}
+        canReadLock={canReadLock}
       />
     </div>
   );

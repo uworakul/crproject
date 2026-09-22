@@ -60,6 +60,15 @@ export async function GET(request: NextRequest) {
   for (const [code, cfg] of rateConfigMap) seedRowsByCode.set(code, { IncomeName: cfg.incomeName });
 
   if (!transaction) {
+    // 2026-09-22: only the CREATE path needs this — reading an already-
+    // existing transaction (the far more common call, e.g. re-opening the
+    // detail panel) must keep working even on a locked period; only adding
+    // a brand-new employee to a locked, already-submitted-for-approval
+    // period should be blocked (same "ห้ามแก้ไข ลบ หรือ ดึง worksheet ถ้าจะ
+    // ทำต้องปลดล็อกก่อน" the user asked for on this whole screen).
+    const lock = await prisma.trnPayrollLock.findFirst({ where: { PeriodID: period.PeriodID, IsLocked: true } });
+    if (lock) return apiError(409, "PERIOD_LOCKED", "This period is locked and cannot be edited");
+
     if (!employee.DefaultSiteCode) {
       return apiError(422, "EMPLOYEE_HAS_NO_SITE", "This employee has no DefaultSiteCode set — assign a site before creating a payroll transaction for them", { empCode });
     }

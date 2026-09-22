@@ -90,6 +90,7 @@ export default function TransactionEntryView({
   deductionTypes,
   canSave,
   canDelete,
+  canReadLock,
 }: {
   periods: Period[];
   companies: { CompanyCode: string; CompanyName: string }[];
@@ -98,6 +99,7 @@ export default function TransactionEntryView({
   deductionTypes: { DeductionCode: string; DeductionName: string; IsInstallment: boolean; IsAutoCalculated: boolean }[];
   canSave: boolean;
   canDelete: boolean;
+  canReadLock: boolean;
 }) {
   const [employeeType, setEmployeeType] = useState("");
   const [companyCode, setCompanyCode] = useState("");
@@ -107,6 +109,13 @@ export default function TransactionEntryView({
   const [addEmpCode, setAddEmpCode] = useState("");
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  // 2026-09-22: the backend already rejects every mutation here with 409
+  // PERIOD_LOCKED once a period is locked (ส่งขออนุมัติแล้ว) — this state is
+  // purely so the UI can hide/disable แก้ไข/ลบ/ดึงข้อมูลจาก Worksheet/เพิ่ม
+  // พนักงาน up front instead of letting the user go through a confirm dialog
+  // only to have it fail, per the user's report (screenshot: delete confirm
+  // popped up on a locked period with no indication it was locked at all).
+  const [isLocked, setIsLocked] = useState(false);
 
   const period = periods.find((p) => p.EmployeeType === employeeType && p.IsCurrent);
 
@@ -117,13 +126,22 @@ export default function TransactionEntryView({
     if (res.ok) setRows(await res.json());
   }
 
+  async function refreshLock(periodId: number) {
+    if (!canReadLock) return;
+    const res = await fetch(`/api/payroll/lock?periodId=${periodId}`);
+    if (res.ok) setIsLocked((await res.json()).isLocked);
+  }
+
   async function handleSelectType(v: string) {
     setEmployeeType(v);
     setMessage(null);
     setExpandedEmpCode(null);
     const p = periods.find((pp) => pp.EmployeeType === v && pp.IsCurrent);
-    if (p) await refreshRows(p.PeriodID, companyCode);
-    else setRows([]);
+    if (p) await Promise.all([refreshRows(p.PeriodID, companyCode), refreshLock(p.PeriodID)]);
+    else {
+      setRows([]);
+      setIsLocked(false);
+    }
   }
 
   async function handleSelectCompany(v: string) {
@@ -244,8 +262,13 @@ export default function TransactionEntryView({
               <span className="font-medium">
                 {period.PeriodMonth}/{toBuddhistYear(period.PeriodYear)} ({new Date(period.StartDate).toLocaleDateString("th-TH")} - {new Date(period.EndDate).toLocaleDateString("th-TH")})
               </span>
+              {canReadLock && isLocked && (
+                <span className="ml-2 font-medium text-green-700">
+                  — ส่งขออนุมัติแล้ว (Locked) — แก้ไข/ลบ/ดึงข้อมูลจาก Worksheet ไม่ได้ ต้องปลดล็อกที่หน้า &quot;คำนวณเงินได้ประจำงวด&quot; ก่อน
+                </span>
+              )}
             </div>
-            {canSave && (
+            {canSave && !isLocked && (
               <button
                 onClick={handlePullFromWorksheet}
                 disabled={loading}
@@ -302,7 +325,7 @@ export default function TransactionEntryView({
                             <button onClick={() => toggleExpand(r.EmpCode)} className="text-gray-500 hover:underline">
                               {isExpanded ? "▾ ซ่อน" : "▸ แก้ไข"}
                             </button>
-                            {canDelete && (
+                            {canDelete && !isLocked && (
                               <button onClick={() => handleDelete(r)} className="text-red-500 hover:underline">
                                 ลบ
                               </button>
@@ -320,7 +343,7 @@ export default function TransactionEntryView({
                               rateConfig={panelData[r.EmpCode].rateConfig}
                               incomeTypes={incomeTypes}
                               deductionTypes={deductionTypes}
-                              canSave={canSave}
+                              canSave={canSave && !isLocked}
                             />
                           </td>
                         </tr>
@@ -339,7 +362,7 @@ export default function TransactionEntryView({
             </table>
           </div>
 
-          {canSave && (
+          {canSave && !isLocked && (
             <div className="flex flex-wrap items-end gap-2 rounded-lg border border-dashed border-gray-300 p-3">
               <label className="flex flex-col gap-1 text-xs text-gray-500">
                 เพิ่มพนักงานเข้างวดนี้

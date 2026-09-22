@@ -492,7 +492,7 @@ export default function PayrollCalculateView({
                                         .map((line) => (
                                           <tr key={line.debtId}>
                                             <td className="py-0.5 text-gray-500">
-                                              {line.label} <span className="text-gray-400">(หักเป็นงวด, คงเหลือ {money(Number(line.remainingAmount))})</span>
+                                              {line.label} <span className="text-gray-400">(คงเหลือ {money(Number(line.remainingAmount))})</span>
                                             </td>
                                             <td className="py-0.5 text-right">{money(Number(line.amount))}</td>
                                           </tr>

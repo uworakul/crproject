@@ -58,7 +58,11 @@ export async function calculateSso(grossWage: Prisma.Decimal, year: number): Pro
   if (!rate) throw new MissingRateDataError("SSO_BASE", year);
 
   const base = Prisma.Decimal.max(rate.MinBase, Prisma.Decimal.min(grossWage, rate.MaxBase));
-  return base.mul(rate.EmployeeRate).toDecimalPlaces(2);
+  // ปัดเป็นจำนวนเต็มบาท แบบ round-half-up (2026-09-22, ผู้ใช้ยืนยัน "เกิน 0.5
+  // ปัดขึ้น" — เศษ .50 ขึ้นไปปัดขึ้น ต่ำกว่าปัดลง, ตรงกับธรรมเนียมการปัดเศษ
+  // ประกันสังคมทั่วไป) — ต่างจาก TaxWithheld/WelfareFundAmount ที่ผู้ใช้ไม่ได้
+  // ขอเปลี่ยน ยังคงทศนิยม 2 ตำแหน่งตามเดิม
+  return base.mul(rate.EmployeeRate).toDecimalPlaces(0, Prisma.Decimal.ROUND_HALF_UP);
 }
 
 // กองทุนสงเคราะห์พนักงาน (2026-09-21, "คำนวณเงินได้ประจำงวด") — same shape as
