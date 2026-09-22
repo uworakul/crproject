@@ -4,6 +4,7 @@ import { verifySession } from "@/lib/dal";
 import { requirePermission } from "@/lib/authorize";
 import { logAction } from "@/lib/audit-log";
 import { apiError, apiSuccess } from "@/lib/api-response";
+import { recomputeTransactionOtherTotals } from "@/lib/payroll";
 
 // Fields the Transaction screen can edit directly (allowances, OT, manual
 // deductions, other income/deduction). TaxWithheld/SSOAmount are owned by
@@ -58,23 +59,23 @@ export async function PUT(request: NextRequest, ctx: RouteContext<"/api/payroll/
     data[field] = n;
   }
 
-  const merged = { ...existing, ...data };
-  const netPay =
-    Number(merged.GrossWage) -
-    Number(merged.TaxWithheld) -
-    Number(merged.SSOAmount) -
-    Number(merged.WelfareFundAmount) -
-    Number(merged.InstallmentDeduct) -
-    Number(merged.AdvanceDeduct) -
-    Number(merged.LoanDeduct) -
-    Number(merged.TrainingDeduct) -
-    Number(merged.UniformDeduct) +
-    Number(merged.OtherIncome) -
-    Number(merged.OtherDeduction);
-
-  const updated = await prisma.trnPayrollTransaction.update({
-    where: { TransactionID: transactionId },
-    data: { ...data, NetPay: netPay, UpdatedBy: user.userId, UpdatedDate: new Date() },
+  // 2026-09-22: NetPay (and the priority-rationed AdvanceDeduct/UniformDeduct/
+  // LoanDeduct/TrainingDeduct/OtherDeduction/OtherIncome values that feed it)
+  // is now computed by the shared recomputeTransactionOtherTotals() engine —
+  // see src/lib/payroll.ts for the "ลำดับการหักเงิน"/"ยอดหักสุทธิ ต้องไม่ติดลบ"
+  // rules. Note this means a direct OtherIncome/OtherDeduction edit here gets
+  // immediately re-derived from trn_payroll_transaction_detail afterward —
+  // already-documented pre-existing behavior (this screen's edits to those
+  // two fields were already only ever a temporary override until the next
+  // detail-line change elsewhere overwrote them; this just makes that happen
+  // synchronously instead of on some later unrelated action).
+  const updated = await prisma.$transaction(async (tx) => {
+    await tx.trnPayrollTransaction.update({
+      where: { TransactionID: transactionId },
+      data: { ...data, UpdatedBy: user.userId, UpdatedDate: new Date() },
+    });
+    await recomputeTransactionOtherTotals(tx, transactionId, user.userId);
+    return tx.trnPayrollTransaction.findUniqueOrThrow({ where: { TransactionID: transactionId } });
   });
 
   await logAction(user.userId, "UPDATE_PAYROLL_TRANSACTION", { targetTable: "trn_payroll_transaction", targetId: String(transactionId) });

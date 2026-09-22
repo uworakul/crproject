@@ -239,7 +239,10 @@ export default function PayrollCalculateView({
       if (res.ok) setDetailsById({ ...detailsById, [t.TransactionID]: await res.json() });
     }
     if (!installmentsById[t.TransactionID]) {
-      const res = await fetch(`/api/payroll/installment-deductions?empCode=${encodeURIComponent(t.EmpCode)}`);
+      // transactionId, not empCode (2026-09-22) — the priority-rationed
+      // amount shown per debt depends on this specific transaction's income/
+      // other-deduction context, not just which debts the employee has open.
+      const res = await fetch(`/api/payroll/installment-deductions?transactionId=${t.TransactionID}`);
       if (res.ok) setInstallmentsById({ ...installmentsById, [t.TransactionID]: await res.json() });
     }
   }

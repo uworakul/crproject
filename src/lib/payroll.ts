@@ -77,7 +77,7 @@ export interface InstallmentDeductionLine {
   debtId: number;
   code: string;
   label: string;
-  amount: Prisma.Decimal; // this period's deduction = min(DeductPerPeriod, RemainingAmount)
+  amount: Prisma.Decimal; // requested this period = min(DeductPerPeriod, RemainingAmount) — BEFORE priority rationing, see getRationedDeductionBreakdown() for what actually gets withheld
   remainingAmount: Prisma.Decimal; // balance BEFORE this period's deduction (for display only)
 }
 
@@ -114,29 +114,141 @@ export async function getOpenInstallmentDeductions(empCode: string): Promise<Ins
     }));
 }
 
-function computeNetPay(tx: {
-  GrossWage: Prisma.Decimal;
-  TaxWithheld: Prisma.Decimal;
-  SSOAmount: Prisma.Decimal;
-  WelfareFundAmount: Prisma.Decimal;
-  InstallmentDeduct: Prisma.Decimal;
-  AdvanceDeduct: Prisma.Decimal;
-  LoanDeduct: Prisma.Decimal;
-  TrainingDeduct: Prisma.Decimal;
-  UniformDeduct: Prisma.Decimal;
-  OtherIncome: Prisma.Decimal;
-  OtherDeduction: Prisma.Decimal;
-}): Prisma.Decimal {
-  return tx.GrossWage.sub(tx.TaxWithheld)
-    .sub(tx.SSOAmount)
-    .sub(tx.WelfareFundAmount)
-    .sub(tx.InstallmentDeduct)
-    .sub(tx.AdvanceDeduct)
-    .sub(tx.LoanDeduct)
-    .sub(tx.TrainingDeduct)
-    .sub(tx.UniformDeduct)
-    .add(tx.OtherIncome)
-    .sub(tx.OtherDeduction);
+// --- Deduction priority / rationing (2026-09-22) ------------------------
+//
+// User: "ยอดหักสุทธิ ต้องไม่ติดลบ" (NetPay must never go negative), with an
+// explicit priority order for which deductions get paid first when there
+// isn't enough income to cover everything:
+//   1. เบิกล่วงหน้า   2. เครื่องแบบ   3. เงินประกัน
+//   4. ค่าบัตร        5. เงินกู้      6. เงินหักอื่นๆ
+// Confirmed with the user (2026-09-22, two follow-up questions):
+//   - ภาษีหัก ณ ที่จ่าย / ประกันสังคม / กองทุนสงเคราะห์พนักงาน are NOT part of
+//     this queue at all — those are statutory, always deducted in full
+//     FIRST, before the 6-category queue even starts.
+//   - ref_deduction_type code "08" ("ค่าชุด/ค่าบัตร") bundles what would be
+//     categories 2 and 4 into one code with no way to split it as the data
+//     stands today — user's call: treat all of code "08" as category 2
+//     (เครื่องแบบ). Category 4 (ค่าบัตร) therefore has no code mapped to it
+//     yet; the bucket exists in the priority order for if/when one is added.
+//   - "ถ้ายอดเงินไม่เหลือพอให้หัก ก็จะหักเท่าที่หักได้ และไม่ไปหักถัดไป" —
+//     sequential greedy allocation: pay each item in full while the pool
+//     lasts, the one item that exhausts the pool gets a partial amount, and
+//     every item after it gets zero. This falls out naturally from
+//     `remaining -= take` in allocateByPriority() below — no extra "stop"
+//     flag needed, since remaining is exactly 0 after a partial take.
+const DEDUCTION_CODE_PRIORITY: Record<string, number> = {
+  // 1. เบิกล่วงหน้า
+  ADVANCE: 1,
+  ADVANCEN: 1,
+  ADVANCEU: 1,
+  "13": 1, // เงินเบิกล่วงหน้า
+  "14": 1, // เงินเบิกพนักงานใหม่
+  "15": 1, // เงินเบิกฉุกเฉิน
+  // 2. เครื่องแบบ (รวม "08 ค่าชุด/ค่าบัตร" ทั้งหมดไว้ที่นี่ตามที่ผู้ใช้ยืนยัน)
+  UNIFORM: 2,
+  "08": 2,
+  // 3. เงินประกัน
+  "09": 3,
+  // 4. ค่าบัตร — ยังไม่มีรหัสแยกในระบบตอนนี้
+  // 5. เงินกู้
+  LOAN: 5,
+  "12": 5,
+};
+// ทุกรหัสที่ไม่ได้ระบุไว้ข้างบน (เช่น สาย/ขาดงาน/ค่าเสียหาย/ค่าปรับ/ค่าอบรม/
+// เงินสะสม/กยศ/กรมบังคับคดี/อื่นๆ) ตกไปอยู่ bucket 6 "เงินหักอื่นๆ" โดย default
+function deductionPriorityBucket(code: string): number {
+  return DEDUCTION_CODE_PRIORITY[code] ?? 6;
+}
+
+interface RationingItem {
+  key: string;
+  bucket: number;
+  amount: Prisma.Decimal;
+}
+
+// Sequential greedy allocation in priority order (ascending bucket number =
+// higher priority). Returns how much of `pool` each item actually gets.
+function allocateByPriority(pool: Prisma.Decimal, items: RationingItem[]): Map<string, Prisma.Decimal> {
+  const sorted = [...items].sort((a, b) => a.bucket - b.bucket);
+  let remaining = Prisma.Decimal.max(pool, 0);
+  const result = new Map<string, Prisma.Decimal>();
+  for (const item of sorted) {
+    const take = Prisma.Decimal.max(Prisma.Decimal.min(item.amount, remaining), 0);
+    result.set(item.key, take);
+    remaining = remaining.sub(take);
+  }
+  return result;
+}
+
+type DeductionSource = "install" | "detail" | "legacy";
+
+export interface DeductionBreakdownItem {
+  key: string;
+  source: DeductionSource;
+  code: string;
+  label: string;
+  bucket: number;
+  requested: Prisma.Decimal; // the full amount owed/configured for this item
+  allocated: Prisma.Decimal; // what actually gets withheld this period after rationing
+  remainingAmount: Prisma.Decimal | null; // for "install" items only — debt balance BEFORE this period
+}
+
+// Gathers every deduction ITEM (not aggregate) that participates in the
+// priority queue: this employee's open installment debts, this
+// transaction's manually-added DEDUCTION detail lines, and the 4 legacy
+// Worksheet-era scalar fields (AdvanceDeduct/UniformDeduct/LoanDeduct/
+// TrainingDeduct — each rationed as one atomic item since they have no
+// further sub-breakdown). Statutory fields (Tax/SSO/WelfareFund) are
+// deliberately excluded — those are handled separately, always in full.
+async function collectDeductionItems(
+  client: Pick<Prisma.TransactionClient, "trnPayrollTransactionDetail">,
+  transaction: { TransactionID: number; EmpCode: string; AdvanceDeduct: Prisma.Decimal; UniformDeduct: Prisma.Decimal; LoanDeduct: Prisma.Decimal; TrainingDeduct: Prisma.Decimal },
+): Promise<{ items: DeductionBreakdownItem[]; installmentLines: InstallmentDeductionLine[] }> {
+  const [deductionDetails, installmentLines] = await Promise.all([
+    client.trnPayrollTransactionDetail.findMany({ where: { TransactionID: transaction.TransactionID, LineType: "DEDUCTION" } }),
+    getOpenInstallmentDeductions(transaction.EmpCode),
+  ]);
+
+  const items: DeductionBreakdownItem[] = [];
+  for (const l of installmentLines) {
+    items.push({ key: `debt:${l.debtId}`, source: "install", code: l.code, label: l.label, bucket: deductionPriorityBucket(l.code), requested: l.amount, allocated: new Prisma.Decimal(0), remainingAmount: l.remainingAmount });
+  }
+  for (const d of deductionDetails) {
+    items.push({ key: `detail:${d.DetailID}`, source: "detail", code: d.Code, label: d.Description, bucket: deductionPriorityBucket(d.Code), requested: d.Amount, allocated: new Prisma.Decimal(0), remainingAmount: null });
+  }
+  const legacy: [string, string, string, number, Prisma.Decimal][] = [
+    ["legacy:advance", "ADVANCE", "หักเบิกล่วงหน้า", 1, transaction.AdvanceDeduct],
+    ["legacy:uniform", "UNIFORM", "หักเครื่องแบบ", 2, transaction.UniformDeduct],
+    ["legacy:loan", "LOAN", "หักเงินกู้", 5, transaction.LoanDeduct],
+    ["legacy:training", "TRAINING", "หักค่าอบรม", 6, transaction.TrainingDeduct],
+  ];
+  for (const [key, code, label, bucket, amount] of legacy) {
+    if (amount.gt(0)) items.push({ key, source: "legacy", code, label, bucket, requested: amount, allocated: new Prisma.Decimal(0), remainingAmount: null });
+  }
+
+  return { items, installmentLines };
+}
+
+// Read-only preview of exactly what will be withheld this period per
+// deduction item, after priority rationing — used by GET
+// /api/payroll/installment-deductions so the breakdown shown on-screen
+// always matches what recomputeTransactionOtherTotals() below actually
+// saves (same computation, same priority rules, just not written anywhere).
+export async function getRationedDeductionBreakdown(transactionId: number): Promise<{ items: DeductionBreakdownItem[]; pool: Prisma.Decimal }> {
+  const transaction = await prisma.trnPayrollTransaction.findUniqueOrThrow({ where: { TransactionID: transactionId } });
+  const incomeDetails = await prisma.trnPayrollTransactionDetail.findMany({ where: { TransactionID: transactionId, LineType: "INCOME" } });
+  const otherIncome = incomeDetails.reduce((s, d) => s.add(d.Amount), new Prisma.Decimal(0));
+
+  const { items } = await collectDeductionItems(prisma, transaction);
+  const income = transaction.GrossWage.add(otherIncome);
+  const statutory = transaction.TaxWithheld.add(transaction.SSOAmount).add(transaction.WelfareFundAmount);
+  const pool = Prisma.Decimal.max(income.sub(statutory), 0);
+  const allocated = allocateByPriority(
+    pool,
+    items.map((i) => ({ key: i.key, bucket: i.bucket, amount: i.requested })),
+  );
+
+  return { items: items.map((i) => ({ ...i, allocated: allocated.get(i.key) ?? new Prisma.Decimal(0) })), pool };
 }
 
 export interface CalculateResult {
@@ -185,41 +297,28 @@ export async function runPayrollCalculate(
     },
   });
 
+  // 2026-09-22: restructured from a flat array of independent .update()
+  // calls into a single callback $transaction — recomputeTransactionOtherTotals()
+  // (the priority-rationing engine, see above) needs to READ each
+  // transaction's just-written Tax/SSO/WelfareFund back before it can
+  // compute the pool available for the 6-category deduction queue, which a
+  // flat pre-built array of update promises can't do (each promise is
+  // independent, none of them can see another's result before it runs).
   let totalAmount = new Prisma.Decimal(0);
-  const updates = [];
-  for (const tx of transactions) {
-    const taxWithheld = await calculateTaxWithheld(tx.GrossWage, period.PeriodYear);
-    const ssoAmount = await calculateSso(tx.GrossWage, period.PeriodYear);
-    const welfareFundAmount = await calculateWelfareFund(tx.GrossWage, period.PeriodYear);
-    const installmentLines = await getOpenInstallmentDeductions(tx.EmpCode);
-    const installmentDeduct = installmentLines.reduce((sum, l) => sum.add(l.amount), new Prisma.Decimal(0));
-    const netPay = computeNetPay({
-      ...tx,
-      TaxWithheld: taxWithheld,
-      SSOAmount: ssoAmount,
-      WelfareFundAmount: welfareFundAmount,
-      InstallmentDeduct: installmentDeduct,
-    });
-    totalAmount = totalAmount.add(netPay);
-    updates.push(
-      prisma.trnPayrollTransaction.update({
-        where: { TransactionID: tx.TransactionID },
-        data: {
-          TaxWithheld: taxWithheld,
-          SSOAmount: ssoAmount,
-          WelfareFundAmount: welfareFundAmount,
-          InstallmentDeduct: installmentDeduct,
-          NetPay: netPay,
-          UpdatedBy: calculatedBy,
-          UpdatedDate: new Date(),
-        },
-      }),
-    );
-  }
+  await prisma.$transaction(async (t) => {
+    for (const row of transactions) {
+      const taxWithheld = await calculateTaxWithheld(row.GrossWage, period.PeriodYear);
+      const ssoAmount = await calculateSso(row.GrossWage, period.PeriodYear);
+      const welfareFundAmount = await calculateWelfareFund(row.GrossWage, period.PeriodYear);
+      await t.trnPayrollTransaction.update({
+        where: { TransactionID: row.TransactionID },
+        data: { TaxWithheld: taxWithheld, SSOAmount: ssoAmount, WelfareFundAmount: welfareFundAmount, UpdatedBy: calculatedBy, UpdatedDate: new Date() },
+      });
+      const netPay = await recomputeTransactionOtherTotals(t, row.TransactionID, calculatedBy);
+      totalAmount = totalAmount.add(netPay);
+    }
 
-  await prisma.$transaction([
-    ...updates,
-    prisma.trnPayrollCalculateLog.create({
+    await t.trnPayrollCalculateLog.create({
       data: {
         DocumentNo: documentNo ?? null,
         PeriodID: periodId,
@@ -230,8 +329,8 @@ export async function runPayrollCalculate(
         TotalAmount: totalAmount,
         CreatedBy: calculatedBy,
       },
-    }),
-  ]);
+    });
+  });
 
   return { employeeCount: transactions.length, totalAmount };
 }
@@ -250,25 +349,23 @@ export async function cancelPayrollCalculate(periodId: number, calculatedBy: str
 
   const transactions = await prisma.trnPayrollTransaction.findMany({ where: { PeriodID: periodId } });
 
+  // 2026-09-22: same restructuring as runPayrollCalculate — zero Tax/SSO/
+  // WelfareFund first, then let recomputeTransactionOtherTotals() re-ration
+  // whatever's left (OtherDeduction/legacy fields) against the now-larger
+  // pool, forcing InstallmentDeduct to 0 via includeInstallments:false (see
+  // that function's comment for why).
   let totalAmount = new Prisma.Decimal(0);
-  const updates = transactions.map((tx) => {
-    const netPay = computeNetPay({
-      ...tx,
-      TaxWithheld: new Prisma.Decimal(0),
-      SSOAmount: new Prisma.Decimal(0),
-      WelfareFundAmount: new Prisma.Decimal(0),
-      InstallmentDeduct: new Prisma.Decimal(0),
-    });
-    totalAmount = totalAmount.add(netPay);
-    return prisma.trnPayrollTransaction.update({
-      where: { TransactionID: tx.TransactionID },
-      data: { TaxWithheld: 0, SSOAmount: 0, WelfareFundAmount: 0, InstallmentDeduct: 0, NetPay: netPay, UpdatedBy: calculatedBy, UpdatedDate: new Date() },
-    });
-  });
+  await prisma.$transaction(async (t) => {
+    for (const row of transactions) {
+      await t.trnPayrollTransaction.update({
+        where: { TransactionID: row.TransactionID },
+        data: { TaxWithheld: 0, SSOAmount: 0, WelfareFundAmount: 0, UpdatedBy: calculatedBy, UpdatedDate: new Date() },
+      });
+      const netPay = await recomputeTransactionOtherTotals(t, row.TransactionID, calculatedBy, { includeInstallments: false });
+      totalAmount = totalAmount.add(netPay);
+    }
 
-  await prisma.$transaction([
-    ...updates,
-    prisma.trnPayrollCalculateLog.create({
+    await t.trnPayrollCalculateLog.create({
       data: {
         PeriodID: periodId,
         EmployeeType: period.EmployeeType,
@@ -278,35 +375,90 @@ export async function cancelPayrollCalculate(periodId: number, calculatedBy: str
         TotalAmount: totalAmount,
         CreatedBy: calculatedBy,
       },
-    }),
-  ]);
+    });
+  });
 
   return { employeeCount: transactions.length, totalAmount };
 }
 
-// Re-derives OtherIncome/OtherDeduction from trn_payroll_transaction_detail
-// (2026-09-21, "รายการประจำงวด") and recomputes NetPay — called after every
-// detail-line add/edit/delete. Runs inside the caller's own $transaction so
-// the detail-line write and this rollup commit atomically together.
-export async function recomputeTransactionOtherTotals(tx: Prisma.TransactionClient, transactionId: number, updatedBy: string) {
-  const [transaction, details] = await Promise.all([
-    tx.trnPayrollTransaction.findUniqueOrThrow({ where: { TransactionID: transactionId } }),
-    tx.trnPayrollTransactionDetail.findMany({ where: { TransactionID: transactionId } }),
-  ]);
+// Re-derives OtherIncome from trn_payroll_transaction_detail, applies
+// priority rationing (2026-09-22, see collectDeductionItems/allocateByPriority
+// above) across every deduction item — installment debts, DEDUCTION detail
+// lines, and the 4 legacy scalar fields — and recomputes NetPay, floored at
+// 0. Called after every detail-line add/edit/delete AND from
+// runPayrollCalculate/cancelPayrollCalculate/the manual Transaction-screen
+// PUT (all of which may change GrossWage/OtherIncome/Tax/SSO/Welfare, any of
+// which shifts how much of the pool is left for the priority queue). Runs
+// inside the caller's own $transaction so everything commits atomically.
+//
+// 2026-09-22: kept the exported name (was previously a much smaller
+// "OtherIncome/OtherDeduction only" rollup) so none of its existing call
+// sites (worksheet.ts, transaction-details routes) needed to change —
+// what changed is what happens inside it, not who calls it or when.
+//
+// `includeInstallments` (default true) exists only for cancelPayrollCalculate()
+// (BR-031, "ล้าง...กลับเป็นศูนย์"): Cancel must force InstallmentDeduct back
+// to exactly 0 — NOT let it get freshly re-derived and re-rationed against
+// the (now larger, since Tax/SSO/Welfare just got zeroed too) pool, which is
+// what would happen if installment debts stayed in the priority queue here.
+// OtherDeduction/legacy fields still get rationed normally against whatever
+// pool remains — only the installment-debt items are excluded entirely.
+export async function recomputeTransactionOtherTotals(tx: Prisma.TransactionClient, transactionId: number, updatedBy: string, options: { includeInstallments?: boolean } = {}) {
+  const includeInstallments = options.includeInstallments ?? true;
+  const transaction = await tx.trnPayrollTransaction.findUniqueOrThrow({ where: { TransactionID: transactionId } });
+  const incomeDetails = await tx.trnPayrollTransactionDetail.findMany({ where: { TransactionID: transactionId, LineType: "INCOME" } });
+  const otherIncome = incomeDetails.reduce((s, d) => s.add(d.Amount), new Prisma.Decimal(0));
 
-  let otherIncome = new Prisma.Decimal(0);
+  const { items: allItems } = await collectDeductionItems(tx, transaction);
+  const items = includeInstallments ? allItems : allItems.filter((i) => i.source !== "install");
+  const income = transaction.GrossWage.add(otherIncome);
+  const statutory = transaction.TaxWithheld.add(transaction.SSOAmount).add(transaction.WelfareFundAmount);
+  const pool = Prisma.Decimal.max(income.sub(statutory), 0);
+  const allocated = allocateByPriority(
+    pool,
+    items.map((i) => ({ key: i.key, bucket: i.bucket, amount: i.requested })),
+  );
+
   let otherDeduction = new Prisma.Decimal(0);
-  for (const d of details) {
-    if (d.LineType === "INCOME") otherIncome = otherIncome.add(d.Amount);
-    else otherDeduction = otherDeduction.add(d.Amount);
+  let installmentDeduct = new Prisma.Decimal(0);
+  let advanceDeduct = new Prisma.Decimal(0);
+  let uniformDeduct = new Prisma.Decimal(0);
+  let loanDeduct = new Prisma.Decimal(0);
+  let trainingDeduct = new Prisma.Decimal(0);
+  for (const item of items) {
+    const amt = allocated.get(item.key) ?? new Prisma.Decimal(0);
+    if (item.source === "detail") otherDeduction = otherDeduction.add(amt);
+    else if (item.source === "install") installmentDeduct = installmentDeduct.add(amt);
+    else if (item.key === "legacy:advance") advanceDeduct = amt;
+    else if (item.key === "legacy:uniform") uniformDeduct = amt;
+    else if (item.key === "legacy:loan") loanDeduct = amt;
+    else if (item.key === "legacy:training") trainingDeduct = amt;
   }
 
-  const netPay = computeNetPay({ ...transaction, OtherIncome: otherIncome, OtherDeduction: otherDeduction });
+  // max(0, ...) here is belt-and-suspenders, not the primary mechanism —
+  // allocateByPriority() already guarantees the deduction items alone never
+  // exceed `pool`, so this only matters if statutory withholding ALONE
+  // (never rationed, per the user) somehow exceeds income, an edge case
+  // this floor still protects against per "ยอดหักสุทธิ ต้องไม่ติดลบ".
+  const netPay = Prisma.Decimal.max(income.sub(statutory).sub(otherDeduction).sub(installmentDeduct).sub(advanceDeduct).sub(uniformDeduct).sub(loanDeduct).sub(trainingDeduct), 0);
 
   await tx.trnPayrollTransaction.update({
     where: { TransactionID: transactionId },
-    data: { OtherIncome: otherIncome, OtherDeduction: otherDeduction, NetPay: netPay, UpdatedBy: updatedBy, UpdatedDate: new Date() },
+    data: {
+      OtherIncome: otherIncome,
+      OtherDeduction: otherDeduction,
+      InstallmentDeduct: installmentDeduct,
+      AdvanceDeduct: advanceDeduct,
+      UniformDeduct: uniformDeduct,
+      LoanDeduct: loanDeduct,
+      TrainingDeduct: trainingDeduct,
+      NetPay: netPay,
+      UpdatedBy: updatedBy,
+      UpdatedDate: new Date(),
+    },
   });
+
+  return netPay;
 }
 
 export interface RateConfigEntry {
@@ -529,9 +681,9 @@ export async function pullPayrollFromWorksheet(
       // Worksheet after the period's rows were first seeded some other way).
       // GrossWage is deliberately 0 here, not a computed total: the ค่าแรง
       // DAILY-rate detail line(s) below take over representing this
-      // employee's wage, and computeNetPay() always adds GrossWage +
-      // OtherIncome unconditionally — leaving GrossWage non-zero would
-      // double-pay the wage.
+      // employee's wage, and NetPay always adds GrossWage + OtherIncome
+      // unconditionally — leaving GrossWage non-zero would double-pay the
+      // wage.
       const transaction = await tx.trnPayrollTransaction.upsert({
         where: { EmpCode_PeriodID: { EmpCode: empCode, PeriodID: periodId } },
         update: {
