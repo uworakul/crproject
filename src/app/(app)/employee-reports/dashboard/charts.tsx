@@ -9,7 +9,7 @@
 // lines, >=8px markers with a surface ring), hairline recessive gridlines,
 // and a native <title> tooltip on every mark. Light mode only — this app
 // has no dark theme.
-import type { ChartDatum } from "@/lib/reports/dashboard-data";
+import type { ChartDatum, GroupedResult } from "@/lib/reports/dashboard-data";
 
 // Reference categorical palette (dataviz skill, references/palette.md) —
 // fixed order, never cycled/reassigned per filter change.
@@ -70,9 +70,13 @@ export function BarChartView({ data, unit }: { data: ChartDatum[]; unit: string 
         const w = (d.value / max) * chartWidth;
         return (
           <g key={d.label}>
-            <title>
-              {d.label}: {formatValue(d.value, unit)}
-            </title>
+            {/* A single string child, not `{a}: {b}` (which JSX compiles to a
+                multi-element children array) — React's SSR <title> serializer
+                silently renders an EMPTY <title> for any array of length > 1
+                (see pushTitleImpl in react-dom-server), while the client
+                mounts all children normally. That server/client divergence
+                is a real hydration mismatch, not a false positive. */}
+            <title>{`${d.label}: ${formatValue(d.value, unit)}`}</title>
             <text x={labelWidth - 8} y={y + barThickness / 2 + 4} textAnchor="end" fontSize={12} fill={INK.secondary}>
               {d.label.length > 26 ? `${d.label.slice(0, 25)}…` : d.label}
             </text>
@@ -110,9 +114,7 @@ export function LineChartView({ data, unit }: { data: ChartDatum[]; unit: string
       <path d={path} fill="none" stroke={SEQUENTIAL} strokeWidth={2} strokeLinejoin="round" strokeLinecap="round" />
       {points.map((p) => (
         <g key={p.d.label}>
-          <title>
-            {p.d.label}: {formatValue(p.d.value, unit)}
-          </title>
+          <title>{`${p.d.label}: ${formatValue(p.d.value, unit)}`}</title>
           <circle cx={p.x} cy={p.y} r={4} fill={SEQUENTIAL} stroke={INK.surface} strokeWidth={2} />
           <text
             x={p.x}
@@ -177,9 +179,7 @@ export function PieChartView({ data, unit }: { data: ChartDatum[]; unit: string 
       <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} role="img" aria-label="แผนภูมิวงกลม">
         {arcs.map((a) => (
           <path key={a.label} d={a.d} fill={a.color} stroke={INK.surface} strokeWidth={2}>
-            <title>
-              {a.label}: {formatValue(a.value, unit)} ({((a.value / total) * 100).toFixed(1)}%)
-            </title>
+            <title>{`${a.label}: ${formatValue(a.value, unit)} (${((a.value / total) * 100).toFixed(1)}%)`}</title>
           </path>
         ))}
       </svg>
@@ -194,6 +194,99 @@ export function PieChartView({ data, unit }: { data: ChartDatum[]; unit: string 
           </li>
         ))}
       </ul>
+    </div>
+  );
+}
+
+// --- Grouped (multi-series) views — 2026-09-24 --------------------------
+// For "เพศ/ช่วงอายุ ตามหน่วยงาน": each group (site) is a small cluster of
+// one thin bar per series (gender, or age bucket), colored from the fixed
+// categorical order since — unlike the single-series bar/line above — the
+// series here really are distinct identities being compared, not one
+// ranked measure. A legend is mandatory (>=2 series).
+
+export function GroupedTableView({ result }: { result: GroupedResult }) {
+  return (
+    <table className="w-full border-collapse text-sm">
+      <thead>
+        <tr className="border-b border-gray-300 text-left text-gray-600">
+          <th className="py-2 pr-4">หน่วยงาน</th>
+          {result.series.map((s) => (
+            <th key={s.name} className="py-2 pr-4 text-right">
+              {s.name}
+            </th>
+          ))}
+          <th className="py-2 pr-4 text-right">รวม</th>
+        </tr>
+      </thead>
+      <tbody>
+        {result.groups.map((g, i) => (
+          <tr key={g} className="border-b border-gray-100 hover:bg-gray-50">
+            <td className="py-2 pr-4">{g}</td>
+            {result.series.map((s) => (
+              <td key={s.name} className="py-2 pr-4 text-right tabular-nums">
+                {s.values[i].toLocaleString("th-TH")} {result.unit}
+              </td>
+            ))}
+            <td className="py-2 pr-4 text-right font-medium tabular-nums">
+              {result.series.reduce((sum, s) => sum + s.values[i], 0).toLocaleString("th-TH")} {result.unit}
+            </td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
+}
+
+export function GroupedBarChartView({ result }: { result: GroupedResult }) {
+  const { groups, series, unit } = result;
+  if (groups.length === 0 || series.length === 0) return <p className="text-sm text-gray-500">ไม่มีข้อมูล</p>;
+
+  const barThickness = 14;
+  const seriesGap = 2;
+  const clusterGap = 10;
+  const clusterHeight = series.length * (barThickness + seriesGap) + clusterGap;
+  const labelWidth = 200;
+  const chartWidth = 420;
+  const height = groups.length * clusterHeight + 20;
+  const max = Math.max(...series.flatMap((s) => s.values), 1);
+
+  return (
+    <div className="flex flex-col gap-3">
+      <div className="flex flex-wrap gap-3">
+        {series.map((s, j) => (
+          <span key={s.name} className="flex items-center gap-1.5 text-xs text-gray-700">
+            <span className="inline-block h-2.5 w-2.5 rounded-sm" style={{ backgroundColor: CATEGORICAL[j % CATEGORICAL.length] }} />
+            {s.name}
+          </span>
+        ))}
+      </div>
+      <svg width="100%" viewBox={`0 0 ${labelWidth + chartWidth + 70} ${height}`} role="img" aria-label="แผนภูมิแท่งแบบจัดกลุ่ม">
+        {[0, 0.25, 0.5, 0.75, 1].map((f) => (
+          <line key={f} x1={labelWidth + f * chartWidth} y1={0} x2={labelWidth + f * chartWidth} y2={height - 10} stroke={INK.gridline} strokeWidth={1} />
+        ))}
+        {groups.map((g, i) => {
+          const clusterTop = i * clusterHeight + clusterGap / 2;
+          return (
+            <g key={g}>
+              <text x={labelWidth - 8} y={clusterTop + (series.length * (barThickness + seriesGap)) / 2} textAnchor="end" fontSize={12} fill={INK.secondary}>
+                {g.length > 26 ? `${g.slice(0, 25)}…` : g}
+              </text>
+              {series.map((s, j) => {
+                const y = clusterTop + j * (barThickness + seriesGap);
+                const value = s.values[i];
+                const w = (value / max) * chartWidth;
+                return (
+                  <g key={s.name}>
+                    <title>{`${g} — ${s.name}: ${value.toLocaleString("th-TH")} ${unit}`}</title>
+                    <rect x={labelWidth} y={y} width={Math.max(w, value > 0 ? 2 : 0)} height={barThickness} rx={3} fill={CATEGORICAL[j % CATEGORICAL.length]} />
+                  </g>
+                );
+              })}
+            </g>
+          );
+        })}
+      </svg>
     </div>
   );
 }

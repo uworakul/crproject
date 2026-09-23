@@ -3,13 +3,24 @@ import { verifySession } from "@/lib/dal";
 import { requirePermission } from "@/lib/authorize";
 import { apiError, apiSuccess } from "@/lib/api-response";
 import type { ReportFilters } from "@/lib/reports/types";
-import { getAgeDistribution, getHeadcountBySite, getCostBySite } from "@/lib/reports/dashboard-data";
+import {
+  getAgeDistribution,
+  getHeadcountBySite,
+  getCostBySite,
+  getStockValueByMonth,
+  getWelfareValueByMonth,
+  getGenderBySite,
+  getAgeBySite,
+} from "@/lib/reports/dashboard-data";
 
-// GET /api/employee-dashboard?metric=age|headcount-by-site|cost-by-site&...filters
+// GET /api/employee-dashboard?metric=...&...filters
 // Interactive JSON endpoint for the Dashboard screen (not a PDF/Excel export
 // like the rest of /payroll/reports — this data is rendered client-side as
 // a chart or on-screen table). Same PAYROLL_REPORT read permission as the
-// other reports, since it draws on the same underlying data.
+// other reports for every metric, including the two stock/welfare ones
+// added 2026-09-24 (not strictly employee data, but the page itself is
+// already gated on this permission — no separate inventory-permission
+// check is worth adding just for those two).
 export async function GET(request: NextRequest) {
   const user = await verifySession();
   if (!user) return apiError(401, "UNAUTHORIZED");
@@ -34,5 +45,9 @@ export async function GET(request: NextRequest) {
     if (!periodId) return apiError(400, "INVALID_PARAMS", "periodId is required for this metric");
     return apiSuccess(await getCostBySite(Number(periodId), filters));
   }
+  if (metric === "stock-value-monthly") return apiSuccess(await getStockValueByMonth());
+  if (metric === "welfare-value-monthly") return apiSuccess(await getWelfareValueByMonth());
+  if (metric === "gender-by-site") return apiSuccess(await getGenderBySite(filters));
+  if (metric === "age-by-site") return apiSuccess(await getAgeBySite(filters));
   return apiError(404, "METRIC_NOT_FOUND", "Unknown metric", { metric });
 }
