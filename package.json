@@ -44,6 +44,7 @@
   "dependencies": {
     "@prisma/adapter-mssql": "7.10.0",
     "@prisma/client": "7.10.0",
+    "@react-pdf/renderer": "4.9.0",
     "bcryptjs": "3.0.3",
     "exceljs": "4.4.0",
     "google-auth-library": "11.1.0",

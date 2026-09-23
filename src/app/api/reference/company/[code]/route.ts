@@ -15,22 +15,67 @@ export async function PUT(request: NextRequest, ctx: RouteContext<"/api/referenc
   const existing = await prisma.refCompany.findUnique({ where: { CompanyCode: code } });
   if (!existing) return apiError(404, "COMPANY_NOT_FOUND");
 
-  let body: { companyName?: unknown; shortName?: unknown; address?: unknown; taxID?: unknown; ssoRegistNo?: unknown; contactPhone?: unknown };
+  let body: {
+    companyName?: unknown;
+    shortName?: unknown;
+    address?: unknown;
+    taxID?: unknown;
+    ssoRegistNo?: unknown;
+    contactPhone?: unknown;
+    securityBusinessLicenseNo?: unknown;
+    authorizedSignerName?: unknown;
+    authorizedSignerPosition?: unknown;
+    registeredDate?: unknown;
+    registeredProvince?: unknown;
+    addressHouseNo?: unknown;
+    addressFloor?: unknown;
+    addressMoo?: unknown;
+    addressSoi?: unknown;
+    addressRoad?: unknown;
+    addressTambon?: unknown;
+    addressAmphoe?: unknown;
+    addressProvince?: unknown;
+    addressZipCode?: unknown;
+  };
   try {
     body = await request.json();
   } catch {
     return apiError(400, "INVALID_PARAMS", "Request body must be JSON");
   }
 
+  let registeredDate: Date | null | undefined;
+  if (body.registeredDate === null || body.registeredDate === "") {
+    registeredDate = null;
+  } else if (typeof body.registeredDate === "string") {
+    const d = new Date(body.registeredDate);
+    if (Number.isNaN(d.getTime())) return apiError(400, "VALIDATION_FAILED", "registeredDate is invalid");
+    registeredDate = d;
+  }
+
+  const os = (v: unknown) => (v === null ? null : typeof v === "string" ? v.trim() || null : undefined);
   const updated = await prisma.refCompany.update({
     where: { CompanyCode: code },
     data: {
       CompanyName: typeof body.companyName === "string" && body.companyName.trim() ? body.companyName.trim() : undefined,
-      ShortName: typeof body.shortName === "string" ? body.shortName.trim() || null : undefined,
-      Address: typeof body.address === "string" ? (body.address.trim() || null) : undefined,
-      TaxID: typeof body.taxID === "string" ? (body.taxID.trim() || null) : undefined,
-      SSORegistNo: typeof body.ssoRegistNo === "string" ? (body.ssoRegistNo.trim() || null) : undefined,
-      ContactPhone: typeof body.contactPhone === "string" ? (body.contactPhone.trim() || null) : undefined,
+      ShortName: os(body.shortName),
+      Address: os(body.address),
+      TaxID: os(body.taxID),
+      SSORegistNo: os(body.ssoRegistNo),
+      ContactPhone: os(body.contactPhone),
+      SecurityBusinessLicenseNo: os(body.securityBusinessLicenseNo),
+      AuthorizedSignerName: os(body.authorizedSignerName),
+      AuthorizedSignerPosition: os(body.authorizedSignerPosition),
+      RegisteredDate: registeredDate,
+      RegisteredProvince: os(body.registeredProvince),
+      AddressHouseNo: os(body.addressHouseNo),
+      AddressFloor: os(body.addressFloor),
+      AddressMoo: os(body.addressMoo),
+      AddressSoi: os(body.addressSoi),
+      AddressRoad: os(body.addressRoad),
+      AddressTambon: os(body.addressTambon),
+      AddressAmphoe: os(body.addressAmphoe),
+      AddressProvince: os(body.addressProvince),
+      AddressZipCode: os(body.addressZipCode),
       UpdatedBy: user.userId,
       UpdatedDate: new Date(),
     },

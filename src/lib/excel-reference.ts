@@ -151,3 +151,88 @@ export async function parseProductWorkbook(buffer: Buffer): Promise<ParsedProduc
   });
   return rows;
 }
+
+// Worksheet's shape: one row per employee, fixed info columns (code/name/
+// type/position/rate/total) then one column per day of the month, mirroring
+// the on-screen grid — kept separate from the 2/3-column pair above since
+// the day-column count varies by month (28-31) and isn't a fixed shape.
+export interface WorksheetExportRow {
+  empCode: string;
+  empName: string;
+  empType: string; // "REGULAR" | "SPARE"
+  positionName: string | null;
+  dailyRate: number;
+  days: (string | null)[]; // index 0 = day 1
+  total: number;
+}
+
+export async function buildWorksheetWorkbook(daysInMonth: number, rows: WorksheetExportRow[]) {
+  const workbook = new ExcelJS.Workbook();
+  const sheet = workbook.addWorksheet("ใบลงเวลา");
+  sheet.columns = [
+    { header: "รหัสพนักงาน", key: "empCode", width: 14 },
+    { header: "ชื่อพนักงาน", key: "empName", width: 26 },
+    { header: "ประเภท", key: "empType", width: 10 },
+    { header: "ตำแหน่ง", key: "positionName", width: 18 },
+    { header: "ค่าแรง/วัน", key: "dailyRate", width: 12 },
+    ...Array.from({ length: daysInMonth }, (_, i) => ({ header: String(i + 1), key: `day${i + 1}`, width: 5 })),
+    { header: "รวม", key: "total", width: 12 },
+  ];
+  for (const r of rows) {
+    const rowData: Record<string, string | number> = {
+      empCode: r.empCode,
+      empName: r.empName,
+      empType: r.empType === "REGULAR" ? "ประจำ" : "สแปร์",
+      positionName: r.positionName ?? "",
+      dailyRate: r.dailyRate,
+      total: r.total,
+    };
+    r.days.forEach((code, i) => {
+      rowData[`day${i + 1}`] = code ?? "";
+    });
+    sheet.addRow(rowData);
+  }
+  return workbook.xlsx.writeBuffer();
+}
+
+export interface ParsedWorksheetImportRow {
+  empCode: string;
+  days: Map<number, string | null>; // day number -> attendance code, or null to clear that cell
+}
+
+// Column A is always the employee code (position-based, same robustness
+// rationale as the other parsers), but the day columns are located by
+// HEADER text this time — "1".."daysInMonth" — since which columns those
+// are shifts with the month, unlike the fixed 2/3-column tables. Columns
+// with any other header (name/type/position/rate/total, or anything a user
+// added) are ignored entirely, so re-importing an export round-trips
+// cleanly regardless of what else is in the sheet. A day column present in
+// the header but blank on a given row means "clear this cell"; a day column
+// missing from the header entirely (e.g. a user deleted it) is left
+// untouched rather than cleared.
+export async function parseWorksheetWorkbook(buffer: Buffer, daysInMonth: number): Promise<ParsedWorksheetImportRow[]> {
+  const workbook = new ExcelJS.Workbook();
+  await workbook.xlsx.load(buffer as unknown as ArrayBuffer);
+  const sheet = workbook.worksheets[0];
+  if (!sheet) return [];
+
+  const dayColumns = new Map<number, number>(); // column index -> day number
+  sheet.getRow(1).eachCell((cell, colNumber) => {
+    const n = Number(String(cell.value ?? "").trim());
+    if (Number.isInteger(n) && n >= 1 && n <= daysInMonth) dayColumns.set(colNumber, n);
+  });
+
+  const rows: ParsedWorksheetImportRow[] = [];
+  sheet.eachRow((row, rowNumber) => {
+    if (rowNumber === 1) return; // header
+    const empCode = String(row.getCell(1).value ?? "").trim();
+    if (!empCode) return;
+    const days = new Map<number, string | null>();
+    for (const [colIdx, dayNum] of dayColumns) {
+      const raw = String(row.getCell(colIdx).value ?? "").trim();
+      days.set(dayNum, raw === "" ? null : raw.toUpperCase());
+    }
+    rows.push({ empCode, days });
+  });
+  return rows;
+}

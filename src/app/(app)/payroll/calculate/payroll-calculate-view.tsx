@@ -20,8 +20,7 @@ interface Period {
 interface TransactionRow {
   TransactionID: number;
   EmpCode: string;
-  Employee: { EmpCode: string; FullName: string };
-  Site: { SiteCode: string; SiteName: string };
+  Employee: { EmpCode: string; FullName: string; Site: { SiteName: string } | null };
   WorkDays: string;
   GrossWage: string;
   OTAmount: string;
@@ -372,7 +371,7 @@ export default function PayrollCalculateView({
                       <td className="px-3 py-2">
                         {t.EmpCode} — {t.Employee.FullName}
                       </td>
-                      <td className="px-3 py-2">{t.Site.SiteName}</td>
+                      <td className="px-3 py-2">{t.Employee.Site?.SiteName ?? "-"}</td>
                       <td className="px-3 py-2 text-right">
                         {lockInfo?.isLocked ? (
                           t.WorkDays

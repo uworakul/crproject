@@ -4,12 +4,7 @@ import { verifySession } from "@/lib/dal";
 import { hasPermission } from "@/lib/authorize";
 import { logAction } from "@/lib/audit-log";
 import { apiError, apiSuccess } from "@/lib/api-response";
-
-interface DayInput {
-  worksheetDetailId: number;
-  day: number; // 1-31
-  attendCode: string | null;
-}
+import { saveWorksheetDays, type DayInput } from "@/lib/worksheet";
 
 // Bulk save for the whole grid in one call — the mockup edits many cells
 // before saving, not one request per cell.
@@ -42,47 +37,10 @@ export async function PUT(request: NextRequest, ctx: RouteContext<"/api/workshee
   }
   const entries = body as DayInput[];
 
-  const validDetailIds = new Set(
-    (await prisma.trnWorksheetDetail.findMany({ where: { WorksheetID: worksheetId }, select: { WorksheetDetailID: true } })).map(
-      (d) => d.WorksheetDetailID,
-    ),
-  );
-  const validAttendCodes = new Set((await prisma.mstAttendanceCode.findMany({ select: { Code: true } })).map((c) => c.Code));
-  const lastDay = new Date(header.WorkYear, header.WorkMonth, 0).getDate();
-
-  for (const entry of entries) {
-    if (!validDetailIds.has(entry.worksheetDetailId)) {
-      return apiError(400, "VALIDATION_FAILED", "Unknown worksheetDetailId", { worksheetDetailId: entry.worksheetDetailId });
-    }
-    if (!Number.isInteger(entry.day) || entry.day < 1 || entry.day > lastDay) {
-      return apiError(400, "VALIDATION_FAILED", "day out of range for this month", { day: entry.day });
-    }
-    if (entry.attendCode !== null && !validAttendCodes.has(entry.attendCode)) {
-      return apiError(400, "VALIDATION_FAILED", "Unknown attendCode", { attendCode: entry.attendCode });
-    }
+  const result = await saveWorksheetDays(worksheetId, header.WorkYear, header.WorkMonth, entries, user.userId);
+  if (!result.ok) {
+    return apiError(400, result.error.reason, result.error.message, result.error.detail);
   }
-
-  await prisma.$transaction(
-    entries.map((entry) => {
-      const workDate = new Date(Date.UTC(header.WorkYear, header.WorkMonth - 1, entry.day));
-      if (entry.attendCode === null) {
-        return prisma.trnWorksheetDaily.deleteMany({
-          where: { WorksheetDetailID: entry.worksheetDetailId, WorkDate: workDate },
-        });
-      }
-      return prisma.trnWorksheetDaily.upsert({
-        where: { WorksheetDetailID_WorkDate: { WorksheetDetailID: entry.worksheetDetailId, WorkDate: workDate } },
-        update: { AttendCode: entry.attendCode, UpdatedBy: user.userId, UpdatedDate: new Date() },
-        create: {
-          WorksheetDetailID: entry.worksheetDetailId,
-          WorkDate: workDate,
-          AttendCode: entry.attendCode,
-          UpdatedBy: user.userId,
-          CreatedBy: user.userId,
-        },
-      });
-    }),
-  );
 
   await logAction(user.userId, "SAVE_WORKSHEET_DAYS", {
     targetTable: "trn_worksheet_daily",

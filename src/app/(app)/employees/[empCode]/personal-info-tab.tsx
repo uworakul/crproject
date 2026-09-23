@@ -27,6 +27,17 @@ interface Employee {
   Ethnicity: string | null;
   Nationality: string | null;
   Education: string | null;
+  AddressHouseNo: string | null;
+  AddressMoo: string | null;
+  AddressSoi: string | null;
+  AddressRoad: string | null;
+  AddressTambon: string | null;
+  AddressAmphoe: string | null;
+  AddressProvince: string | null;
+  AddressZipCode: string | null;
+  ReferencePerson1Name: string | null;
+  ReferencePerson2Name: string | null;
+  SSOHospitalName: string | null;
 }
 
 const inputCls = "rounded border border-gray-300 px-3 py-2 text-sm disabled:bg-gray-100";
@@ -59,6 +70,17 @@ export default function PersonalInfoTab({ employee, canSave }: { employee: Emplo
     ethnicity: employee.Ethnicity ?? "",
     nationality: employee.Nationality ?? "",
     education: employee.Education ?? "",
+    addressHouseNo: employee.AddressHouseNo ?? "",
+    addressMoo: employee.AddressMoo ?? "",
+    addressSoi: employee.AddressSoi ?? "",
+    addressRoad: employee.AddressRoad ?? "",
+    addressTambon: employee.AddressTambon ?? "",
+    addressAmphoe: employee.AddressAmphoe ?? "",
+    addressProvince: employee.AddressProvince ?? "",
+    addressZipCode: employee.AddressZipCode ?? "",
+    referencePerson1Name: employee.ReferencePerson1Name ?? "",
+    referencePerson2Name: employee.ReferencePerson2Name ?? "",
+    ssoHospitalName: employee.SSOHospitalName ?? "",
   });
   const [message, setMessage] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
@@ -106,6 +128,30 @@ export default function PersonalInfoTab({ employee, canSave }: { employee: Emplo
         </Field>
         <Field label="ที่อยู่ปัจจุบัน">
           <input disabled={!canSave} value={form.address} onChange={(e) => setForm({ ...form, address: e.target.value })} className={inputCls} />
+        </Field>
+        <Field label="บ้านเลขที่ (สำหรับเอกสารประกอบงาน)">
+          <input disabled={!canSave} value={form.addressHouseNo} onChange={(e) => setForm({ ...form, addressHouseNo: e.target.value })} className={inputCls} />
+        </Field>
+        <Field label="หมู่ที่">
+          <input disabled={!canSave} value={form.addressMoo} onChange={(e) => setForm({ ...form, addressMoo: e.target.value })} className={inputCls} />
+        </Field>
+        <Field label="ตรอก/ซอย">
+          <input disabled={!canSave} value={form.addressSoi} onChange={(e) => setForm({ ...form, addressSoi: e.target.value })} className={inputCls} />
+        </Field>
+        <Field label="ถนน">
+          <input disabled={!canSave} value={form.addressRoad} onChange={(e) => setForm({ ...form, addressRoad: e.target.value })} className={inputCls} />
+        </Field>
+        <Field label="ตำบล/แขวง">
+          <input disabled={!canSave} value={form.addressTambon} onChange={(e) => setForm({ ...form, addressTambon: e.target.value })} className={inputCls} />
+        </Field>
+        <Field label="อำเภอ/เขต">
+          <input disabled={!canSave} value={form.addressAmphoe} onChange={(e) => setForm({ ...form, addressAmphoe: e.target.value })} className={inputCls} />
+        </Field>
+        <Field label="จังหวัด">
+          <input disabled={!canSave} value={form.addressProvince} onChange={(e) => setForm({ ...form, addressProvince: e.target.value })} className={inputCls} />
+        </Field>
+        <Field label="รหัสไปรษณีย์">
+          <input disabled={!canSave} value={form.addressZipCode} onChange={(e) => setForm({ ...form, addressZipCode: e.target.value })} className={inputCls} />
         </Field>
         <Field label="เพศ">
           <select disabled={!canSave} value={form.gender} onChange={(e) => setForm({ ...form, gender: e.target.value })} className={inputCls}>
@@ -157,8 +203,17 @@ export default function PersonalInfoTab({ employee, canSave }: { employee: Emplo
         <Field label="เบอร์โทรผู้ติดต่อฉุกเฉิน">
           <input disabled={!canSave} value={form.emergencyContactPhone} onChange={(e) => setForm({ ...form, emergencyContactPhone: e.target.value })} className={inputCls} />
         </Field>
+        <Field label="โรงพยาบาลตามสิทธิ์ประกันสังคม">
+          <input disabled={!canSave} value={form.ssoHospitalName} onChange={(e) => setForm({ ...form, ssoHospitalName: e.target.value })} className={inputCls} />
+        </Field>
         <Field label="ชื่อผู้ค้ำประกัน">
           <input disabled={!canSave} value={form.guarantorName} onChange={(e) => setForm({ ...form, guarantorName: e.target.value })} className={inputCls} />
+        </Field>
+        <Field label="บุคคลอ้างอิง คนที่ 1">
+          <input disabled={!canSave} value={form.referencePerson1Name} onChange={(e) => setForm({ ...form, referencePerson1Name: e.target.value })} className={inputCls} />
+        </Field>
+        <Field label="บุคคลอ้างอิง คนที่ 2">
+          <input disabled={!canSave} value={form.referencePerson2Name} onChange={(e) => setForm({ ...form, referencePerson2Name: e.target.value })} className={inputCls} />
         </Field>
       </div>
 

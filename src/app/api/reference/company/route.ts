@@ -29,6 +29,20 @@ export async function POST(request: NextRequest) {
     taxID?: unknown;
     ssoRegistNo?: unknown;
     contactPhone?: unknown;
+    securityBusinessLicenseNo?: unknown;
+    authorizedSignerName?: unknown;
+    authorizedSignerPosition?: unknown;
+    registeredDate?: unknown;
+    registeredProvince?: unknown;
+    addressHouseNo?: unknown;
+    addressFloor?: unknown;
+    addressMoo?: unknown;
+    addressSoi?: unknown;
+    addressRoad?: unknown;
+    addressTambon?: unknown;
+    addressAmphoe?: unknown;
+    addressProvince?: unknown;
+    addressZipCode?: unknown;
   };
   try {
     body = await request.json();
@@ -43,15 +57,37 @@ export async function POST(request: NextRequest) {
   const existing = await prisma.refCompany.findUnique({ where: { CompanyCode: companyCode } });
   if (existing) return apiError(409, "COMPANY_ALREADY_EXISTS", undefined, { companyCode });
 
+  let registeredDate: Date | null = null;
+  if (typeof body.registeredDate === "string" && body.registeredDate) {
+    const d = new Date(body.registeredDate);
+    if (Number.isNaN(d.getTime())) return apiError(400, "VALIDATION_FAILED", "registeredDate is invalid");
+    registeredDate = d;
+  }
+
+  const s = (v: unknown) => (typeof v === "string" && v.trim() ? v.trim() : null);
   const created = await prisma.refCompany.create({
     data: {
       CompanyCode: companyCode,
       CompanyName: companyName,
-      ShortName: typeof body.shortName === "string" && body.shortName.trim() ? body.shortName.trim() : null,
-      Address: typeof body.address === "string" && body.address.trim() ? body.address.trim() : null,
-      TaxID: typeof body.taxID === "string" && body.taxID.trim() ? body.taxID.trim() : null,
-      SSORegistNo: typeof body.ssoRegistNo === "string" && body.ssoRegistNo.trim() ? body.ssoRegistNo.trim() : null,
-      ContactPhone: typeof body.contactPhone === "string" && body.contactPhone.trim() ? body.contactPhone.trim() : null,
+      ShortName: s(body.shortName),
+      Address: s(body.address),
+      TaxID: s(body.taxID),
+      SSORegistNo: s(body.ssoRegistNo),
+      ContactPhone: s(body.contactPhone),
+      SecurityBusinessLicenseNo: s(body.securityBusinessLicenseNo),
+      AuthorizedSignerName: s(body.authorizedSignerName),
+      AuthorizedSignerPosition: s(body.authorizedSignerPosition),
+      RegisteredDate: registeredDate,
+      RegisteredProvince: s(body.registeredProvince),
+      AddressHouseNo: s(body.addressHouseNo),
+      AddressFloor: s(body.addressFloor),
+      AddressMoo: s(body.addressMoo),
+      AddressSoi: s(body.addressSoi),
+      AddressRoad: s(body.addressRoad),
+      AddressTambon: s(body.addressTambon),
+      AddressAmphoe: s(body.addressAmphoe),
+      AddressProvince: s(body.addressProvince),
+      AddressZipCode: s(body.addressZipCode),
       CreatedBy: user.userId,
     },
   });

@@ -37,6 +37,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     canViewSite,
     canApproveWorksheet,
     canViewPayrollWorkspace,
+    canViewPayrollReport,
     canViewLeaveRequest,
     company,
   ] = await Promise.all([
@@ -78,6 +79,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       hasPermission(user, "PAYROLL_LOCK", "read"),
       hasPermission(user, "PAYROLL_REPORT", "read"),
     ]).then((r) => r.some(Boolean)),
+    hasPermission(user, "PAYROLL_REPORT", "read"),
     hasPermission(user, "LEAVE_REQUEST", "read"),
     prisma.refCompany.findFirst({ orderBy: { CompanyCode: "asc" } }),
   ]);
@@ -89,9 +91,11 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     {
       // 2026-09-21: new top-most menu — singleton system default/startup
       // settings (sys_config), unrelated to the original 9-module scope.
-      label: "System Configuration",
+      // 2026-09-23: group label shortened to "Configuration"; the one
+      // sub-item renamed to "Registration" (same href/page, label only).
+      label: "Configuration",
       icon: "settings" as const,
-      items: canViewSystemConfig ? [{ href: "/system-config", label: "System Configuration" }] : [],
+      items: canViewSystemConfig ? [{ href: "/system-config", label: "Registration" }] : [],
     },
     {
       label: "ผู้ใช้งานและสิทธิ์",
@@ -166,7 +170,23 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       items: [
         ...(canViewPayrollWorkspace ? [{ href: "/payroll/transactions", label: "รายการประจำงวด" }] : []),
         ...(canViewPayrollWorkspace ? [{ href: "/payroll/calculate", label: "คำนวณเงินได้ประจำงวด" }] : []),
+        ...(canViewPayrollReport ? [{ href: "/payroll/reports", label: "รายงานการเงิน/หนี้ค้าง" }] : []),
         ...(canViewPayrollWorkspace ? [{ href: "/payroll/closing", label: "ปิดสิ้นงวด" }] : []),
+      ],
+    },
+    {
+      // New top-level menu (2026-09-23) — "ทะเบียนพนักงาน"/"การ์ดพนักงาน"
+      // moved out of "รายงานการเงิน/หนี้ค้าง" (การประมวลผล group above) into
+      // their own page here. Same PAYROLL_REPORT permission gate as that
+      // page, since it's the same underlying report data/API. Group + first
+      // item renamed "รายงานพนักงาน" -> "ทะเบียนพนักงาน"/"รายงาน" the same
+      // day, "Dashboard" added alongside it (its own page, own permission —
+      // see src/app/(app)/employee-reports/dashboard/).
+      label: "ทะเบียนพนักงาน",
+      icon: "employee" as const,
+      items: [
+        ...(canViewPayrollReport ? [{ href: "/employee-reports", label: "รายงาน" }] : []),
+        ...(canViewPayrollReport ? [{ href: "/employee-reports/dashboard", label: "Dashboard" }] : []),
       ],
     },
   ].filter((g) => g.items.length > 0);

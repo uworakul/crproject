@@ -27,8 +27,6 @@ interface Employee {
   BlacklistCode: string | null;
   LicenseNo6: string | null;
   LicenseDate6: string | null;
-  LicenseNo7: string | null;
-  LicenseDate7: string | null;
 }
 
 const inputCls = "rounded border border-gray-300 px-3 py-2 text-sm disabled:bg-gray-100";
@@ -76,8 +74,6 @@ export default function EmployeeInfoTab({
     blacklistCode: employee.BlacklistCode ?? "",
     licenseNo6: employee.LicenseNo6 ?? "",
     licenseDate6: toDateInputValue(employee.LicenseDate6),
-    licenseNo7: employee.LicenseNo7 ?? "",
-    licenseDate7: toDateInputValue(employee.LicenseDate7),
   });
   const [message, setMessage] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
@@ -235,12 +231,6 @@ export default function EmployeeInfoTab({
         </Field>
         <Field label="ลงวันที่ ธภ.6">
           <input disabled={!canSave} type="date" value={form.licenseDate6} onChange={(e) => setForm({ ...form, licenseDate6: e.target.value })} className={inputCls} />
-        </Field>
-        <Field label="เลขที่ใบอนุญาต ธภ.7">
-          <input disabled={!canSave} value={form.licenseNo7} onChange={(e) => setForm({ ...form, licenseNo7: e.target.value })} className={inputCls} />
-        </Field>
-        <Field label="ลงวันที่ ธภ.7">
-          <input disabled={!canSave} type="date" value={form.licenseDate7} onChange={(e) => setForm({ ...form, licenseDate7: e.target.value })} className={inputCls} />
         </Field>
         <Field label="รหัสคนแนะนำ">
           <input disabled={!canSave} value={form.referrerEmpCode} onChange={(e) => setForm({ ...form, referrerEmpCode: e.target.value })} className={inputCls} />

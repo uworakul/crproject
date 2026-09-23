@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import Swal from "sweetalert2";
 import { toBuddhistYear, toGregorianYear } from "@/lib/buddhist-year";
 import SearchableSelect from "../searchable-select";
@@ -102,6 +102,8 @@ export default function WorksheetView({
   const [fillTo, setFillTo] = useState(1);
   const [fillCode, setFillCode] = useState("");
   const [fillTarget, setFillTarget] = useState("ALL");
+  const [importing, setImporting] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   async function load(s: string, y: number, m: number) {
     if (!s) return;
@@ -244,6 +246,54 @@ export default function WorksheetView({
     load(siteCode, year, month);
   }
 
+  // 2026-09-22 — export the current grid to .xlsx (mirrors the on-screen
+  // columns: code/name/type/position/rate, one column per day, total) and
+  // re-import it back — only fills in attendance codes for employees
+  // already on this sheet (see the import route for why membership itself
+  // isn't editable via the file).
+  async function exportExcel() {
+    if (!data) return;
+    setMessage(null);
+    const res = await fetch(`/api/worksheets/${data.worksheetId}/export`);
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      setMessage(body.message || body.error);
+      return;
+    }
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `worksheet_${data.siteCode}_${data.workYear}${String(data.workMonth).padStart(2, "0")}.xlsx`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  async function handleImportFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = ""; // reset so re-selecting the same file still fires onChange
+    if (!data || !file) return;
+
+    if (!(await confirmDialog("ยืนยันนำเข้าข้อมูลจาก Excel? กะที่มีอยู่แล้วในวันที่ตรงกันจะถูกเขียนทับ", "#111827"))) return;
+
+    setMessage(null);
+    setImporting(true);
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      const res = await fetch(`/api/worksheets/${data.worksheetId}/import`, { method: "POST", body: formData });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setMessage(body.message || `${body.error}${body.unknownEmpCodes ? ` (${body.unknownEmpCodes.join(", ")})` : ""}`);
+        return;
+      }
+      setMessage(`นำเข้าแล้ว ${body.employees} คน, ${body.count} ช่อง`);
+      load(siteCode, year, month);
+    } finally {
+      setImporting(false);
+    }
+  }
+
   function fillRange() {
     if (!data) return;
     const from = Math.min(fillFrom, fillTo);
@@ -355,6 +405,23 @@ export default function WorksheetView({
           >
             {data.status}
           </span>
+        )}
+        {data && (
+          <button onClick={exportExcel} className="rounded border border-gray-300 px-3 py-1 text-sm text-gray-700 hover:bg-gray-50">
+            ส่งออก Excel
+          </button>
+        )}
+        {data && data.canSave && data.status === "DRAFT" && (
+          <>
+            <input ref={fileInputRef} type="file" accept=".xlsx" className="hidden" onChange={handleImportFileChange} />
+            <button
+              onClick={() => fileInputRef.current?.click()}
+              disabled={importing}
+              className="rounded border border-gray-300 px-3 py-1 text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+            >
+              {importing ? "กำลังนำเข้า..." : "นำเข้า Excel"}
+            </button>
+          </>
         )}
       </div>
 

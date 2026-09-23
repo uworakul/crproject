@@ -236,6 +236,25 @@ model RefCompany {
   UpdatedDate  DateTime? @db.DateTime
   UpdatedBy    String?   @db.VarChar(20)
 
+  // เอกสารประกอบงาน (2026-09-23) — ข้อเท็จจริงระดับบริษัทที่จำเป็นสำหรับ
+  // แบบ ธ.ภ.6/NDA (เลขที่ใบอนุญาตธุรกิจ รปภ., ผู้มีอำนาจลงนาม, วันที่/
+  // จังหวัดจดทะเบียน, ที่อยู่แยกส่วน) — ไม่มีในสคีมาเดิมเลย เพิ่มคู่ขนานกับ
+  // Address เดิม (Address เดิมยังใช้เป็น header ของรายงานอื่นต่อไปตามปกติ)
+  SecurityBusinessLicenseNo String?   @db.VarChar(30)
+  AuthorizedSignerName      String?   @db.NVarChar(150)
+  AuthorizedSignerPosition  String?   @db.NVarChar(100)
+  RegisteredDate            DateTime? @db.Date
+  RegisteredProvince        String?   @db.NVarChar(50)
+  AddressHouseNo            String?   @db.NVarChar(20)
+  AddressFloor              String?   @db.NVarChar(20)
+  AddressMoo                String?   @db.NVarChar(10)
+  AddressSoi                String?   @db.NVarChar(50)
+  AddressRoad               String?   @db.NVarChar(50)
+  AddressTambon              String?   @db.NVarChar(50)
+  AddressAmphoe             String?   @db.NVarChar(50)
+  AddressProvince           String?   @db.NVarChar(50)
+  AddressZipCode            String?   @db.VarChar(10)
+
   Employees MstEmployee[]
 
   @@map("ref_company")
@@ -611,12 +630,50 @@ model MstEmployee {
   LicenseDate6                 DateTime? @db.Date // ลงวันที่ ธภ.6
   LicenseNo7                   String?   @db.VarChar(50) // เลขที่ใบอนุญาต ธภ.7
   LicenseDate7                 DateTime? @db.Date // ลงวันที่ ธภ.7
+  // เช็คลิสต์หลักสูตรฝึกอบรม ธภ.7 (2026-09-22) — 10 หัวข้อตามหลักสูตรที่
+  // กฎหมายกำหนด แต่ละหัวข้อเป็น checkbox อิสระ (ผ่าน/ยังไม่ผ่านหัวข้อนั้นๆ) +
+  // หมายเหตุ 1 บรรทัดท้ายแบบฟอร์ม — เก็บเป็นคอลัมน์ตรงบน mst_employee ตาม
+  // pattern เดียวกับฟิลด์เดี่ยวอื่นๆ ในกลุ่มนี้ (MaritalStatus, LicenseNo6
+  // ฯลฯ) ไม่ใช่ตารางแยก เพราะเป็นข้อมูล 1:1 ต่อพนักงานคนเดียว ไม่ใช่รายการซ้ำ
+  Tbor7Topic1                  Boolean?  @default(false) // ความรู้เบื้องต้นเกี่ยวกับธุรกิจรักษาความปลอดภัย (ทฤษฎี 2 ชม.)
+  Tbor7Topic2                  Boolean?  @default(false) // กฎหมายที่เกี่ยวข้องกับการรักษาความปลอดภัย (ทฤษฎี 2 ชม.)
+  Tbor7Topic3                  Boolean?  @default(false) // การรักษาความปลอดภัยขั้นพื้นฐาน (ทฤษฎี 3 ชม. ปฏิบัติ 4 ชม.)
+  Tbor7Topic4                  Boolean?  @default(false) // การเขียนรายงาน (ทฤษฎี 1 ชม. ปฏิบัติ 1 ชม.)
+  Tbor7Topic5                  Boolean?  @default(false) // การเตรียมพร้อมกรณีเหตุฉุกเฉิน (ทฤษฎี 2 ชม. ปฏิบัติ 3 ชม.)
+  Tbor7Topic6                  Boolean?  @default(false) // การติดต่อสื่อสาร (ทฤษฎี 1 ชม. ปฏิบัติ 1 ชม.)
+  Tbor7Topic7                  Boolean?  @default(false) // หลักการใช้กำลัง (ทฤษฎี 2 ชม. ปฏิบัติ 2 ชม.)
+  Tbor7Topic8                  Boolean?  @default(false) // การปฐมพยาบาลเบื้องต้น (ทฤษฎี 2 ชม. ปฏิบัติ 2 ชม.)
+  Tbor7Topic9                  Boolean?  @default(false) // การจัดการจราจร (ทฤษฎี 1 ชม. ปฏิบัติ 2 ชม.)
+  Tbor7Topic10                 Boolean?  @default(false) // การฝึกภาคสนาม (ปฏิบัติ 9 ชม.)
+  Tbor7Remark                  String?   @db.NVarChar(300) // หมายเหตุ
   // รายได้ — DailyRate already existed; these are new. None of these feed
   // Worksheet/Payroll calculation yet (DailyRate is still the only rate
   // Worksheet snapshots per approved design) — stored for reference only.
   OTRatePerDay                 Decimal?  @db.Decimal(10, 2)
   MonthlySalary                Decimal?  @db.Decimal(12, 2)
   EmployeePositionAllowance    Decimal?  @db.Decimal(10, 2) // per-employee override, distinct from ref_position.PositionAllowance
+
+  // เอกสารประกอบงาน (2026-09-23) — สัญญาว่าจ้าง/NDA/PDPA/ธ.ภ.6 ต้องการที่อยู่
+  // แยกเป็นส่วนๆ (บ้านเลขที่/หมู่ที่/ตรอกซอย/ถนน/ตำบล/อำเภอ/จังหวัด/รหัส
+  // ไปรษณีย์) ต่างจาก Address/IDCardAddress เดิมที่เป็นข้อความก้อนเดียว —
+  // เพิ่มเป็นฟิลด์ใหม่คู่ขนานไป ไม่แตะ Address/IDCardAddress เดิมเลย (จอ/
+  // รายงานอื่นที่ใช้ Address เดิมอยู่ไม่กระทบ) ผูกกับ "ที่อยู่ปัจจุบัน"
+  // (Address) ไม่ใช่ "ที่อยู่ตามบัตรประชาชน" (IDCardAddress)
+  AddressHouseNo       String? @db.NVarChar(20)
+  AddressMoo           String? @db.NVarChar(10)
+  AddressSoi           String? @db.NVarChar(50)
+  AddressRoad          String? @db.NVarChar(50)
+  AddressTambon        String? @db.NVarChar(50)
+  AddressAmphoe        String? @db.NVarChar(50)
+  AddressProvince      String? @db.NVarChar(50)
+  AddressZipCode       String? @db.VarChar(10)
+  // "บุคคลอ้างอิง" ในรายงาน "ทะเบียนพนักงาน" แบบใหม่ (ประวัติพนักงานรักษา
+  // ความปลอดภัย) — คนละแนวคิดกับ EmergencyContactName เดิม (ผู้ติดต่อฉุกเฉิน)
+  ReferencePerson1Name String? @db.NVarChar(150)
+  ReferencePerson2Name String? @db.NVarChar(150)
+  // "สิทธิรักษา" คอลัมน์ในรายงานทะเบียนพนักงาน (2026-09-23, ยืนยันกับผู้ใช้
+  // แล้วว่าหมายถึงโรงพยาบาลตามสิทธิ์ประกันสังคม) — ไม่มีฟิลด์นี้มาก่อนเลย
+  SSOHospitalName      String? @db.NVarChar(150)
 
   Department RefDepartment? @relation(fields: [DeptCode], references: [DeptCode], map: "FK_mst_employee_ref_department", onUpdate: NoAction, onDelete: NoAction)
   Position   RefPosition?   @relation(fields: [PositionCode], references: [PositionCode], map: "FK_mst_employee_ref_position", onUpdate: NoAction, onDelete: NoAction)

@@ -35,6 +35,13 @@ function optNum(v: unknown): number | null | undefined {
   return Number.isFinite(n) ? n : undefined;
 }
 
+// Same idea for the ธภ.7 checklist booleans — only a real boolean is
+// accepted, anything else (including omission) leaves the stored value
+// untouched rather than guessing.
+function optBool(v: unknown): boolean | undefined {
+  return typeof v === "boolean" ? v : undefined;
+}
+
 export async function PUT(request: NextRequest, ctx: RouteContext<"/api/employees/[empCode]">) {
   const user = await verifySession();
   if (!user) return apiError(401, "UNAUTHORIZED");
@@ -102,6 +109,28 @@ export async function PUT(request: NextRequest, ctx: RouteContext<"/api/employee
     licenseDate6?: unknown;
     licenseNo7?: unknown;
     licenseDate7?: unknown;
+    tbor7Topic1?: unknown;
+    tbor7Topic2?: unknown;
+    tbor7Topic3?: unknown;
+    tbor7Topic4?: unknown;
+    tbor7Topic5?: unknown;
+    tbor7Topic6?: unknown;
+    tbor7Topic7?: unknown;
+    tbor7Topic8?: unknown;
+    tbor7Topic9?: unknown;
+    tbor7Topic10?: unknown;
+    tbor7Remark?: unknown;
+    addressHouseNo?: unknown;
+    addressMoo?: unknown;
+    addressSoi?: unknown;
+    addressRoad?: unknown;
+    addressTambon?: unknown;
+    addressAmphoe?: unknown;
+    addressProvince?: unknown;
+    addressZipCode?: unknown;
+    referencePerson1Name?: unknown;
+    referencePerson2Name?: unknown;
+    ssoHospitalName?: unknown;
   };
   try {
     body = await request.json();
@@ -236,6 +265,28 @@ export async function PUT(request: NextRequest, ctx: RouteContext<"/api/employee
       LicenseDate6: parsedDates.licenseDate6,
       LicenseNo7: optStr(body.licenseNo7),
       LicenseDate7: parsedDates.licenseDate7,
+      Tbor7Topic1: optBool(body.tbor7Topic1),
+      Tbor7Topic2: optBool(body.tbor7Topic2),
+      Tbor7Topic3: optBool(body.tbor7Topic3),
+      Tbor7Topic4: optBool(body.tbor7Topic4),
+      Tbor7Topic5: optBool(body.tbor7Topic5),
+      Tbor7Topic6: optBool(body.tbor7Topic6),
+      Tbor7Topic7: optBool(body.tbor7Topic7),
+      Tbor7Topic8: optBool(body.tbor7Topic8),
+      Tbor7Topic9: optBool(body.tbor7Topic9),
+      Tbor7Topic10: optBool(body.tbor7Topic10),
+      Tbor7Remark: optStr(body.tbor7Remark),
+      AddressHouseNo: optStr(body.addressHouseNo),
+      AddressMoo: optStr(body.addressMoo),
+      AddressSoi: optStr(body.addressSoi),
+      AddressRoad: optStr(body.addressRoad),
+      AddressTambon: optStr(body.addressTambon),
+      AddressAmphoe: optStr(body.addressAmphoe),
+      AddressProvince: optStr(body.addressProvince),
+      AddressZipCode: optStr(body.addressZipCode),
+      ReferencePerson1Name: optStr(body.referencePerson1Name),
+      ReferencePerson2Name: optStr(body.referencePerson2Name),
+      SSOHospitalName: optStr(body.ssoHospitalName),
       UpdatedBy: user.userId,
       UpdatedDate: new Date(),
     },

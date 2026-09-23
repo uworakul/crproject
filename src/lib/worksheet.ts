@@ -183,6 +183,81 @@ export async function repullWorksheetEmployees(worksheetId: number, siteCode: st
   return { added: toAdd.length };
 }
 
+export interface DayInput {
+  worksheetDetailId: number;
+  day: number; // 1-31
+  attendCode: string | null;
+}
+
+interface SaveDaysFailure {
+  reason: "VALIDATION_FAILED";
+  message: string;
+  detail?: Record<string, unknown>;
+}
+
+/**
+ * Bulk-write a set of (detail row, day, attendCode) cells for one worksheet
+ * — the single write path shared by PUT /api/worksheets/[id]/days (the
+ * grid's "บันทึก" button, which always sends every cell) and
+ * POST /api/worksheets/[id]/import (2026-09-22, Excel import — sends only
+ * the cells present under a recognized day column in the uploaded file).
+ * Caller is responsible for the permission/DRAFT-only checks (same split as
+ * every other mutating worksheet.ts function) before calling this.
+ * attendCode === null clears that cell (deletes the trn_worksheet_daily
+ * row); any other value must be a known mst_attendance_code.Code.
+ */
+export async function saveWorksheetDays(
+  worksheetId: number,
+  workYear: number,
+  workMonth: number,
+  entries: DayInput[],
+  userId: string,
+): Promise<{ ok: true } | { ok: false; error: SaveDaysFailure }> {
+  const validDetailIds = new Set(
+    (await prisma.trnWorksheetDetail.findMany({ where: { WorksheetID: worksheetId }, select: { WorksheetDetailID: true } })).map(
+      (d) => d.WorksheetDetailID,
+    ),
+  );
+  const validAttendCodes = new Set((await prisma.mstAttendanceCode.findMany({ select: { Code: true } })).map((c) => c.Code));
+  const lastDay = new Date(workYear, workMonth, 0).getDate();
+
+  for (const entry of entries) {
+    if (!validDetailIds.has(entry.worksheetDetailId)) {
+      return { ok: false, error: { reason: "VALIDATION_FAILED", message: "Unknown worksheetDetailId", detail: { worksheetDetailId: entry.worksheetDetailId } } };
+    }
+    if (!Number.isInteger(entry.day) || entry.day < 1 || entry.day > lastDay) {
+      return { ok: false, error: { reason: "VALIDATION_FAILED", message: "day out of range for this month", detail: { day: entry.day } } };
+    }
+    if (entry.attendCode !== null && !validAttendCodes.has(entry.attendCode)) {
+      return { ok: false, error: { reason: "VALIDATION_FAILED", message: "Unknown attendCode", detail: { attendCode: entry.attendCode } } };
+    }
+  }
+
+  await prisma.$transaction(
+    entries.map((entry) => {
+      const workDate = new Date(Date.UTC(workYear, workMonth - 1, entry.day));
+      if (entry.attendCode === null) {
+        return prisma.trnWorksheetDaily.deleteMany({
+          where: { WorksheetDetailID: entry.worksheetDetailId, WorkDate: workDate },
+        });
+      }
+      return prisma.trnWorksheetDaily.upsert({
+        where: { WorksheetDetailID_WorkDate: { WorksheetDetailID: entry.worksheetDetailId, WorkDate: workDate } },
+        update: { AttendCode: entry.attendCode, UpdatedBy: userId, UpdatedDate: new Date() },
+        create: {
+          WorksheetDetailID: entry.worksheetDetailId,
+          WorkDate: workDate,
+          AttendCode: entry.attendCode,
+          UpdatedBy: userId,
+          CreatedBy: userId,
+        },
+      });
+    }),
+  );
+
+  return { ok: true };
+}
+
 export async function getWorksheetDetail(worksheetId: number) {
   const header = await prisma.trnWorksheetHeader.findUnique({
     where: { WorksheetID: worksheetId },

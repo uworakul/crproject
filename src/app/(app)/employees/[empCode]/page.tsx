@@ -11,6 +11,7 @@ import TaxDeductionTab from "./tax-deduction-tab";
 import WorkExperienceTab from "./work-experience-tab";
 import TrainingExperienceTab from "./training-experience-tab";
 import InstallmentDeductionTab from "./installment-deduction-tab";
+import Tbor7ChecklistTab from "./tbor7-checklist-tab";
 import HistoryTab from "./history-tab";
 import PayrollHistoryTab from "./payroll-history-tab";
 import LeaveHistoryTab from "./leave-history-tab";
@@ -189,6 +190,7 @@ export default async function EmployeeDetailPage({ params }: { params: Promise<{
   if (canReadPayroll) {
     tabs.push({ label: "ประวัติการจ่าย", content: <PayrollHistoryTab rows={payrollHistory} /> });
   }
+  tabs.push({ label: "ธภ.7", content: <Tbor7ChecklistTab employee={employee} canSave={canSaveEmployee} /> });
   if (canReadHistory) {
     tabs.push({ label: "Note", content: <HistoryTab empCode={empCode} initialHistory={history} canSave={canSaveHistory} /> });
   }
