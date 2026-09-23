@@ -17,6 +17,12 @@ CREATE TABLE [dbo].[ref_document_number] (
     CONSTRAINT [UQ_ref_document_number_DocumentCode] UNIQUE NONCLUSTERED ([DocumentCode])
 );
 
+-- AlterTable
+-- Moved here from 20260919_add_document_number_is_custom (which sorts
+-- after this file alphabetically but needs ref_document_number to already
+-- exist) — see comment there.
+ALTER TABLE [dbo].[ref_document_number] ADD [IsCustomNumber] BIT NOT NULL CONSTRAINT [ref_document_number_IsCustomNumber_df] DEFAULT 0;
+
 COMMIT TRAN;
 
 END TRY

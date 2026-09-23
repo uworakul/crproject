@@ -14,6 +14,10 @@ build/
 .env.*
 !.env.example
 
+# Multi-tenant DB registry — contains real connection strings per client
+tenants.json
+!tenants.example.json
+
 # Prisma
 prisma/*.db
 

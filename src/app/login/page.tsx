@@ -1,20 +1,14 @@
-import { prisma } from "@/lib/prisma";
 import LoginForm from "./login-form";
 
-// This page reads no cookies/headers/searchParams, so Next would otherwise
-// statically prerender it at build time and freeze companyShortName's value
-// from then on — force it dynamic so edits made later via /reference show
-// up without a rebuild, matching every other page in the app (all of which
-// already go dynamic via verifySession()'s cookies() read).
-export const dynamic = "force-dynamic";
-
-// Same fallback used in src/app/(app)/layout.tsx's sidebar footer — keeps
-// the two brand labels consistent even before a company row exists.
+// This page can no longer look up a company name from the DB — login
+// happens BEFORE a tenant is known (that's what the "รหัสลูกค้า" field on
+// this form resolves), so there's no tenant context yet for `prisma` to use
+// here. Show a static label instead; the tenant-specific company name
+// still appears everywhere post-login (sidebar footer etc. via
+// src/app/(app)/layout.tsx, which runs after verifySession() has resolved
+// the tenant).
 const DEFAULT_COMPANY_LABEL = "ABC CO., LTD.";
 
-export default async function LoginPage() {
-  const company = await prisma.refCompany.findFirst({ orderBy: { CompanyCode: "asc" } });
-  const companyShortName = company?.ShortName || DEFAULT_COMPANY_LABEL;
-
-  return <LoginForm companyShortName={companyShortName} />;
+export default function LoginPage() {
+  return <LoginForm companyShortName={DEFAULT_COMPANY_LABEL} />;
 }

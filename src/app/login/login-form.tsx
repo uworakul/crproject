@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 
 export default function LoginForm({ companyShortName }: { companyShortName: string }) {
   const router = useRouter();
+  const [tenantCode, setTenantCode] = useState("");
   const [userId, setUserId] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -20,15 +21,17 @@ export default function LoginForm({ companyShortName }: { companyShortName: stri
       const res = await fetch("/api/auth/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ userId, password }),
+        body: JSON.stringify({ tenantCode, userId, password }),
       });
 
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
         setError(
-          body.error === "ACCOUNT_DISABLED"
-            ? "บัญชีนี้ถูกระงับการใช้งาน กรุณาติดต่อผู้ดูแลระบบ"
-            : "รหัสผู้ใช้งานหรือรหัสผ่านไม่ถูกต้อง",
+          body.error === "TENANT_NOT_FOUND"
+            ? "ไม่พบรหัสลูกค้านี้ในระบบ"
+            : body.error === "ACCOUNT_DISABLED"
+              ? "บัญชีนี้ถูกระงับการใช้งาน กรุณาติดต่อผู้ดูแลระบบ"
+              : "รหัสผู้ใช้งานหรือรหัสผ่านไม่ถูกต้อง",
         );
         return;
       }
@@ -51,6 +54,21 @@ export default function LoginForm({ companyShortName }: { companyShortName: stri
         </div>
 
         <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+          <div className="flex flex-col gap-1.5">
+            <label htmlFor="tenantCode" className="text-sm text-gray-700">
+              รหัสลูกค้า
+            </label>
+            <input
+              id="tenantCode"
+              name="tenantCode"
+              autoComplete="off"
+              placeholder="เช่น 001"
+              value={tenantCode}
+              onChange={(e) => setTenantCode(e.target.value)}
+              required
+              className="rounded-md border border-gray-300 px-3 py-2 text-sm outline-none focus:border-gray-400"
+            />
+          </div>
           <div className="flex flex-col gap-1.5">
             <label htmlFor="userId" className="text-sm text-gray-700">
               รหัสผู้ใช้งาน

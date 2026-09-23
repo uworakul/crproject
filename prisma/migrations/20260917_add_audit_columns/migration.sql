@@ -89,11 +89,14 @@ ALTER TABLE [dbo].[ref_black_list] ADD [CreatedBy] VARCHAR(20),
 [UpdatedBy] VARCHAR(20),
 [UpdatedDate] DATETIME;
 
--- AlterTable
-ALTER TABLE [dbo].[ref_company] ADD [CreatedBy] VARCHAR(20),
-[CreatedDate] DATETIME CONSTRAINT [ref_company_CreatedDate_df] DEFAULT CURRENT_TIMESTAMP,
-[UpdatedBy] VARCHAR(20),
-[UpdatedDate] DATETIME;
+-- ref_company's audit columns are added in 20260917_add_sso_effective_date_and_company
+-- instead (which creates the table) — that migration sorts AFTER this one by
+-- filename, so a fresh `migrate deploy` would otherwise ALTER a table that
+-- doesn't exist yet on a brand-new tenant DB. Moved 2026-09-24 while setting
+-- up multi-tenant support; see CLAUDE.md's "Multi-tenant" entry for the full
+-- story. Already-applied environments are unaffected — `migrate deploy` only
+-- checks migration names against `_prisma_migrations`, never re-verifies
+-- content of ones already recorded as applied.
 
 -- AlterTable
 ALTER TABLE [dbo].[ref_deduction_rate] ADD [CreatedBy] VARCHAR(20),

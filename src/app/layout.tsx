@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { Prompt } from "next/font/google";
-import { prisma } from "@/lib/prisma";
+import { getCurrentTenantClientOrNull } from "@/lib/tenant-context";
 import "./globals.css";
 
 // Matches the clean geometric-sans look of the reference screenshot's font.
@@ -15,7 +15,10 @@ const prompt = Prompt({
 const DEFAULT_COMPANY_LABEL = "ABC CO., LTD.";
 
 export async function generateMetadata(): Promise<Metadata> {
-  const company = await prisma.refCompany.findFirst({ orderBy: { CompanyCode: "asc" } });
+  // Runs for every route, including pre-login ones (no tenant resolved
+  // yet) — only query if a tenant context already exists for this request.
+  const client = getCurrentTenantClientOrNull();
+  const company = client ? await client.refCompany.findFirst({ orderBy: { CompanyCode: "asc" } }) : null;
   const companyShortName = company?.ShortName || DEFAULT_COMPANY_LABEL;
   return {
     title: `CRPAYROLL — ${companyShortName}`,

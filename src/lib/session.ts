@@ -1,42 +1,15 @@
 import "server-only";
-import { SignJWT, jwtVerify, type JWTPayload } from "jose";
 import { cookies } from "next/headers";
 import { randomUUID } from "crypto";
 import { prisma } from "./prisma";
-
-const SESSION_COOKIE_NAME = "session";
-const SESSION_DURATION_MS = 7 * 24 * 60 * 60 * 1000; // 7 days, matches Next.js docs' recommended example
-
-const secretKey = process.env.SESSION_SECRET;
-if (!secretKey) {
-  throw new Error("SESSION_SECRET is not set — check .env (see .env.example)");
-}
-const encodedKey = new TextEncoder().encode(secretKey);
-
-interface SessionCookiePayload extends JWTPayload {
-  sessionId: string;
-  userId: string;
-}
-
-async function encrypt(payload: SessionCookiePayload) {
-  return new SignJWT(payload)
-    .setProtectedHeader({ alg: "HS256" })
-    .setIssuedAt()
-    .setExpirationTime(Math.floor((Date.now() + SESSION_DURATION_MS) / 1000))
-    .sign(encodedKey);
-}
-
-async function decrypt(token: string | undefined) {
-  if (!token) return null;
-  try {
-    const { payload } = await jwtVerify<SessionCookiePayload>(token, encodedKey, {
-      algorithms: ["HS256"],
-    });
-    return payload;
-  } catch {
-    return null;
-  }
-}
+import { resolveTenant } from "./tenant-registry";
+import { runWithTenantClient } from "./tenant-context";
+import {
+  SESSION_COOKIE_NAME,
+  encryptSessionCookie,
+  decryptSessionCookie,
+  sessionCookieMaxAgeMs,
+} from "./session-cookie";
 
 /**
  * Creates a DB-backed session row (sys_session) and sets the encrypted
@@ -46,10 +19,11 @@ async function decrypt(token: string | undefined) {
  */
 export async function createSession(
   userId: string,
+  tenantCode: string,
   meta?: { ipAddress?: string; userAgent?: string },
 ) {
   const sessionId = randomUUID();
-  const expiresAt = new Date(Date.now() + SESSION_DURATION_MS);
+  const expiresAt = new Date(Date.now() + sessionCookieMaxAgeMs());
 
   await prisma.sysSession.create({
     data: {
@@ -61,7 +35,7 @@ export async function createSession(
     },
   });
 
-  const token = await encrypt({ sessionId, userId });
+  const token = await encryptSessionCookie({ sessionId, userId, tenantCode });
   const cookieStore = await cookies();
   cookieStore.set(SESSION_COOKIE_NAME, token, {
     httpOnly: true,
@@ -75,17 +49,33 @@ export async function createSession(
 /** Optimistic (cookie-only, no DB hit) read — for use in proxy.ts only. */
 export async function readOptimisticSession() {
   const cookieStore = await cookies();
-  return decrypt(cookieStore.get(SESSION_COOKIE_NAME)?.value);
+  return decryptSessionCookie(cookieStore.get(SESSION_COOKIE_NAME)?.value);
 }
 
 /**
  * Secure session check — verifies the cookie AND that the sys_session row
  * still exists, isn't revoked, and isn't expired. This is what Route
  * Handlers / Server Components must call before trusting a session.
+ *
+ * Returns both the session record AND the tenant's PrismaClient. dal.ts's
+ * verifySession() re-enters the returned tenantClient itself via
+ * runWithTenantClient() right after awaiting this, as cheap defense in
+ * depth — tenant-context.ts's tenantALS is a globalThis singleton
+ * specifically so that isn't strictly required anymore (Turbopack compiles
+ * each Route Handler/Server Component as its own bundle; before that fix,
+ * different bundles could end up with their OWN separate module instance
+ * of tenant-context.ts, so an enterWith() call made from inside this
+ * function was invisible from a different route's bundle — confirmed
+ * empirically). Keeping the re-entry in dal.ts costs nothing and guards
+ * against the same class of bug resurfacing some other way.
  */
 export async function verifySessionRecord() {
   const cookiePayload = await readOptimisticSession();
   if (!cookiePayload) return null;
+
+  const tenant = resolveTenant(cookiePayload.tenantCode);
+  if (!tenant) return null;
+  runWithTenantClient(tenant.client);
 
   const record = await prisma.sysSession.findUnique({
     where: { SessionID: cookiePayload.sessionId },
@@ -106,7 +96,7 @@ export async function verifySessionRecord() {
     data: { LastActivityDate: new Date() },
   });
 
-  return record;
+  return { record, tenantClient: tenant.client };
 }
 
 /** Revokes the current session in the DB (audit trail kept) and clears the cookie. */

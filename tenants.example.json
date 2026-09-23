@@ -1,0 +1,7 @@
+[
+  {
+    "code": "001",
+    "name": "ABC CO., LTD.",
+    "databaseUrl": "sqlserver://HOST:1433;database=DBNAME;user=USER;password=PASSWORD;encrypt=true;trustServerCertificate=true"
+  }
+]

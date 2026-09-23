@@ -16,6 +16,16 @@ CREATE TABLE [dbo].[ref_company] (
     CONSTRAINT [PK_ref_company] PRIMARY KEY CLUSTERED ([CompanyCode])
 );
 
+-- AlterTable
+-- Moved here from 20260917_add_audit_columns (which sorts after this file
+-- alphabetically but needs ref_company to already exist) — see comment
+-- there. Applied together with the CREATE TABLE above so a fresh tenant DB
+-- gets both in the correct order in one pass.
+ALTER TABLE [dbo].[ref_company] ADD [CreatedBy] VARCHAR(20),
+[CreatedDate] DATETIME CONSTRAINT [ref_company_CreatedDate_df] DEFAULT CURRENT_TIMESTAMP,
+[UpdatedBy] VARCHAR(20),
+[UpdatedDate] DATETIME;
+
 COMMIT TRAN;
 
 END TRY
