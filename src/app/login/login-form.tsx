@@ -48,7 +48,7 @@ export default function LoginForm({ companyShortName }: { companyShortName: stri
       <div className="w-full max-w-sm rounded-xl border border-gray-200 bg-white p-8 shadow-sm">
         <div className="mb-6 flex flex-col items-center text-center">
           <div className="mb-3 flex h-11 w-11 items-center justify-center rounded-full bg-gray-900 text-sm font-semibold text-white">
-            AC
+            CR
           </div>
           <div className="text-lg font-semibold tracking-tight text-gray-900">CRPAYROLL</div>
         </div>

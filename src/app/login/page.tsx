@@ -7,7 +7,7 @@ import LoginForm from "./login-form";
 // still appears everywhere post-login (sidebar footer etc. via
 // src/app/(app)/layout.tsx, which runs after verifySession() has resolved
 // the tenant).
-const DEFAULT_COMPANY_LABEL = "ABC CO., LTD.";
+const DEFAULT_COMPANY_LABEL = "ComRider";
 
 export default function LoginPage() {
   return <LoginForm companyShortName={DEFAULT_COMPANY_LABEL} />;

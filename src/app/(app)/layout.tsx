@@ -8,7 +8,7 @@ import LogoutButton from "./logout-button";
 
 // Fallback used whenever ref_company has no row yet, or the first row has no
 // ShortName filled in — keeps the brand line non-empty either way.
-const DEFAULT_COMPANY_LABEL = "ABC CO., LTD.";
+const DEFAULT_COMPANY_LABEL = "ComRider";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const user = await verifySession();

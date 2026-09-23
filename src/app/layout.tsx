@@ -12,7 +12,7 @@ const prompt = Prompt({
 
 // Same fallback used in the sidebar footer and login page — keeps all three
 // brand labels consistent even before a company row exists.
-const DEFAULT_COMPANY_LABEL = "ABC CO., LTD.";
+const DEFAULT_COMPANY_LABEL = "ComRider";
 
 export async function generateMetadata(): Promise<Metadata> {
   // Runs for every route, including pre-login ones (no tenant resolved
