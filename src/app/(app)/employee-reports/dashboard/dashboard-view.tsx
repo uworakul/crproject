@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { toBuddhistYear } from "@/lib/buddhist-year";
+import { toBuddhistYear, toGregorianYear } from "@/lib/buddhist-year";
 import SearchableSelect from "../../searchable-select";
 import { TableView, BarChartView, PieChartView, LineChartView, GroupedTableView, GroupedBarChartView } from "./charts";
 import type { ChartDatum, GroupedResult } from "@/lib/reports/dashboard-data";
@@ -31,13 +31,14 @@ const ALL_VIEWS: ViewMode[] = ["table", "pie", "bar", "line"];
 // rendered by GroupedTableView/GroupedBarChartView instead of the
 // single-series TableView/BarChartView/etc.
 const METRICS = [
-  { key: "age", label: "อายุพนักงาน (จำนวนคนต่อช่วงอายุ)", needsPeriod: false, filterable: true, kind: "single" as const, views: ALL_VIEWS },
-  { key: "headcount-by-site", label: "จำนวนคนในหน่วยงาน (Site)", needsPeriod: false, filterable: true, kind: "single" as const, views: ALL_VIEWS },
-  { key: "cost-by-site", label: "ค่าใช้จ่ายรวมตามหน่วยงาน (% เทียบทั้งหมด)", needsPeriod: true, filterable: true, kind: "single" as const, views: ALL_VIEWS },
+  { key: "age", label: "อายุพนักงาน (จำนวนคนต่อช่วงอายุ)", needsPeriod: false, needsYear: false, filterable: true, kind: "single" as const, views: ALL_VIEWS },
+  { key: "headcount-by-site", label: "จำนวนคนในหน่วยงาน (Site)", needsPeriod: false, needsYear: false, filterable: true, kind: "single" as const, views: ALL_VIEWS },
+  { key: "cost-by-site", label: "ค่าใช้จ่ายรวมตามหน่วยงาน (% เทียบทั้งหมด)", needsPeriod: true, needsYear: false, filterable: true, kind: "single" as const, views: ALL_VIEWS },
   {
     key: "stock-value-monthly",
     label: "มูลค่าสต๊อกสินค้า รายเดือน (ประมาณการ)",
     needsPeriod: false,
+    needsYear: false,
     filterable: false,
     kind: "single" as const,
     views: ["table", "bar"] as ViewMode[],
@@ -46,12 +47,35 @@ const METRICS = [
     key: "welfare-value-monthly",
     label: "มูลค่าสินค้าสวัสดิการที่เสียไป (ของฟรี) รายเดือน (ประมาณการ)",
     needsPeriod: false,
+    needsYear: false,
     filterable: false,
     kind: "single" as const,
     views: ["table", "bar"] as ViewMode[],
   },
-  { key: "gender-by-site", label: "สัดส่วนเพศ ตามหน่วยงาน", needsPeriod: false, filterable: true, kind: "grouped" as const, views: ["table", "bar"] as ViewMode[] },
-  { key: "age-by-site", label: "สัดส่วนช่วงอายุ ตามหน่วยงาน", needsPeriod: false, filterable: true, kind: "grouped" as const, views: ["table", "bar"] as ViewMode[] },
+  {
+    key: "gender-by-site",
+    label: "สัดส่วนเพศ ตามหน่วยงาน",
+    needsPeriod: false,
+    needsYear: false,
+    filterable: true,
+    kind: "grouped" as const,
+    views: ["table", "bar"] as ViewMode[],
+  },
+  {
+    key: "age-by-site",
+    label: "สัดส่วนช่วงอายุ ตามหน่วยงาน",
+    needsPeriod: false,
+    needsYear: false,
+    filterable: true,
+    kind: "grouped" as const,
+    views: ["table", "bar"] as ViewMode[],
+  },
+  // "สถิติการลา ประจำปี แยกประเภทลา" (2026-09-24) — total leave days per
+  // mst_leave_type for one calendar year, same categorical/magnitude shape
+  // as "age"/"headcount-by-site" so all 4 views apply. needsYear (new,
+  // alongside needsPeriod) shows a Buddhist-year number input instead of a
+  // sys_period dropdown — leave requests aren't scoped to a payroll period.
+  { key: "leave-stats-by-type", label: "สถิติการลา ประจำปี แยกประเภทลา", needsPeriod: false, needsYear: true, filterable: true, kind: "single" as const, views: ALL_VIEWS },
 ] as const;
 type MetricKey = (typeof METRICS)[number]["key"];
 
@@ -76,6 +100,7 @@ export default function DashboardView({
   const [viewMode, setViewMode] = useState<ViewMode>("bar");
   const [employeeType, setEmployeeType] = useState("DAILY");
   const [periodId, setPeriodId] = useState<number | "">("");
+  const [year, setYear] = useState(String(toBuddhistYear(new Date().getFullYear())));
   const [companyCode, setCompanyCode] = useState("");
   const [deptCode, setDeptCode] = useState("");
   const [siteCode, setSiteCode] = useState("");
@@ -112,6 +137,10 @@ export default function DashboardView({
       setMessage("กรุณาเลือกงวดก่อน");
       return;
     }
+    if (currentMetric.needsYear && year.trim() === "") {
+      setMessage("กรุณาระบุปีก่อน");
+      return;
+    }
     setMessage(null);
     setPending(true);
     try {
@@ -125,6 +154,7 @@ export default function DashboardView({
         if (empCode) params.set("empCode", empCode);
       }
       if (currentMetric.needsPeriod && periodId !== "") params.set("periodId", String(periodId));
+      if (currentMetric.needsYear && year.trim() !== "") params.set("year", String(toGregorianYear(Number(year))));
 
       const res = await fetch(`/api/employee-dashboard?${params.toString()}`);
       const body = await res.json().catch(() => ({}));
@@ -203,6 +233,13 @@ export default function DashboardView({
                 </option>
               ))}
             </select>
+          </div>
+        )}
+
+        {currentMetric.needsYear && (
+          <div>
+            <label className="mb-1 block text-xs text-gray-500">ปี (พ.ศ.)</label>
+            <input type="number" value={year} onChange={(e) => setYear(e.target.value)} className={`${selectCls} w-28`} />
           </div>
         )}
 

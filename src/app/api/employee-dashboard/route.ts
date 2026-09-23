@@ -11,6 +11,7 @@ import {
   getWelfareValueByMonth,
   getGenderBySite,
   getAgeBySite,
+  getLeaveStatsByType,
 } from "@/lib/reports/dashboard-data";
 
 // GET /api/employee-dashboard?metric=...&...filters
@@ -49,5 +50,10 @@ export async function GET(request: NextRequest) {
   if (metric === "welfare-value-monthly") return apiSuccess(await getWelfareValueByMonth());
   if (metric === "gender-by-site") return apiSuccess(await getGenderBySite(filters));
   if (metric === "age-by-site") return apiSuccess(await getAgeBySite(filters));
+  if (metric === "leave-stats-by-type") {
+    const year = searchParams.get("year");
+    if (!year) return apiError(400, "INVALID_PARAMS", "year is required for this metric");
+    return apiSuccess(await getLeaveStatsByType(Number(year), filters));
+  }
   return apiError(404, "METRIC_NOT_FOUND", "Unknown metric", { metric });
 }

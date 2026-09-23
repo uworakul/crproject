@@ -65,6 +65,34 @@ export async function getAgeDistribution(filters: ReportFilters): Promise<Dashbo
   return { data, unit: "คน" };
 }
 
+// "สถิติการลา ประจำปี แยกประเภทลา" (2026-09-24) — total leave DAYS (not
+// request count — matches what every leave-balance screen already reports
+// as "used", see getLeaveBalanceSummary) per mst_leave_type, for APPROVED
+// requests whose StartDate falls in the given Gregorian year. Every leave
+// type is included even at 0 (same reasoning as AGE_BUCKETS above — a
+// complete category list makes an empty result legible instead of just
+// disappearing that type from the chart). `year` is required, like
+// periodId is for cost-by-site — there's no sensible "all years" total.
+export async function getLeaveStatsByType(year: number, filters: ReportFilters): Promise<DashboardResult> {
+  const yearStart = new Date(Date.UTC(year, 0, 1));
+  const yearEnd = new Date(Date.UTC(year + 1, 0, 1));
+  const [leaveTypes, requests] = await Promise.all([
+    prisma.mstLeaveType.findMany({ orderBy: { LeaveTypeCode: "asc" }, select: { LeaveTypeCode: true, LeaveTypeName: true } }),
+    prisma.trnLeaveRequest.findMany({
+      where: { Status: "APPROVED", StartDate: { gte: yearStart, lt: yearEnd }, Employee: employeeWhere(filters) },
+      select: { LeaveTypeCode: true, TotalDays: true },
+    }),
+  ]);
+  const totalsByType = new Map<string, Prisma.Decimal>();
+  for (const r of requests) {
+    totalsByType.set(r.LeaveTypeCode, (totalsByType.get(r.LeaveTypeCode) ?? new Prisma.Decimal(0)).add(r.TotalDays));
+  }
+  const data = leaveTypes
+    .map((t) => ({ label: t.LeaveTypeName, value: Number((totalsByType.get(t.LeaveTypeCode) ?? new Prisma.Decimal(0)).toFixed(2)) }))
+    .sort((a, b) => b.value - a.value);
+  return { data, unit: "วัน" };
+}
+
 export async function getHeadcountBySite(filters: ReportFilters): Promise<DashboardResult> {
   const employees = await prisma.mstEmployee.findMany({ where: employeeWhere(filters), include: { Site: true } });
   const map = new Map<string, number>();
