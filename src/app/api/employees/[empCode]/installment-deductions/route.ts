@@ -4,6 +4,7 @@ import { verifySession } from "@/lib/dal";
 import { requirePermission } from "@/lib/authorize";
 import { logAction } from "@/lib/audit-log";
 import { apiError, apiSuccess } from "@/lib/api-response";
+import { getCurrentPeriodInstallmentAllocations } from "@/lib/payroll";
 
 // รายการหักต่องวด — every inv_employee_debt row for this employee, whichever
 // origin (inventory ISSUE confirm via MovementID, or created directly here
@@ -16,15 +17,19 @@ export async function GET(_req: NextRequest, ctx: RouteContext<"/api/employees/[
   if (denied) return denied;
 
   const { empCode } = await ctx.params;
-  const rows = await prisma.invEmployeeDebt.findMany({
-    where: { EmpCode: empCode },
-    include: {
-      DeductionType: { select: { DeductionCode: true, DeductionName: true } },
-      RequestHeader: { select: { DocumentNo: true, ApprovedDate: true } },
-    },
-    orderBy: { DebtID: "desc" },
-  });
-  return apiSuccess(rows);
+  const [rows, allocations] = await Promise.all([
+    prisma.invEmployeeDebt.findMany({
+      where: { EmpCode: empCode },
+      include: {
+        DeductionType: { select: { DeductionCode: true, DeductionName: true } },
+        RequestHeader: { select: { DocumentNo: true, ApprovedDate: true } },
+      },
+      orderBy: { DebtID: "desc" },
+    }),
+    getCurrentPeriodInstallmentAllocations(empCode),
+  ]);
+  const withCalculated = rows.map((r) => ({ ...r, CalculatedAmount: allocations.get(r.DebtID)?.toString() ?? "0" }));
+  return apiSuccess(withCalculated);
 }
 
 // Manually create an installment deduction not tied to an inventory

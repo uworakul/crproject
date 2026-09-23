@@ -103,7 +103,14 @@ export default function PayrollCalculateView({
   const [deptCode, setDeptCode] = useState("");
   const [empCode, setEmpCode] = useState("");
   const [rows, setRows] = useState<TransactionRow[]>([]);
-  const [lockInfo, setLockInfo] = useState<{ isLocked: boolean; lockedBy: string | null; employeeCount: number; totalNetPay: string } | null>(null);
+  const [lockInfo, setLockInfo] = useState<{
+    isLocked: boolean;
+    lockedBy: string | null;
+    isApproved: boolean;
+    approvedBy: string | null;
+    employeeCount: number;
+    totalNetPay: string;
+  } | null>(null);
   const [expandedId, setExpandedId] = useState<number | null>(null);
   const [detailsById, setDetailsById] = useState<Record<number, DetailRow[]>>({});
   const [installmentsById, setInstallmentsById] = useState<Record<number, InstallmentLine[]>>({});
@@ -127,7 +134,14 @@ export default function PayrollCalculateView({
     const res = await fetch(`/api/payroll/lock?periodId=${periodId}`);
     if (res.ok) {
       const body = await res.json();
-      setLockInfo({ isLocked: body.isLocked, lockedBy: body.lockedBy, employeeCount: body.employeeCount, totalNetPay: body.totalNetPay });
+      setLockInfo({
+        isLocked: body.isLocked,
+        lockedBy: body.lockedBy,
+        isApproved: body.isApproved,
+        approvedBy: body.approvedBy,
+        employeeCount: body.employeeCount,
+        totalNetPay: body.totalNetPay,
+      });
     }
   }
 
@@ -202,7 +216,7 @@ export default function PayrollCalculateView({
 
   async function handleSubmitForApproval() {
     if (!period) return;
-    if (!(await confirmDialog(`ยืนยันส่งขออนุมัติ (Lock) งวด ${period.PeriodMonth}/${toBuddhistYear(period.PeriodYear)}? หลังจากนี้จะแก้ไขรายการในงวดนี้ไม่ได้จนกว่าจะปลดล็อก`, "ส่งขออนุมัติ", "#16a34a")))
+    if (!(await confirmDialog(`ยืนยันส่งขออนุมัติ (Lock) งวด ${period.PeriodMonth}/${toBuddhistYear(period.PeriodYear)}? หลังจากนี้จะแก้ไขรายการในงวดนี้ไม่ได้จนกว่าจะตีคืน`, "ส่งขออนุมัติ", "#16a34a")))
       return;
     setMessage(null);
     const res = await fetch("/api/payroll/lock", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ periodId: period.PeriodID }) });
@@ -214,9 +228,22 @@ export default function PayrollCalculateView({
     await refreshLock(period.PeriodID);
   }
 
+  async function handleApprove() {
+    if (!period) return;
+    if (!(await confirmDialog(`ยืนยันอนุมัติงวด ${period.PeriodMonth}/${toBuddhistYear(period.PeriodYear)}? หลังจากนี้จะปิดสิ้นงวดได้`, "ยืนยันอนุมัติ", "#16a34a"))) return;
+    setMessage(null);
+    const res = await fetch("/api/payroll/approve", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ periodId: period.PeriodID }) });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      setMessage(body.message || body.error);
+      return;
+    }
+    await refreshLock(period.PeriodID);
+  }
+
   async function handleUnlock() {
     if (!period) return;
-    if (!(await confirmDialog("ยืนยันปลดล็อกงวดนี้?", "ยืนยันปลดล็อก", "#dc2626"))) return;
+    if (!(await confirmDialog("ยืนยันตีคืนงวดนี้? สถานะจะกลับไปแก้ไขได้ ต้องส่งขออนุมัติและอนุมัติใหม่อีกครั้ง", "ยืนยันตีคืน", "#dc2626"))) return;
     setMessage(null);
     const res = await fetch(`/api/payroll/lock?periodId=${period.PeriodID}`, { method: "DELETE" });
     const body = await res.json().catch(() => ({}));
@@ -329,19 +356,34 @@ export default function PayrollCalculateView({
       {canReadLock && lockInfo && (
         <div className="flex items-center justify-between rounded-md border border-gray-200 bg-white p-3 text-sm">
           <span>
-            สถานะ: {lockInfo.isLocked ? <span className="font-medium text-green-700">ส่งขออนุมัติแล้ว (Locked)</span> : <span className="text-gray-500">ยังไม่ส่งขออนุมัติ</span>}
-            {lockInfo.isLocked && lockInfo.lockedBy && <span className="text-gray-400"> — โดย {lockInfo.lockedBy}</span>}
+            สถานะ:{" "}
+            {lockInfo.isApproved ? (
+              <span className="font-medium text-green-700">อนุมัติแล้ว</span>
+            ) : lockInfo.isLocked ? (
+              <span className="font-medium text-amber-600">ส่งขออนุมัติแล้ว (Locked) — รออนุมัติ</span>
+            ) : (
+              <span className="text-gray-500">ยังไม่ส่งขออนุมัติ</span>
+            )}
+            {lockInfo.isApproved && lockInfo.approvedBy && <span className="text-gray-400"> — อนุมัติโดย {lockInfo.approvedBy}</span>}
+            {!lockInfo.isApproved && lockInfo.isLocked && lockInfo.lockedBy && <span className="text-gray-400"> — ส่งโดย {lockInfo.lockedBy}</span>}
           </span>
-          {canLock && !lockInfo.isLocked && (
-            <button onClick={handleSubmitForApproval} className="rounded-md bg-green-600 px-3 py-1.5 text-sm text-white hover:bg-green-700">
-              ส่งขออนุมัติ
-            </button>
-          )}
-          {canLock && lockInfo.isLocked && (
-            <button onClick={handleUnlock} className="rounded-md border border-red-300 px-3 py-1.5 text-sm text-red-600 hover:bg-red-50">
-              ปลดล็อก
-            </button>
-          )}
+          <div className="flex gap-2">
+            {canLock && !lockInfo.isLocked && (
+              <button onClick={handleSubmitForApproval} className="rounded-md bg-green-600 px-3 py-1.5 text-sm text-white hover:bg-green-700">
+                ส่งขออนุมัติ
+              </button>
+            )}
+            {canLock && lockInfo.isLocked && !lockInfo.isApproved && (
+              <button onClick={handleApprove} className="rounded-md bg-green-600 px-3 py-1.5 text-sm text-white hover:bg-green-700">
+                อนุมัติ
+              </button>
+            )}
+            {canLock && lockInfo.isLocked && (
+              <button onClick={handleUnlock} className="rounded-md border border-red-300 px-3 py-1.5 text-sm text-red-600 hover:bg-red-50">
+                ตีคืน
+              </button>
+            )}
+          </div>
         </div>
       )}
 

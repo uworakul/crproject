@@ -264,7 +264,7 @@ export default function TransactionEntryView({
               </span>
               {canReadLock && isLocked && (
                 <span className="ml-2 font-medium text-green-700">
-                  — ส่งขออนุมัติแล้ว (Locked) — แก้ไข/ลบ/ดึงข้อมูลจาก Worksheet ไม่ได้ ต้องปลดล็อกที่หน้า &quot;คำนวณเงินได้ประจำงวด&quot; ก่อน
+                  — ส่งขออนุมัติแล้ว (Locked) — แก้ไข/ลบ/ดึงข้อมูลจาก Worksheet ไม่ได้ ต้องตีคืนที่หน้า &quot;คำนวณเงินได้ประจำงวด&quot; ก่อน
                 </span>
               )}
             </div>

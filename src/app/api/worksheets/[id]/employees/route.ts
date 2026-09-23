@@ -45,6 +45,14 @@ export async function POST(request: NextRequest, ctx: RouteContext<"/api/workshe
 
   const employee = await prisma.mstEmployee.findUnique({ where: { EmpCode: empCode } });
   if (!employee) return apiError(404, "EMPLOYEE_NOT_FOUND", undefined, { empCode });
+  // Server-side mirror of the SPARE search dropdown's own filter
+  // (EmployeeStatus in ACTIVE/PROBATION — "สถานะปกติ/ทดลองงาน เท่านั้น") — the
+  // dropdown hiding a resigned employee was never actually enforced here, so
+  // a resigned EmpCode could still be added by calling this endpoint
+  // directly. Found via an explicit negative-test request (2026-09-24).
+  if (employee.EmployeeStatus !== "ACTIVE" && employee.EmployeeStatus !== "PROBATION") {
+    return apiError(409, "EMPLOYEE_NOT_ELIGIBLE", "This employee's status does not allow adding them to a new Worksheet", { empCode, employeeStatus: employee.EmployeeStatus });
+  }
   const position = await prisma.refPosition.findUnique({ where: { PositionCode: positionCode } });
   if (!position) return apiError(404, "POSITION_NOT_FOUND", undefined, { positionCode });
 

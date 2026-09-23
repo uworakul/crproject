@@ -33,6 +33,9 @@ export async function GET(request: NextRequest) {
     isLocked: lock?.IsLocked ?? false,
     lockedBy: lock?.LockedBy ?? null,
     lockedDate: lock?.LockedDate ?? null,
+    isApproved: lock?.IsApproved ?? false,
+    approvedBy: lock?.ApprovedBy ?? null,
+    approvedDate: lock?.ApprovedDate ?? null,
     employeeCount: aggregate._count.TransactionID,
     totalNetPay: (aggregate._sum.NetPay ?? new Prisma.Decimal(0)).toString(),
   });
@@ -57,11 +60,24 @@ export async function POST(request: NextRequest) {
   const period = await prisma.sysPeriod.findUnique({ where: { PeriodID: periodId } });
   if (!period) return apiError(404, "PERIOD_NOT_FOUND");
 
+  // Locking (or re-locking after a "ตีคืน") always starts the approval
+  // process fresh — IsApproved is explicitly reset here rather than left
+  // whatever it was, so a stale true from a previous lock/approve cycle can
+  // never leak through as "already approved" the instant this lock forms.
   const existing = await prisma.trnPayrollLock.findFirst({ where: { PeriodID: periodId }, orderBy: { LockID: "desc" } });
   const updated = existing
     ? await prisma.trnPayrollLock.update({
         where: { LockID: existing.LockID },
-        data: { IsLocked: true, LockedBy: user.userId, LockedDate: new Date(), UpdatedBy: user.userId, UpdatedDate: new Date() },
+        data: {
+          IsLocked: true,
+          LockedBy: user.userId,
+          LockedDate: new Date(),
+          IsApproved: false,
+          ApprovedBy: null,
+          ApprovedDate: null,
+          UpdatedBy: user.userId,
+          UpdatedDate: new Date(),
+        },
       })
     : await prisma.trnPayrollLock.create({
         data: { PeriodID: periodId, IsLocked: true, LockedBy: user.userId, LockedDate: new Date(), CreatedBy: user.userId },
@@ -88,9 +104,23 @@ export async function DELETE(request: NextRequest) {
   const existing = await prisma.trnPayrollLock.findFirst({ where: { PeriodID: periodId }, orderBy: { LockID: "desc" } });
   if (!existing || !existing.IsLocked) return apiError(409, "NOT_LOCKED", "This period is not currently locked");
 
+  // "ตีคืน" (renamed from "ปลดล็อก", 2026-09-24) — a full revert back to
+  // editable in one step, whether the period was only locked (pending
+  // approval) or already approved. Clears IsApproved too, not just
+  // IsLocked, so re-locking later always starts the approval step over —
+  // there's no separate "un-approve but stay locked" state to pass through.
   const updated = await prisma.trnPayrollLock.update({
     where: { LockID: existing.LockID },
-    data: { IsLocked: false, LockedBy: null, LockedDate: null, UpdatedBy: user.userId, UpdatedDate: new Date() },
+    data: {
+      IsLocked: false,
+      LockedBy: null,
+      LockedDate: null,
+      IsApproved: false,
+      ApprovedBy: null,
+      ApprovedDate: null,
+      UpdatedBy: user.userId,
+      UpdatedDate: new Date(),
+    },
   });
 
   await logAction(user.userId, "PAYROLL_UNLOCK", { targetTable: "trn_payroll_lock", targetId: String(periodId) });

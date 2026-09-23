@@ -44,6 +44,14 @@ export async function POST(request: NextRequest, ctx: RouteContext<"/api/request
 
   const employee = await prisma.mstEmployee.findUnique({ where: { EmpCode: empCode } });
   if (!employee) return apiError(404, "EMPLOYEE_NOT_FOUND", undefined, { empCode });
+  // Server-side mirror of the employee-picker dropdown's own filter
+  // (EmployeeStatus="ACTIVE") — the dropdown hiding a resigned employee was
+  // never actually enforced here, so a resigned EmpCode could still be added
+  // to a new advance/loan/training document by calling this endpoint
+  // directly. Found via an explicit negative-test request (2026-09-24).
+  if (employee.EmployeeStatus !== "ACTIVE") {
+    return apiError(409, "EMPLOYEE_NOT_ELIGIBLE", "This employee's status does not allow adding them to a new request", { empCode, employeeStatus: employee.EmployeeStatus });
+  }
 
   // Ordered the same way the detail page renders rows (RequestDetailID asc,
   // i.e. insertion order) so the reported position matches what the user sees.

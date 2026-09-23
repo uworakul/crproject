@@ -53,6 +53,14 @@ export async function POST(request: NextRequest) {
   if (!empCode) return apiError(400, "INVALID_PARAMS", "empCode is required");
   const employee = await prisma.mstEmployee.findUnique({ where: { EmpCode: empCode } });
   if (!employee) return apiError(404, "EMPLOYEE_NOT_FOUND", undefined, { empCode });
+  // Server-side mirror of the employee-picker dropdown's own filter
+  // (EmployeeStatus="ACTIVE") — the dropdown hiding a resigned employee was
+  // never actually enforced here, so a resigned EmpCode could still receive
+  // a new issue document by calling this endpoint directly. Found via an
+  // explicit negative-test request (2026-09-24).
+  if (employee.EmployeeStatus !== "ACTIVE") {
+    return apiError(409, "EMPLOYEE_NOT_ELIGIBLE", "This employee's status does not allow issuing new stock to them", { empCode, employeeStatus: employee.EmployeeStatus });
+  }
 
   const deliveryDate = typeof body.deliveryDate === "string" ? body.deliveryDate : "";
   if (!deliveryDate) return apiError(400, "INVALID_PARAMS", "deliveryDate is required");

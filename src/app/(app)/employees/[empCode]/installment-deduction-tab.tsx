@@ -11,6 +11,7 @@ interface Debt {
   TotalAmount: string;
   PaidAmount: string;
   RemainingAmount: string;
+  CalculatedAmount: string;
   DeductPerPeriod: string | null;
   Status: string;
   MovementID: number | null;
@@ -133,6 +134,7 @@ export default function InstallmentDeductionTab({
               <th className="min-w-[280px] px-3 py-2 font-medium">หมายเหตุ</th>
               <th className="px-3 py-2 font-medium text-right">ยอดเงินต้น</th>
               <th className="px-3 py-2 font-medium text-right">ยอดหักต่องวด</th>
+              <th className="px-3 py-2 font-medium text-right">ยอดจากการคำนวน</th>
               <th className="px-3 py-2 font-medium text-right">ยอดคงเหลือ</th>
               <th className="px-3 py-2 font-medium">สถานะ</th>
               {canSave && <th className="px-3 py-2"></th>}
@@ -175,6 +177,7 @@ export default function InstallmentDeductionTab({
                       "-"
                     )}
                   </td>
+                  <td className="px-3 py-2 text-right text-gray-500">{Number(r.CalculatedAmount) > 0 ? money(r.CalculatedAmount) : "-"}</td>
                   <td className="px-3 py-2 text-right font-medium">
                     {isEditing ? (
                       <input
@@ -219,7 +222,7 @@ export default function InstallmentDeductionTab({
             })}
             {visibleRows.length === 0 && (
               <tr>
-                <td colSpan={9} className="px-3 py-6 text-center text-gray-400">
+                <td colSpan={10} className="px-3 py-6 text-center text-gray-400">
                   {rows.length === 0 ? "ยังไม่มีรายการหักต่องวด" : "ไม่มีรายการที่มียอดคงเหลือ"}
                 </td>
               </tr>

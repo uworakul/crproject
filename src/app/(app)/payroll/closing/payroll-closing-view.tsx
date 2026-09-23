@@ -25,7 +25,7 @@ export default function PayrollClosingView({ periods, companies }: { periods: Pe
   const router = useRouter();
   const [companyCode, setCompanyCode] = useState("");
   const [employeeType, setEmployeeType] = useState("");
-  const [lockInfo, setLockInfo] = useState<{ isLocked: boolean; employeeCount: number; totalNetPay: string } | null>(null);
+  const [lockInfo, setLockInfo] = useState<{ isLocked: boolean; isApproved: boolean; employeeCount: number; totalNetPay: string } | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
 
@@ -40,7 +40,7 @@ export default function PayrollClosingView({ periods, companies }: { periods: Pe
       const res = await fetch(`/api/payroll/lock?periodId=${p.PeriodID}`);
       if (res.ok) {
         const body = await res.json();
-        setLockInfo({ isLocked: body.isLocked, employeeCount: body.employeeCount, totalNetPay: body.totalNetPay });
+        setLockInfo({ isLocked: body.isLocked, isApproved: body.isApproved, employeeCount: body.employeeCount, totalNetPay: body.totalNetPay });
       }
     }
   }
@@ -131,12 +131,14 @@ export default function PayrollClosingView({ periods, companies }: { periods: Pe
             </div>
           </div>
 
-          {lockInfo.isLocked ? (
+          {lockInfo.isLocked && lockInfo.isApproved ? (
             <button onClick={handleClose} disabled={pending} className="w-fit rounded-md bg-red-600 px-4 py-2 text-sm text-white hover:bg-red-700 disabled:opacity-50">
               ปิดสิ้นงวด
             </button>
+          ) : !lockInfo.isLocked ? (
+            <p className="text-sm text-amber-600">งวดนี้ยังไม่ได้ส่งขออนุมัติ (Lock) — ต้องส่งขออนุมัติและอนุมัติก่อนจึงจะปิดสิ้นงวดได้ ไปที่หน้า &quot;คำนวณเงินได้ประจำงวด&quot;</p>
           ) : (
-            <p className="text-sm text-amber-600">งวดนี้ยังไม่ได้ส่งขออนุมัติ (Lock) — ต้อง Lock ก่อนจึงจะปิดสิ้นงวดได้ ไปที่หน้า &quot;คำนวณเงินได้ประจำงวด&quot;</p>
+            <p className="text-sm text-amber-600">งวดนี้ส่งขออนุมัติแล้วแต่ยังไม่ได้รับการอนุมัติ — ต้องอนุมัติก่อนจึงจะปิดสิ้นงวดได้ ไปที่หน้า &quot;คำนวณเงินได้ประจำงวด&quot;</p>
           )}
         </div>
       )}

@@ -17,6 +17,7 @@ import PayrollHistoryTab from "./payroll-history-tab";
 import LeaveHistoryTab from "./leave-history-tab";
 import EmployeePhotoUploads from "./employee-photo-uploads";
 import { getLeaveBalanceSummary } from "@/lib/leave-balance";
+import { getCurrentPeriodInstallmentAllocations } from "@/lib/payroll";
 
 export default async function EmployeeDetailPage({ params }: { params: Promise<{ empCode: string }> }) {
   const user = await verifySession();
@@ -38,6 +39,7 @@ export default async function EmployeeDetailPage({ params }: { params: Promise<{
     workExperienceRaw,
     trainingExperienceRaw,
     installmentDeductionsRaw,
+    installmentAllocationsRaw,
     installmentDeductionTypesRaw,
     historyRaw,
     payrollHistoryRaw,
@@ -65,11 +67,25 @@ export default async function EmployeeDetailPage({ params }: { params: Promise<{
       },
       orderBy: { DebtID: "desc" },
     }),
+    // "ยอดจากการคำนวน" — converted to a plain {debtId: "amount"} object here
+    // (not left as a Map) so it survives the JSON.parse(JSON.stringify())
+    // round-trip below the same way every other raw query result does.
+    getCurrentPeriodInstallmentAllocations(empCode).then((m) => Object.fromEntries([...m].map(([debtId, amount]) => [debtId, amount.toString()]))),
     prisma.refDeductionType.findMany({ where: { IsInstallment: true }, orderBy: { DeductionCode: "asc" } }),
     prisma.mstEmployeeHistory.findMany({ where: { EmpCode: empCode }, orderBy: { RecordedDate: "desc" } }),
     prisma.trnPayrollTransaction.findMany({
       where: { EmpCode: empCode },
-      include: { Period: true, Site: { select: { SiteName: true } } },
+      include: {
+        Period: true,
+        Site: { select: { SiteName: true } },
+        // Per-site breakdown (2026-09-22, "แยกรายได้ตามหน่วยงาน") — the
+        // "หน่วยงาน" column shows whichever site actually paid the most that
+        // period, not just this transaction-level SiteCode (which only
+        // remembers whichever Worksheet touched it last — wrong for anyone
+        // who worked more than one site in the same period, same bug already
+        // fixed in the site-summary report and cost-by-site dashboard metric).
+        Details: { where: { LineType: "INCOME", SiteCode: { not: null } }, select: { SiteCode: true, Amount: true, Site: { select: { SiteName: true } } } },
+      },
       orderBy: { CreatedDate: "desc" },
     }),
     prisma.trnLeaveRequest.findMany({
@@ -109,7 +125,8 @@ export default async function EmployeeDetailPage({ params }: { params: Promise<{
     blacklist,
     workExperience,
     trainingExperience,
-    installmentDeductions,
+    installmentDeductionsPlain,
+    installmentAllocations,
     installmentDeductionTypes,
     history,
     payrollHistory,
@@ -127,6 +144,7 @@ export default async function EmployeeDetailPage({ params }: { params: Promise<{
         workExperienceRaw,
         trainingExperienceRaw,
         installmentDeductionsRaw,
+        installmentAllocationsRaw,
         installmentDeductionTypesRaw,
         historyRaw,
         payrollHistoryRaw,
@@ -135,6 +153,14 @@ export default async function EmployeeDetailPage({ params }: { params: Promise<{
       (_key, value) => (typeof value === "bigint" ? value.toString() : value),
     ),
   );
+
+  // ยอดจากการคำนวน merged in here (post-JSON-round-trip) rather than earlier
+  // — installmentAllocations is keyed by DebtID as a string (object keys are
+  // always strings, even though the Map was keyed by number).
+  const installmentDeductions = installmentDeductionsPlain.map((r: { DebtID: number }) => ({
+    ...r,
+    CalculatedAmount: installmentAllocations[String(r.DebtID)] ?? "0",
+  }));
 
   const tabs = [
     {

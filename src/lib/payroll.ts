@@ -255,6 +255,35 @@ export async function getRationedDeductionBreakdown(transactionId: number): Prom
   return { items: items.map((i) => ({ ...i, allocated: allocated.get(i.key) ?? new Prisma.Decimal(0) })), pool };
 }
 
+// "ยอดจากการคำนวน" (2026-09-24) — per-debt live preview of what THIS
+// employee's CURRENT period would actually withhold against each open
+// installment debt, shown on the ทะเบียนพนักงาน "รายการหักต่องวด" tab right
+// before "ยอดคงเหลือ" so HR can see what's about to happen before it does.
+// Zero (or absent) whenever there's nothing to preview yet — no current
+// period for this EmployeeType, or no trn_payroll_transaction has been
+// opened/calculated for them in it — same "not an error, just nothing to
+// show" convention as getOpenInstallmentDeductions(). Returns a debtId→
+// allocated map; callers merge it onto whatever debt rows they already have.
+export async function getCurrentPeriodInstallmentAllocations(empCode: string): Promise<Map<number, Prisma.Decimal>> {
+  const employee = await prisma.mstEmployee.findUnique({ where: { EmpCode: empCode }, select: { EmployeeType: true } });
+  if (!employee) return new Map();
+
+  const period = await prisma.sysPeriod.findFirst({ where: { EmployeeType: employee.EmployeeType, IsCurrent: true } });
+  if (!period) return new Map();
+
+  const transaction = await prisma.trnPayrollTransaction.findUnique({ where: { EmpCode_PeriodID: { EmpCode: empCode, PeriodID: period.PeriodID } } });
+  if (!transaction) return new Map();
+
+  const { items } = await getRationedDeductionBreakdown(transaction.TransactionID);
+  const result = new Map<number, Prisma.Decimal>();
+  for (const item of items) {
+    if (item.source !== "install") continue;
+    const debtId = Number(item.key.slice("debt:".length));
+    result.set(debtId, item.allocated);
+  }
+  return result;
+}
+
 export interface CalculateResult {
   employeeCount: number;
   totalAmount: Prisma.Decimal;
@@ -751,4 +780,144 @@ export async function pullPayrollFromWorksheet(
   }
 
   return { employeeCount, linesUpdated, linesCreated };
+}
+
+// --- Period closing (2026-09-24) ----------------------------------------
+//
+// User: "การปิดสิ้นงวด คือการปรับปรุงยอดหนี้คงค้าง ทุกเรื่องที่มีการหักเงินไว้
+// และ เอางวดปัจจุบันไปงวดถัดไป (ถ้ามีกำหนดไว้) แต่ถ้าไม่มีก็สร้างงวดให้เลย
+// ต่อจากงวดเดิม ของประเภทพนักงานที่ปิดงวดไป" — closing is the moment the
+// live "ยอดจากการคำนวน" preview (getCurrentPeriodInstallmentAllocations,
+// used on the ทะเบียนพนักงาน "รายการหักต่องวด" tab) becomes real:
+// inv_employee_debt.RemainingAmount/PaidAmount are permanently adjusted by
+// exactly what getRationedDeductionBreakdown() already showed as "allocated"
+// for this period (same number as the Payslip's deduction line — "ยอดหัก
+// ตาม payslip" per the user), and IsCurrent moves to whatever period covers
+// the day right after this one ends for the same EmployeeType — reusing an
+// already-configured period if one exists, auto-creating one with the same
+// cadence if not.
+export interface PeriodClosingResult {
+  debtsSettled: number;
+  nextPeriodId: number;
+  nextPeriodCreated: boolean;
+}
+
+function lastDayOfUtcMonth(year: number, month0: number): number {
+  return new Date(Date.UTC(year, month0 + 1, 0)).getUTCDate();
+}
+
+// Mirrors the closing period's own cadence: a full calendar month rolls to
+// the next full month; a 1st-15th half rolls to 16th-EOM of the SAME month;
+// a 16th-EOM half rolls to 1st-15th of the NEXT month. Anything else (a
+// custom split nobody's described a rule for) falls back to "the day right
+// after EndDate, through the end of that month" — a reasonable default, not
+// a guess at an undocumented business rule.
+function computeNextPeriodRange(start: Date, end: Date): { start: Date; end: Date } {
+  const sD = start.getUTCDate();
+  const eY = end.getUTCFullYear();
+  const eM = end.getUTCMonth();
+  const eD = end.getUTCDate();
+  const eLastDay = lastDayOfUtcMonth(eY, eM);
+
+  if (sD === 1 && eD === eLastDay) {
+    const nY = eM === 11 ? eY + 1 : eY;
+    const nM = (eM + 1) % 12;
+    return { start: new Date(Date.UTC(nY, nM, 1)), end: new Date(Date.UTC(nY, nM, lastDayOfUtcMonth(nY, nM))) };
+  }
+  if (sD === 1 && eD === 15) {
+    return { start: new Date(Date.UTC(eY, eM, 16)), end: new Date(Date.UTC(eY, eM, eLastDay)) };
+  }
+  if (sD === 16) {
+    const nY = eM === 11 ? eY + 1 : eY;
+    const nM = (eM + 1) % 12;
+    return { start: new Date(Date.UTC(nY, nM, 1)), end: new Date(Date.UTC(nY, nM, 15)) };
+  }
+  const dayAfter = new Date(end.getTime() + 86400000);
+  const nY = dayAfter.getUTCFullYear();
+  const nM = dayAfter.getUTCMonth();
+  return { start: dayAfter, end: new Date(Date.UTC(nY, nM, lastDayOfUtcMonth(nY, nM))) };
+}
+
+export async function closePeriod(periodId: number, closedBy: string): Promise<PeriodClosingResult> {
+  const period = await prisma.sysPeriod.findUnique({ where: { PeriodID: periodId } });
+  if (!period) throw new Error("PERIOD_NOT_FOUND");
+  if (period.Status === "CLOSED") throw new Error("PERIOD_ALREADY_CLOSED");
+
+  const lock = await prisma.trnPayrollLock.findFirst({ where: { PeriodID: periodId }, orderBy: { LockID: "desc" } });
+  if (!lock || !lock.IsLocked) throw new Error("PERIOD_NOT_LOCKED");
+  if (!lock.IsApproved) throw new Error("PERIOD_NOT_APPROVED");
+
+  const transactions = await prisma.trnPayrollTransaction.findMany({ where: { PeriodID: periodId }, select: { TransactionID: true } });
+
+  // Precompute every debt's settlement amount for this period BEFORE opening
+  // the write transaction — getRationedDeductionBreakdown() reads via the
+  // plain `prisma` client (not a $transaction client), same "read via
+  // helper, write via `t`" split runPayrollCalculate() already uses above.
+  // Safe to read this way because the period is locked: nothing about
+  // GrossWage/Tax/SSO/detail lines can change while locked, so this is
+  // exactly the same breakdown the "ยอดจากการคำนวน" column already showed.
+  const debtDeltas = new Map<number, Prisma.Decimal>();
+  for (const t of transactions) {
+    const { items } = await getRationedDeductionBreakdown(t.TransactionID);
+    for (const item of items) {
+      if (item.source !== "install" || item.allocated.lte(0)) continue;
+      const debtId = Number(item.key.slice("debt:".length));
+      debtDeltas.set(debtId, (debtDeltas.get(debtId) ?? new Prisma.Decimal(0)).add(item.allocated));
+    }
+  }
+
+  const nextRange = computeNextPeriodRange(period.StartDate, period.EndDate);
+  const payDateGapMs = period.PayDate.getTime() - period.EndDate.getTime();
+
+  return prisma.$transaction(async (tx) => {
+    let debtsSettled = 0;
+    for (const [debtId, delta] of debtDeltas) {
+      const debt = await tx.invEmployeeDebt.findUnique({ where: { DebtID: debtId } });
+      if (!debt) continue;
+      const newRemaining = Prisma.Decimal.max(debt.RemainingAmount.sub(delta), 0);
+      await tx.invEmployeeDebt.update({
+        where: { DebtID: debtId },
+        data: {
+          RemainingAmount: newRemaining,
+          PaidAmount: debt.PaidAmount.add(delta),
+          Status: newRemaining.lte(0) ? "CLOSED" : debt.Status,
+          UpdatedBy: closedBy,
+          UpdatedDate: new Date(),
+        },
+      });
+      debtsSettled++;
+    }
+
+    await tx.sysPeriod.update({
+      where: { PeriodID: periodId },
+      data: { Status: "CLOSED", IsCurrent: false, UpdatedBy: closedBy, UpdatedDate: new Date() },
+    });
+    await tx.trnPayrollLock.update({
+      where: { LockID: lock.LockID },
+      data: { IsLocked: true, LockedBy: closedBy, LockedDate: new Date(), UpdatedBy: closedBy, UpdatedDate: new Date() },
+    });
+
+    // "เอางวดปัจจุบันไปงวดถัดไป (ถ้ามีกำหนดไว้) แต่ถ้าไม่มีก็สร้างงวดให้เลย"
+    let nextPeriod = await tx.sysPeriod.findFirst({ where: { EmployeeType: period.EmployeeType, StartDate: nextRange.start } });
+    let nextPeriodCreated = false;
+    if (nextPeriod) {
+      await tx.sysPeriod.update({ where: { PeriodID: nextPeriod.PeriodID }, data: { IsCurrent: true, UpdatedBy: closedBy, UpdatedDate: new Date() } });
+    } else {
+      nextPeriod = await tx.sysPeriod.create({
+        data: {
+          EmployeeType: period.EmployeeType,
+          PeriodYear: nextRange.start.getUTCFullYear(),
+          PeriodMonth: nextRange.start.getUTCMonth() + 1,
+          StartDate: nextRange.start,
+          EndDate: nextRange.end,
+          PayDate: new Date(nextRange.end.getTime() + payDateGapMs),
+          IsCurrent: true,
+          CreatedBy: closedBy,
+        },
+      });
+      nextPeriodCreated = true;
+    }
+
+    return { debtsSettled, nextPeriodId: nextPeriod.PeriodID, nextPeriodCreated };
+  });
 }

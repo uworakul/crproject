@@ -40,6 +40,7 @@ interface LockInfo {
   isLocked: boolean;
   lockedBy: string | null;
   lockedDate: string | null;
+  isApproved: boolean;
   employeeCount: number;
   totalNetPay: string;
 }
@@ -285,15 +286,22 @@ export default function PayrollWorkspace({
                 )}
                 {canLock && !isClosed && isLocked && (
                   <button onClick={handleUnlock} className="rounded-md border border-gray-300 px-3 py-1.5 text-gray-700 hover:bg-gray-50">
-                    ปลดล็อก
+                    ตีคืน
                   </button>
                 )}
-                {canClose && !isClosed && isLocked && (
+                {canClose && !isClosed && isLocked && lockInfo.isApproved && (
                   <button onClick={handleClose} className="rounded-md bg-red-700 px-3 py-1.5 text-white hover:bg-red-800">
                     ปิดงวด (ย้อนกลับไม่ได้)
                   </button>
                 )}
               </div>
+              {/* "อนุมัติ" (การส่งขออนุมัติ → อนุมัติ แยกเป็น 2 ขั้น, 2026-09-24)
+                  ไม่มีปุ่มในหน้านี้ (หน้านี้เลิกใช้แล้ว ไม่อยู่ใน sidebar) —
+                  ต้องไปอนุมัติที่หน้า "คำนวณเงินได้ประจำงวด" ก่อนจึงจะปิดงวด
+                  จากที่นี่ได้ */}
+              {canClose && !isClosed && isLocked && !lockInfo.isApproved && (
+                <p className="mt-2 text-xs text-amber-600">ล็อกแล้วแต่ยังไม่ได้รับการอนุมัติ — ไปอนุมัติที่หน้า &quot;คำนวณเงินได้ประจำงวด&quot; ก่อนจึงจะปิดงวดได้</p>
+              )}
             </div>
           )}
 

@@ -69,6 +69,17 @@ export async function GET(request: NextRequest) {
     const lock = await prisma.trnPayrollLock.findFirst({ where: { PeriodID: period.PeriodID, IsLocked: true } });
     if (lock) return apiError(409, "PERIOD_LOCKED", "This period is locked and cannot be edited");
 
+    // Server-side mirror of the "+ เพิ่มพนักงาน" dropdown's own filter
+    // (EmployeeStatus="ACTIVE") — only guards the CREATE path, same as the
+    // lock check above: an already-existing transaction for an employee who
+    // resigned since it was created must stay viewable/editable (that's real
+    // payroll history), this only stops a brand-new one being opened for
+    // someone no longer active. Found via an explicit negative-test request
+    // (2026-09-24).
+    if (employee.EmployeeStatus !== "ACTIVE") {
+      return apiError(409, "EMPLOYEE_NOT_ELIGIBLE", "This employee's status does not allow creating a new payroll transaction for them", { empCode, employeeStatus: employee.EmployeeStatus });
+    }
+
     if (!employee.DefaultSiteCode) {
       return apiError(422, "EMPLOYEE_HAS_NO_SITE", "This employee has no DefaultSiteCode set — assign a site before creating a payroll transaction for them", { empCode });
     }

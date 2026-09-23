@@ -408,7 +408,8 @@ model SysUser {
   CreatedStockMovements     InvStockMovement[]
   CreatedWorksheetHeaders   TrnWorksheetHeader[]
   CalculatedPayrollLogs     TrnPayrollCalculateLog[]
-  PayrollLocks              TrnPayrollLock[]
+  PayrollLocks              TrnPayrollLock[]         @relation("PayrollLockLockedBy")
+  ApprovedPayrollLocks      TrnPayrollLock[]         @relation("PayrollLockApprovedBy")
   CreatedLeaveRequests      TrnLeaveRequest[]        @relation("LeaveCreatedBy")
   ApprovedLeaveRequests     TrnLeaveRequest[]        @relation("LeaveApprovedBy")
   CreatedStockCountHeaders  InvStockCountHeader[]    @relation("StockCountHeaderCreatedBy")
@@ -1537,13 +1538,23 @@ model TrnPayrollLock {
   IsLocked    Boolean   @default(false)
   LockedBy    String?   @db.VarChar(20)
   LockedDate  DateTime? @db.DateTime
+  // 2026-09-24 — split "ส่งขออนุมัติ" (Lock, existing) from a genuine second
+  // "อนุมัติ" (Approve) step per the user's explicit choice ("เพิ่มสถานะใหม่ 2
+  // ขั้น: ส่งขออนุมัติ (Lock) → อนุมัติ (Approve) แยกกัน"). closePeriod() now
+  // requires IsApproved as well as IsLocked. "ตีคืน" (renamed from
+  // "ปลดล็อก") clears both back to false in one step — reversing an approved
+  // period doesn't need a separate un-approve click first.
+  IsApproved   Boolean   @default(false)
+  ApprovedBy   String?   @db.VarChar(20)
+  ApprovedDate DateTime? @db.DateTime
   CreatedDate DateTime? @default(now()) @db.DateTime
   CreatedBy   String?   @db.VarChar(20)
   UpdatedDate DateTime? @db.DateTime
   UpdatedBy   String?   @db.VarChar(20)
 
-  Period SysPeriod @relation(fields: [PeriodID], references: [PeriodID], map: "FK_trn_payroll_lock_period", onUpdate: NoAction, onDelete: NoAction)
-  Locker SysUser?  @relation(fields: [LockedBy], references: [UserID], map: "FK_trn_payroll_lock_user", onUpdate: NoAction, onDelete: NoAction)
+  Period   SysPeriod @relation(fields: [PeriodID], references: [PeriodID], map: "FK_trn_payroll_lock_period", onUpdate: NoAction, onDelete: NoAction)
+  Locker   SysUser?  @relation("PayrollLockLockedBy", fields: [LockedBy], references: [UserID], map: "FK_trn_payroll_lock_user", onUpdate: NoAction, onDelete: NoAction)
+  Approver SysUser?  @relation("PayrollLockApprovedBy", fields: [ApprovedBy], references: [UserID], map: "FK_trn_payroll_lock_approver", onUpdate: NoAction, onDelete: NoAction)
 
   @@map("trn_payroll_lock")
 }

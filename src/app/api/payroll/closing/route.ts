@@ -1,21 +1,27 @@
 import { NextRequest } from "next/server";
-import { prisma } from "@/lib/prisma";
 import { verifySession } from "@/lib/dal";
 import { requirePermission } from "@/lib/authorize";
 import { logAction } from "@/lib/audit-log";
 import { apiError, apiSuccess } from "@/lib/api-response";
+import { closePeriod, PeriodClosingResult } from "@/lib/payroll";
 
-// BR-034: "การปิดงวดเป็นขั้นตอนสุดท้ายของรอบเงินเดือน ... ไม่สามารถ
-// ย้อนกลับได้หลังปิดงวด" (final step, irreversible). The BR text also says
-// "ล้างรายการ Transaction ของงวดที่ปิดแล้ว" (clear the period's
-// transactions) — deliberately NOT implemented as a physical DELETE here:
-// trn_payroll_transaction is real financial history with no separate
-// archive table in the approved schema, so destroying it on an irreversible
-// action would violate the project's own data-integrity rule. Closing
-// instead marks the period CLOSED (sys_period.Status) and force-locks it
-// (trn_payroll_lock) — "cleared" in the sense of "no longer open for
-// change", not deleted. Flagged in CLAUDE.md as a deliberate, documented
-// interpretation rather than a literal reading.
+// BR-034 + 2026-09-24 (per the user): closing is the final step of a
+// payroll cycle, irreversible, and now does two things beyond just marking
+// the period CLOSED+locked: (1) commits the live "ยอดจากการคำนวน" preview
+// (same number the Payslip shows) into real inv_employee_debt balances —
+// see closePeriod() in src/lib/payroll.ts for exactly how; (2) advances
+// IsCurrent to whichever period covers the day right after this one ends
+// for the same EmployeeType, reusing one if it already exists or
+// auto-creating one with the same cadence if not.
+//
+// The BR text also says "ล้างรายการ Transaction ของงวดที่ปิดแล้ว" (clear the
+// period's transactions) — deliberately NOT implemented as a physical
+// DELETE: trn_payroll_transaction is real financial history with no
+// separate archive table in the approved schema, so destroying it on an
+// irreversible action would violate the project's own data-integrity rule.
+// "Cleared" is interpreted as "no longer open for change" (CLOSED + locked),
+// not deleted — a deliberate, documented interpretation, flagged in
+// CLAUDE.md rather than a literal reading.
 export async function POST(request: NextRequest) {
   const user = await verifySession();
   if (!user) return apiError(401, "UNAUTHORIZED");
@@ -32,28 +38,22 @@ export async function POST(request: NextRequest) {
   const periodId = Number(body.periodId);
   if (!Number.isInteger(periodId)) return apiError(400, "INVALID_PARAMS", "periodId is required and must be an integer");
 
-  const period = await prisma.sysPeriod.findUnique({ where: { PeriodID: periodId } });
-  if (!period) return apiError(404, "PERIOD_NOT_FOUND");
-  if (period.Status === "CLOSED") return apiError(409, "PERIOD_ALREADY_CLOSED");
+  let result: PeriodClosingResult;
+  try {
+    result = await closePeriod(periodId, user.userId);
+  } catch (e) {
+    const message = e instanceof Error ? e.message : "";
+    if (message === "PERIOD_NOT_FOUND") return apiError(404, "PERIOD_NOT_FOUND");
+    if (message === "PERIOD_ALREADY_CLOSED") return apiError(409, "PERIOD_ALREADY_CLOSED");
+    if (message === "PERIOD_NOT_LOCKED") return apiError(409, "PERIOD_NOT_LOCKED", "Lock the period before closing it");
+    if (message === "PERIOD_NOT_APPROVED") return apiError(409, "PERIOD_NOT_APPROVED", "Approve the period before closing it");
+    throw e;
+  }
 
-  const lock = await prisma.trnPayrollLock.findFirst({ where: { PeriodID: periodId }, orderBy: { LockID: "desc" } });
-  if (!lock || !lock.IsLocked) return apiError(409, "PERIOD_NOT_LOCKED", "Lock the period before closing it");
-
-  await prisma.$transaction([
-    // IsCurrent cleared here too (2026-09-21, "ปิดสิ้นงวด" — "เอาสถานะงวด
-    // ปัจจุบันออกแล้วเปลี่ยนเป็นปิดงวดแล้ว") — a closed period is never the
-    // current one anymore. Does not auto-promote any other period to
-    // current; that's still a deliberate separate action on /periods.
-    prisma.sysPeriod.update({
-      where: { PeriodID: periodId },
-      data: { Status: "CLOSED", IsCurrent: false, UpdatedBy: user.userId, UpdatedDate: new Date() },
-    }),
-    prisma.trnPayrollLock.update({
-      where: { LockID: lock.LockID },
-      data: { IsLocked: true, LockedBy: user.userId, LockedDate: new Date(), UpdatedBy: user.userId, UpdatedDate: new Date() },
-    }),
-  ]);
-
-  await logAction(user.userId, "PAYROLL_CLOSING", { targetTable: "sys_period", targetId: String(periodId) });
-  return apiSuccess({ ok: true });
+  await logAction(user.userId, "PAYROLL_CLOSING", {
+    targetTable: "sys_period",
+    targetId: String(periodId),
+    detail: `ตัดยอดหนี้คงค้าง ${result.debtsSettled} รายการ, ${result.nextPeriodCreated ? "สร้างงวดถัดไปใหม่" : "เลื่อนงวดปัจจุบันไปงวดที่มีอยู่แล้ว"} (PeriodID ${result.nextPeriodId})`,
+  });
+  return apiSuccess({ ok: true, ...result });
 }
