@@ -27,9 +27,36 @@ export function withNextNumber<T extends { LatestNumber: number; UseYearMonthPre
 // Auto-provisions a ref_document_number row the first time it's needed,
 // instead of requiring an admin to set it up via /reference first
 // (LatestNumber=0, UseYearMonthPrefix=false, IsCustomNumber=false).
+//
+// DocumentCode DOES have a DB-level unique constraint, unlike LatestNumber's
+// race above — so two concurrent first-ever calls for the same brand-new
+// documentCode can't both succeed, but the LOSING one would previously
+// crash with an unhandled Prisma P2002 (unique violation) instead of just
+// returning the row the winner created. Caught here and re-fetched instead.
 export async function getOrCreateDocumentNumber(documentCode: string, description: string) {
   const existing = await prisma.refDocumentNumber.findUnique({ where: { DocumentCode: documentCode } });
   if (existing) return existing;
+
+  try {
+    return await createDocumentNumberRow(documentCode, description);
+  } catch (err) {
+    // Duck-typed check, not `instanceof Prisma.PrismaClientKnownRequestError`
+    // — that instanceof check is unreliable here: Turbopack compiles each
+    // Route Handler/lib module as its own bundle, and an imported `Prisma`
+    // namespace can end up a DIFFERENT module instance than the one the
+    // actual error was thrown from (confirmed — the same class of bug
+    // already hit AsyncLocalStorage singletons; see CLAUDE.md's
+    // "Multi-tenant" entry). A plain `.code` string check isn't affected.
+    const isCollision = typeof err === "object" && err !== null && "code" in err && err.code === "P2002";
+    if (isCollision) {
+      const winner = await prisma.refDocumentNumber.findUnique({ where: { DocumentCode: documentCode } });
+      if (winner) return winner;
+    }
+    throw err;
+  }
+}
+
+async function createDocumentNumberRow(documentCode: string, description: string) {
   return prisma.refDocumentNumber.create({ data: { DocumentCode: documentCode, Description: description } });
 }
 
@@ -63,12 +90,25 @@ export async function findNextFreeEmployeeCode(documentCode: string): Promise<{ 
 // เบิก/กู้/อบรม) — just atomically advances LatestNumber and formats it.
 // Returns null if the DocumentCode is marked "กำหนดเอง" (no sequence to
 // generate from); callers should leave DocumentNo blank in that case.
+//
+// 2026-09-24 concurrency fix: this used to read LatestNumber, compute
+// next = LatestNumber+1 in JS, then write that literal value back — two
+// concurrent calls could both read the same LatestNumber before either
+// wrote, both compute the same "next", and both succeed (DocumentNo has no
+// DB-level unique constraint on any of the 8 tables that use this, so
+// nothing catches it) — confirmed via a live 10-concurrent-request test
+// (LOCK-001), which produced the SAME DocumentNo on all 10 documents every
+// time. Fixed by using Prisma's atomic increment ({ increment: 1 }, which
+// SQL Server executes as a single `SET LatestNumber = LatestNumber + 1`
+// under that row's own lock) and reading the post-increment value back from
+// the same statement's result, instead of computing it in JS beforehand.
 export async function consumeDocumentNumber(documentCode: string, description: string): Promise<string | null> {
   const docNum = await getOrCreateDocumentNumber(documentCode, description);
   if (docNum.IsCustomNumber) return null;
 
-  const next = docNum.LatestNumber + 1;
-  const code = formatSequenceNumber(next, docNum.UseYearMonthPrefix);
-  await prisma.refDocumentNumber.update({ where: { DocumentNumberID: docNum.DocumentNumberID }, data: { LatestNumber: next } });
-  return code;
+  const updated = await prisma.refDocumentNumber.update({
+    where: { DocumentNumberID: docNum.DocumentNumberID },
+    data: { LatestNumber: { increment: 1 } },
+  });
+  return formatSequenceNumber(updated.LatestNumber, docNum.UseYearMonthPrefix);
 }
