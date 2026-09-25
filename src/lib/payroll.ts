@@ -81,7 +81,7 @@ export interface InstallmentDeductionLine {
   debtId: number;
   code: string;
   label: string;
-  amount: Prisma.Decimal; // requested this period = min(DeductPerPeriod, RemainingAmount) — BEFORE priority rationing, see getRationedDeductionBreakdown() for what actually gets withheld
+  amount: Prisma.Decimal; // requested this period = min(DeductPerPeriod, RemainingAmount) — or the FULL RemainingAmount when fullSettlement is set (see below) — BEFORE priority rationing, see getRationedDeductionBreakdown() for what actually gets withheld
   remainingAmount: Prisma.Decimal; // balance BEFORE this period's deduction (for display only)
 }
 
@@ -94,7 +94,15 @@ export interface InstallmentDeductionLine {
 // the user (2026-09-21), that only happens at a future approval/commit step
 // that doesn't exist yet; Calculate is re-runnable (BR-030) and the
 // approver can still reject/recalculate, so nothing here may be committed.
-export async function getOpenInstallmentDeductions(empCode: string): Promise<InstallmentDeductionLine[]> {
+//
+// `fullSettlement` (2026-09-25): "รายวัน/รายเดือน กรณีลาออก ให้นำยอดค้าง
+// ทั้งหมด มาหัก" — for an employee's actual final period (see
+// isFinalSettlementPeriod below), request the FULL RemainingAmount per debt
+// instead of the normal per-period min(DeductPerPeriod, RemainingAmount).
+// Still subject to the same 6-category priority order and "NetPay must never
+// go negative" floor downstream in allocateByPriority/recomputeTransactionOtherTotals
+// — only what's REQUESTED here changes, confirmed with the user.
+export async function getOpenInstallmentDeductions(empCode: string, options: { fullSettlement?: boolean } = {}): Promise<InstallmentDeductionLine[]> {
   const debts = await prisma.invEmployeeDebt.findMany({
     where: {
       EmpCode: empCode,
@@ -113,9 +121,18 @@ export async function getOpenInstallmentDeductions(empCode: string): Promise<Ins
       debtId: d.DebtID,
       code: d.DeductionCode!,
       label: d.DeductionType?.DeductionName ?? d.DeductionCode!,
-      amount: Prisma.Decimal.min(d.DeductPerPeriod!, d.RemainingAmount),
+      amount: options.fullSettlement ? d.RemainingAmount : Prisma.Decimal.min(d.DeductPerPeriod!, d.RemainingAmount),
       remainingAmount: d.RemainingAmount,
     }));
+}
+
+// "รายวัน/รายเดือน กรณีลาออก ให้นำยอดค้างทั้งหมด มาหัก" (2026-09-25) — true only
+// for the period that actually CONTAINS the employee's ResignDate, never any
+// period calculated/re-opened after it (that would re-trigger full
+// settlement every time, not just once at the end).
+function isFinalSettlementPeriod(employeeStatus: string, resignDate: Date | null, periodStart: Date, periodEnd: Date): boolean {
+  if (employeeStatus !== "RESIGNED" || !resignDate) return false;
+  return resignDate.getTime() >= periodStart.getTime() && resignDate.getTime() <= periodEnd.getTime();
 }
 
 // --- Deduction priority / rationing (2026-09-22) ------------------------
@@ -207,10 +224,11 @@ export interface DeductionBreakdownItem {
 async function collectDeductionItems(
   client: Pick<Prisma.TransactionClient, "trnPayrollTransactionDetail">,
   transaction: { TransactionID: number; EmpCode: string; AdvanceDeduct: Prisma.Decimal; UniformDeduct: Prisma.Decimal; LoanDeduct: Prisma.Decimal; TrainingDeduct: Prisma.Decimal },
+  fullSettlement: boolean = false,
 ): Promise<{ items: DeductionBreakdownItem[]; installmentLines: InstallmentDeductionLine[] }> {
   const [deductionDetails, installmentLines] = await Promise.all([
     client.trnPayrollTransactionDetail.findMany({ where: { TransactionID: transaction.TransactionID, LineType: "DEDUCTION" } }),
-    getOpenInstallmentDeductions(transaction.EmpCode),
+    getOpenInstallmentDeductions(transaction.EmpCode, { fullSettlement }),
   ]);
 
   const items: DeductionBreakdownItem[] = [];
@@ -239,11 +257,15 @@ async function collectDeductionItems(
 // always matches what recomputeTransactionOtherTotals() below actually
 // saves (same computation, same priority rules, just not written anywhere).
 export async function getRationedDeductionBreakdown(transactionId: number): Promise<{ items: DeductionBreakdownItem[]; pool: Prisma.Decimal }> {
-  const transaction = await prisma.trnPayrollTransaction.findUniqueOrThrow({ where: { TransactionID: transactionId } });
+  const transaction = await prisma.trnPayrollTransaction.findUniqueOrThrow({
+    where: { TransactionID: transactionId },
+    include: { Employee: { select: { EmployeeStatus: true, ResignDate: true } }, Period: { select: { StartDate: true, EndDate: true } } },
+  });
   const incomeDetails = await prisma.trnPayrollTransactionDetail.findMany({ where: { TransactionID: transactionId, LineType: "INCOME" } });
   const otherIncome = incomeDetails.reduce((s, d) => s.add(d.Amount), new Prisma.Decimal(0));
 
-  const { items } = await collectDeductionItems(prisma, transaction);
+  const fullSettlement = isFinalSettlementPeriod(transaction.Employee.EmployeeStatus, transaction.Employee.ResignDate, transaction.Period.StartDate, transaction.Period.EndDate);
+  const { items } = await collectDeductionItems(prisma, transaction, fullSettlement);
   const income = transaction.GrossWage.add(otherIncome);
   const statutory = transaction.TaxWithheld.add(transaction.SSOAmount).add(transaction.WelfareFundAmount);
   const pool = Prisma.Decimal.max(income.sub(statutory), 0);
@@ -316,6 +338,15 @@ export async function runPayrollCalculate(
 
   const lock = await prisma.trnPayrollLock.findFirst({ where: { PeriodID: periodId, IsLocked: true } });
   if (lock) throw new Error("PERIOD_LOCKED");
+
+  // 2026-09-25: MONTHLY employees have no Worksheet to populate
+  // trn_payroll_transaction from at all — this is done automatically here,
+  // as part of Calculate itself (see pullPayrollForMonthlyEmployees for why),
+  // BEFORE the transactions query below so newly-created/updated rows are
+  // picked up by this same Calculate run.
+  if (period.EmployeeType === "MONTHLY") {
+    await pullPayrollForMonthlyEmployees(periodId, calculatedBy, filters);
+  }
 
   const { empCodeFrom, empCodeTo, companyCode, deptCode, empCode } = filters;
   const transactions = await prisma.trnPayrollTransaction.findMany({
@@ -438,11 +469,15 @@ export async function cancelPayrollCalculate(periodId: number, calculatedBy: str
 // pool remains — only the installment-debt items are excluded entirely.
 export async function recomputeTransactionOtherTotals(tx: Prisma.TransactionClient, transactionId: number, updatedBy: string, options: { includeInstallments?: boolean } = {}) {
   const includeInstallments = options.includeInstallments ?? true;
-  const transaction = await tx.trnPayrollTransaction.findUniqueOrThrow({ where: { TransactionID: transactionId } });
+  const transaction = await tx.trnPayrollTransaction.findUniqueOrThrow({
+    where: { TransactionID: transactionId },
+    include: { Employee: { select: { EmployeeStatus: true, ResignDate: true } }, Period: { select: { StartDate: true, EndDate: true } } },
+  });
   const incomeDetails = await tx.trnPayrollTransactionDetail.findMany({ where: { TransactionID: transactionId, LineType: "INCOME" } });
   const otherIncome = incomeDetails.reduce((s, d) => s.add(d.Amount), new Prisma.Decimal(0));
 
-  const { items: allItems } = await collectDeductionItems(tx, transaction);
+  const fullSettlement = isFinalSettlementPeriod(transaction.Employee.EmployeeStatus, transaction.Employee.ResignDate, transaction.Period.StartDate, transaction.Period.EndDate);
+  const { items: allItems } = await collectDeductionItems(tx, transaction, fullSettlement);
   const items = includeInstallments ? allItems : allItems.filter((i) => i.source !== "install");
   const income = transaction.GrossWage.add(otherIncome);
   const statutory = transaction.TaxWithheld.add(transaction.SSOAmount).add(transaction.WelfareFundAmount);
@@ -780,6 +815,136 @@ export async function pullPayrollFromWorksheet(
   }
 
   return { employeeCount, linesUpdated, linesCreated };
+}
+
+export interface PullMonthlyResult {
+  employeeCount: number;
+  linesCreated: number;
+  linesUpdated: number;
+}
+
+const MONTHLY_SALARY_INCOME_CODE = "02"; // ref_income_type: "เงินเดือน"
+
+function daysBetweenInclusive(a: Date, b: Date): number {
+  return Math.round((b.getTime() - a.getTime()) / 86400000) + 1;
+}
+
+// "รายเดือน กรณีเข้าใหม่ และ ลาออก ให้คำนวณวันทำงาน เพื่อเป็นเงินเดือนในเดือน
+// แรก/เดือนสุดท้าย" (2026-09-25) — unlike DAILY employees (who have a
+// Worksheet attendance grid to pull from), MONTHLY employees have NO per-day
+// record at all: this function IS their entire "รายการประจำงวด" population
+// mechanism, run automatically as the first step of runPayrollCalculate()
+// whenever the period's EmployeeType is MONTHLY. Confirmed with the user:
+// "รายเดือน จะไม่มี Worksheet และ บางเดือนอาจจะไม่มีรายการประจำงวด การคำนวณ
+// ใช้เมนู คำนวณรายได้/รายการหัก เลย" — there's no separate "ดึงข้อมูลจาก
+// Worksheet"-style button/step for MONTHLY, it's just part of clicking
+// Calculate.
+//
+// Day-count formulas confirmed with the user via concrete examples
+// (2026-09-25, resigned/started on the 10th of a 30-day month — the
+// original 15th-of-30 example didn't disambiguate, both candidate formulas
+// gave 14 either way):
+//   - continuing through the whole period: full MonthlySalary, no proration
+//   - new hire mid-period (started day 10): workDays = periodEnd − startDate + 1 (= 21)
+//   - resigns mid-period (resigned day 10):  workDays = (resignDate − 1 day) − periodStart + 1 (= 9)
+//   - both in the same period (hired and resigned within it): the overlap of the two above
+// Amount = isFullPeriod ? MonthlySalary : (workDays / totalDaysInPeriod) × MonthlySalary
+// — same (days/dayCount)×rate shape the manual "จำนวนวัน"→"จำนวนเงิน"
+// auto-calc on this screen already uses for MONTHLY-basis อัตรากำลังพล rows
+// (computeAmountFromDays in transaction-detail-panel.tsx), just derived
+// automatically here instead of typed in by hand.
+//
+// Writes ONLY the "02 เงินเดือน" detail line (LineType=INCOME, SiteCode=null
+// — MONTHLY employees don't have Worksheet's multi-site-per-period
+// complication) — never touches any other line (OT/ค่าตำแหน่ง/ฯลฯ) HR may
+// have added by hand for this employee, same "only own what you write"
+// discipline as pullPayrollFromWorksheet's ค่าแรง lines. GrossWage stays 0
+// for the same reason: the detail line owns the wage, and NetPay = GrossWage
+// + OtherIncome unconditionally, so a non-zero GrossWage here would
+// double-pay. Employees with no MonthlySalary set, or no DefaultSiteCode, or
+// EmployeeStatus=TERMINATED, are silently skipped — same "nothing to pull
+// yet" convention as DAILY employees with no DailyRate.
+export async function pullPayrollForMonthlyEmployees(periodId: number, userId: string, filters: CalculateFilters = {}): Promise<PullMonthlyResult> {
+  const period = await prisma.sysPeriod.findUnique({ where: { PeriodID: periodId } });
+  if (!period) throw new Error("PERIOD_NOT_FOUND");
+
+  const lock = await prisma.trnPayrollLock.findFirst({ where: { PeriodID: periodId, IsLocked: true } });
+  if (lock) throw new Error("PERIOD_LOCKED");
+
+  const { empCodeFrom, empCodeTo, companyCode, deptCode, empCode } = filters;
+  const employees = await prisma.mstEmployee.findMany({
+    where: {
+      EmployeeType: period.EmployeeType,
+      MonthlySalary: { not: null },
+      DefaultSiteCode: { not: null },
+      StartDate: { lte: period.EndDate },
+      // Same eligibility rule as Worksheet's own employee query
+      // (src/lib/worksheet.ts): TERMINATED never eligible (no "still active
+      // through" date field for it, unlike ResignDate); RESIGNED only for
+      // the period actually containing their ResignDate.
+      OR: [{ EmployeeStatus: { notIn: ["RESIGNED", "TERMINATED"] } }, { EmployeeStatus: "RESIGNED", ResignDate: { gte: period.StartDate, lte: period.EndDate } }],
+      ...(empCodeFrom ? { EmpCode: { gte: empCodeFrom } } : {}),
+      ...(empCodeTo ? { EmpCode: { lte: empCodeTo } } : {}),
+      ...(empCode ? { EmpCode: empCode } : {}),
+      ...(companyCode ? { CompanyCode: companyCode } : {}),
+      ...(deptCode ? { DeptCode: deptCode } : {}),
+    },
+  });
+
+  const totalDaysInPeriod = daysBetweenInclusive(period.StartDate, period.EndDate);
+  let employeeCount = 0;
+  let linesCreated = 0;
+  let linesUpdated = 0;
+
+  for (const employee of employees) {
+    const workStart = employee.StartDate.getTime() > period.StartDate.getTime() ? employee.StartDate : period.StartDate;
+    const isResigningThisPeriod = employee.EmployeeStatus === "RESIGNED" && employee.ResignDate !== null;
+    const workEnd = isResigningThisPeriod ? new Date(employee.ResignDate!.getTime() - 86400000) : period.EndDate;
+
+    const workDays = workEnd.getTime() < workStart.getTime() ? 0 : daysBetweenInclusive(workStart, workEnd);
+    const isFullPeriod = workStart.getTime() === period.StartDate.getTime() && workEnd.getTime() === period.EndDate.getTime();
+    const amount =
+      workDays <= 0
+        ? new Prisma.Decimal(0)
+        : isFullPeriod
+          ? employee.MonthlySalary!
+          : new Prisma.Decimal(workDays).div(totalDaysInPeriod).mul(employee.MonthlySalary!).toDecimalPlaces(2);
+
+    employeeCount++;
+    await prisma.$transaction(async (tx) => {
+      const transaction = await tx.trnPayrollTransaction.upsert({
+        where: { EmpCode_PeriodID: { EmpCode: employee.EmpCode, PeriodID: periodId } },
+        update: { UpdatedBy: userId, UpdatedDate: new Date() },
+        create: { EmpCode: employee.EmpCode, PeriodID: periodId, SiteCode: employee.DefaultSiteCode!, GrossWage: 0, NetPay: 0, CreatedBy: userId },
+      });
+
+      // findFirst, not the TransactionID_LineType_Code_SiteCode compound-unique
+      // lookup used elsewhere in this file — Prisma's generated compound-unique
+      // input for that key requires a non-null SiteCode (SQL Server doesn't
+      // treat multiple NULLs there as colliding, so Prisma can't use it as a
+      // unique lookup key when SiteCode is null, which it always is here:
+      // MONTHLY employees don't have Worksheet's multi-site-per-period case).
+      const existing = await tx.trnPayrollTransactionDetail.findFirst({
+        where: { TransactionID: transaction.TransactionID, LineType: "INCOME", Code: MONTHLY_SALARY_INCOME_CODE, SiteCode: null },
+      });
+      if (existing) {
+        await tx.trnPayrollTransactionDetail.update({
+          where: { DetailID: existing.DetailID },
+          data: { Days: workDays, Amount: amount, UpdatedBy: userId, UpdatedDate: new Date() },
+        });
+        linesUpdated++;
+      } else {
+        await tx.trnPayrollTransactionDetail.create({
+          data: { TransactionID: transaction.TransactionID, LineType: "INCOME", Code: MONTHLY_SALARY_INCOME_CODE, Description: "เงินเดือน", Days: workDays, Amount: amount, CreatedBy: userId },
+        });
+        linesCreated++;
+      }
+
+      await recomputeTransactionOtherTotals(tx, transaction.TransactionID, userId);
+    });
+  }
+
+  return { employeeCount, linesCreated, linesUpdated };
 }
 
 // --- Period closing (2026-09-24) ----------------------------------------
