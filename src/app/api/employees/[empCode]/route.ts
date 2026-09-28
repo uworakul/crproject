@@ -196,6 +196,21 @@ export async function PUT(request: NextRequest, ctx: RouteContext<"/api/employee
     if (!Number.isInteger(n) || n < 0) return apiError(400, "VALIDATION_FAILED", "childrenCount must be a non-negative integer");
   }
 
+  // Server-side mirror of the "รหัสคนแนะนำ" field's own disabled state
+  // (2026-09-28) — once a COMMISSION (ค่านำพา) request naming this employee
+  // has been approved, the commission was paid out based on ReferrerEmpCode
+  // as it stood at that moment; changing it afterward would misrepresent
+  // who was actually paid. Only blocks an actual change, not a no-op
+  // resubmit of the same value.
+  if (existing.CommissionClaimedDate && body.referrerEmpCode !== undefined) {
+    const newReferrer = typeof body.referrerEmpCode === "string" && body.referrerEmpCode.trim() ? body.referrerEmpCode.trim() : null;
+    if (newReferrer !== existing.ReferrerEmpCode) {
+      return apiError(409, "REFERRER_LOCKED", "ReferrerEmpCode cannot be changed after a commission has been approved for this employee", {
+        commissionClaimedDate: existing.CommissionClaimedDate,
+      });
+    }
+  }
+
   const updated = await prisma.mstEmployee.update({
     where: { EmpCode: empCode },
     data: {

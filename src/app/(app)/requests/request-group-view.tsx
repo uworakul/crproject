@@ -3,7 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import Swal from "sweetalert2";
-import { REQUEST_DOCUMENT_CODE_VALUES, REQUEST_DOCUMENT_CODE_LABELS, type RequestDocumentCode } from "@/lib/request";
+import { REQUEST_DOCUMENT_CODE_VALUES, REQUEST_DOCUMENT_CODE_LABELS, REQUEST_DOCUMENT_KIND, type RequestDocumentCode } from "@/lib/request";
 
 async function confirmDeleteRequest(label: string): Promise<boolean> {
   const result = await Swal.fire({
@@ -61,6 +61,13 @@ export default function RequestGroupView({
   canDelete: boolean;
 }) {
   const [rows, setRows] = useState(initialRows);
+  // Amount is meaningless for POSITION_CHANGE/RESIGN rows (always written as
+  // 0 — they don't use Amount at all, see trn_request_detail's other
+  // columns) — hide the money column for those groups instead of showing a
+  // confusing "0.00" for every row. Every group here is kind-homogeneous
+  // (ADVANCE/ADVANCEN/ADVANCEU share one DEBT group; the 4 new types each
+  // get their own single-code group), so checking documentCodes[0] is enough.
+  const isMoneyGroup = documentCodes.length > 0 && (REQUEST_DOCUMENT_KIND[documentCodes[0]] === "DEBT" || REQUEST_DOCUMENT_KIND[documentCodes[0]] === "INCOME");
   const [form, setForm] = useState<{ documentCode: string; requestDate: string; remark: string }>({
     documentCode: documentCodes[0] ?? "",
     requestDate: new Date().toISOString().slice(0, 10),
@@ -117,7 +124,7 @@ export default function RequestGroupView({
               <th className="px-3 py-2 font-medium">วันที่</th>
               <th className="px-3 py-2 font-medium">หมายเหตุ</th>
               <th className="px-3 py-2 font-medium text-right">จำนวนรายการ</th>
-              <th className="px-3 py-2 font-medium text-right">ยอดเงินรวม</th>
+              {isMoneyGroup && <th className="px-3 py-2 font-medium text-right">ยอดเงินรวม</th>}
               <th className="px-3 py-2 font-medium">สถานะ</th>
               <th className="px-3 py-2 font-medium">วันที่อนุมัติ/ไม่อนุมัติ</th>
               <th className="min-w-[200px] px-3 py-2 font-medium">เหตุผลไม่อนุมัติ</th>
@@ -138,7 +145,7 @@ export default function RequestGroupView({
                   <td className="px-3 py-2 text-gray-500">{new Date(r.RequestDate).toLocaleDateString("th-TH")}</td>
                   <td className="px-3 py-2 text-gray-500">{r.Remark ?? "-"}</td>
                   <td className="px-3 py-2 text-right">{r.Details.length}</td>
-                  <td className="px-3 py-2 text-right">{money(total)}</td>
+                  {isMoneyGroup && <td className="px-3 py-2 text-right">{money(total)}</td>}
                   <td className="px-3 py-2">{STATUS_LABEL[r.Status] ?? r.Status}</td>
                   <td className="px-3 py-2 text-gray-500">{approvedOrRejectedDate(r)}</td>
                   <td className="px-3 py-2 text-gray-500">{r.Status === "APPROVED" ? "-" : (r.RejectReason ?? "-")}</td>
@@ -156,7 +163,7 @@ export default function RequestGroupView({
             })}
             {rows.length === 0 && (
               <tr>
-                <td colSpan={canDelete ? 10 : 9} className="px-3 py-6 text-center text-gray-400">
+                <td colSpan={(canDelete ? 10 : 9) - (isMoneyGroup ? 0 : 1)} className="px-3 py-6 text-center text-gray-400">
                   ยังไม่มีรายการ
                 </td>
               </tr>

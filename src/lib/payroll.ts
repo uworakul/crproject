@@ -529,6 +529,42 @@ export async function recomputeTransactionOtherTotals(tx: Prisma.TransactionClie
   return netPay;
 }
 
+// Bare find-or-create for an employee's current-period trn_payroll_transaction
+// row (2026-09-28) — factored out of GET /api/payroll/transactions/by-employee
+// (same idempotent-GET convention, same "current period" = sys_period where
+// EmployeeType matches and IsCurrent=true) for a second caller: approving a
+// BONUS/COMMISSION request needs a bare transaction row to post one income
+// line onto, with none of by-employee's UI-specific rateConfig/seed-rows
+// concerns. Must run inside the caller's own `tx` so the request header's
+// APPROVED update and this payroll write commit together atomically. Throws
+// plain Error(code) — same convention as pullPayrollForMonthlyEmployees
+// above (PERIOD_NOT_FOUND/PERIOD_LOCKED), plus EMPLOYEE_HAS_NO_SITE for a
+// brand-new row that needs a NOT NULL SiteCode. Lock is checked unconditionally
+// (not just on the create path) — the caller is always about to add a new
+// detail line to whatever's returned, and every other detail-line mutation
+// in the app (POST/PUT/DELETE /api/payroll/transaction-details) blocks on a
+// locked period the same way even against an already-existing transaction.
+export async function findOrCreateCurrentPeriodTransaction(
+  tx: Prisma.TransactionClient,
+  employee: { EmpCode: string; EmployeeType: string; DefaultSiteCode: string | null },
+  userId: string,
+) {
+  const period = await tx.sysPeriod.findFirst({ where: { EmployeeType: employee.EmployeeType, IsCurrent: true } });
+  if (!period) throw new Error("NO_CURRENT_PERIOD");
+
+  const lock = await tx.trnPayrollLock.findFirst({ where: { PeriodID: period.PeriodID, IsLocked: true } });
+  if (lock) throw new Error("PERIOD_LOCKED");
+
+  let transaction = await tx.trnPayrollTransaction.findUnique({ where: { EmpCode_PeriodID: { EmpCode: employee.EmpCode, PeriodID: period.PeriodID } } });
+  if (!transaction) {
+    if (!employee.DefaultSiteCode) throw new Error("EMPLOYEE_HAS_NO_SITE");
+    transaction = await tx.trnPayrollTransaction.create({
+      data: { EmpCode: employee.EmpCode, PeriodID: period.PeriodID, SiteCode: employee.DefaultSiteCode, CreatedBy: userId },
+    });
+  }
+  return { period, transaction };
+}
+
 export interface RateConfigEntry {
   amount: Prisma.Decimal;
   rateBasis: string;

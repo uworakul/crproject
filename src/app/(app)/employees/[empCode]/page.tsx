@@ -36,6 +36,7 @@ export default async function EmployeeDetailPage({ params }: { params: Promise<{
     banksRaw,
     companiesRaw,
     blacklistRaw,
+    referrerCandidatesRaw,
     workExperienceRaw,
     trainingExperienceRaw,
     installmentDeductionsRaw,
@@ -57,6 +58,11 @@ export default async function EmployeeDetailPage({ params }: { params: Promise<{
     prisma.refBank.findMany({ where: { IsActive: true }, orderBy: { BankCode: "asc" } }),
     prisma.refCompany.findMany({ orderBy: { CompanyCode: "asc" } }),
     prisma.refBlackList.findMany({ orderBy: { IDCardNo: "asc" } }),
+    // "รหัสคนแนะนำ" search options (2026-09-28) — any employee, not just
+    // ACTIVE ones (a referrer may have since resigned; the referral itself
+    // is still a historical fact) — excluding this employee's own row
+    // happens client-side in EmployeeInfoTab, same as elsewhere in the app.
+    prisma.mstEmployee.findMany({ orderBy: { EmpCode: "asc" }, select: { EmpCode: true, FullName: true } }),
     prisma.mstEmployeeWorkExperience.findMany({ where: { EmpCode: empCode }, orderBy: { StartDate: "desc" } }),
     prisma.mstEmployeeTrainingExperience.findMany({ where: { EmpCode: empCode }, orderBy: { StartDate: "desc" } }),
     prisma.invEmployeeDebt.findMany({
@@ -123,6 +129,7 @@ export default async function EmployeeDetailPage({ params }: { params: Promise<{
     banks,
     companies,
     blacklist,
+    referrerCandidates,
     workExperience,
     trainingExperience,
     installmentDeductionsPlain,
@@ -141,6 +148,7 @@ export default async function EmployeeDetailPage({ params }: { params: Promise<{
         banksRaw,
         companiesRaw,
         blacklistRaw,
+        referrerCandidatesRaw,
         workExperienceRaw,
         trainingExperienceRaw,
         installmentDeductionsRaw,
@@ -173,6 +181,7 @@ export default async function EmployeeDetailPage({ params }: { params: Promise<{
           sites={sites}
           companies={companies}
           blacklist={blacklist}
+          referrerCandidates={referrerCandidates}
           canSave={canSaveEmployee}
         />
       ),

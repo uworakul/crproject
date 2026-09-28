@@ -31,7 +31,7 @@ export async function GET(request: NextRequest) {
       // distinct from the top-level Site relation below (the transaction's
       // own SiteCode, snapshotted by Worksheet approve / defaulted at
       // creation — used by the Calculate screen's "หน่วยงานหลัก" column).
-      Employee: { select: { EmpCode: true, FullName: true, Department: { select: { DeptName: true } }, Site: { select: { SiteName: true } } } },
+      Employee: { select: { EmpCode: true, FullName: true, EmployeeType: true, Department: { select: { DeptName: true } }, Site: { select: { SiteName: true } } } },
       Site: { select: { SiteCode: true, SiteName: true } },
     },
     orderBy: { EmpCode: "asc" },

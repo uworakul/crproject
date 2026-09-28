@@ -24,6 +24,13 @@ interface Employee {
   ProbationPassDate: string | null;
   CertificateNo: string | null;
   ReferrerEmpCode: string | null;
+  // Set once a COMMISSION (ค่านำพา) request naming this employee as the
+  // referred new hire gets APPROVED (src/app/api/requests/[id]/approve/
+  // route.ts) — the field is locked (read-only) from then on, since the
+  // commission was already paid out based on the ReferrerEmpCode as it
+  // stood at approval time; changing it afterward would misrepresent who
+  // was actually paid.
+  CommissionClaimedDate: string | null;
   BlacklistCode: string | null;
   LicenseNo6: string | null;
   LicenseDate6: string | null;
@@ -43,6 +50,7 @@ export default function EmployeeInfoTab({
   sites,
   companies,
   blacklist,
+  referrerCandidates,
   canSave,
 }: {
   employee: Employee;
@@ -51,6 +59,7 @@ export default function EmployeeInfoTab({
   sites: { SiteCode: string; SiteName: string }[];
   companies: { CompanyCode: string; CompanyName: string }[];
   blacklist: { IDCardNo: string; FullName: string }[];
+  referrerCandidates: { EmpCode: string; FullName: string }[];
   canSave: boolean;
 }) {
   const router = useRouter();
@@ -126,6 +135,7 @@ export default function EmployeeInfoTab({
   }
 
   const isResigned = employee.EmployeeStatus === "RESIGNED";
+  const commissionAlreadyClaimed = !!employee.CommissionClaimedDate;
 
   return (
     <div className="flex flex-col gap-6">
@@ -233,7 +243,18 @@ export default function EmployeeInfoTab({
           <input disabled={!canSave} type="date" value={form.licenseDate6} onChange={(e) => setForm({ ...form, licenseDate6: e.target.value })} className={inputCls} />
         </Field>
         <Field label="รหัสคนแนะนำ">
-          <input disabled={!canSave} value={form.referrerEmpCode} onChange={(e) => setForm({ ...form, referrerEmpCode: e.target.value })} className={inputCls} />
+          <SearchableSelect
+            disabled={!canSave || commissionAlreadyClaimed}
+            value={form.referrerEmpCode}
+            onChange={(code) => setForm({ ...form, referrerEmpCode: code })}
+            options={referrerCandidates.filter((e) => e.EmpCode !== employee.EmpCode).map((e) => ({ code: e.EmpCode, label: `${e.EmpCode} — ${e.FullName}` }))}
+            placeholder="ค้นหารหัส/ชื่อพนักงาน..."
+          />
+          {commissionAlreadyClaimed && (
+            <span className="text-xs text-gray-500">
+              แก้ไขไม่ได้ — มีการอนุมัติค่านำพาสำหรับพนักงานคนนี้แล้ว (เมื่อ {new Date(employee.CommissionClaimedDate!).toLocaleDateString("th-TH")})
+            </span>
+          )}
         </Field>
       </div>
 

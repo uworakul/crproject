@@ -4,7 +4,7 @@ import { verifySession } from "@/lib/dal";
 import { requirePermission } from "@/lib/authorize";
 import { logAction } from "@/lib/audit-log";
 import { apiError, apiSuccess } from "@/lib/api-response";
-import { isValidRequestDocumentCode, REQUEST_DOCUMENT_DOCTYPE } from "@/lib/request";
+import { isValidRequestDocumentCode, REQUEST_DOCUMENT_DOCTYPE, REQUEST_PERMISSION_GROUPS } from "@/lib/request";
 import { consumeDocumentNumber } from "@/lib/document-number";
 
 export async function GET(request: NextRequest) {
@@ -12,8 +12,9 @@ export async function GET(request: NextRequest) {
   if (!user) return apiError(401, "UNAUTHORIZED");
 
   const docType = request.nextUrl.searchParams.get("docType");
-  if (!docType || !["REQUEST_ADVANCE", "REQUEST_LOAN", "REQUEST_TRAINING"].includes(docType)) {
-    return apiError(400, "INVALID_PARAMS", "docType must be REQUEST_ADVANCE, REQUEST_LOAN, or REQUEST_TRAINING");
+  const validDocTypes = REQUEST_PERMISSION_GROUPS.map((g) => g.docType) as readonly string[];
+  if (!docType || !validDocTypes.includes(docType)) {
+    return apiError(400, "INVALID_PARAMS", `docType must be one of: ${validDocTypes.join(", ")}`);
   }
 
   const denied = await requirePermission(user, docType, "read");

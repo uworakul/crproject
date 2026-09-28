@@ -17,7 +17,16 @@ export async function GET(_req: NextRequest, ctx: RouteContext<"/api/requests/[i
   const header = await prisma.trnRequestHeader.findUnique({
     where: { RequestHeaderID: requestId },
     include: {
-      Details: { orderBy: { RequestDetailID: "asc" }, include: { Employee: { select: { FullName: true, EmployeeStatus: true, StartDate: true } } } },
+      Details: {
+        orderBy: { RequestDetailID: "asc" },
+        include: {
+          Employee: {
+            select: { FullName: true, EmployeeStatus: true, StartDate: true, PositionCode: true, ReferrerEmpCode: true, EmployeeType: true, DailyRate: true, MonthlySalary: true },
+          },
+          OldPosition: { select: { PositionName: true } },
+          NewPosition: { select: { PositionName: true } },
+        },
+      },
     },
   });
   if (!header) return apiError(404, "REQUEST_NOT_FOUND");
@@ -25,7 +34,23 @@ export async function GET(_req: NextRequest, ctx: RouteContext<"/api/requests/[i
   const denied = await requirePermission(user, REQUEST_DOCUMENT_DOCTYPE[header.DocumentCode as RequestDocumentCode], "read");
   if (denied) return denied;
 
-  return apiSuccess(header);
+  // COMMISSION only — ReferrerEmpCode has no DB-level FK (loose cross-
+  // reference, same as everywhere else it's used in the app), so the
+  // referrer's name is looked up separately and attached per row for
+  // display ("who actually gets paid").
+  let referrerNames: Record<string, string> = {};
+  if (header.DocumentCode === "COMMISSION") {
+    const referrerCodes = [...new Set(header.Details.map((d) => d.Employee.ReferrerEmpCode).filter((c): c is string => !!c))];
+    if (referrerCodes.length > 0) {
+      const referrers = await prisma.mstEmployee.findMany({ where: { EmpCode: { in: referrerCodes } }, select: { EmpCode: true, FullName: true } });
+      referrerNames = Object.fromEntries(referrers.map((r) => [r.EmpCode, r.FullName]));
+    }
+  }
+
+  return apiSuccess({
+    ...header,
+    Details: header.Details.map((d) => ({ ...d, ReferrerName: d.Employee.ReferrerEmpCode ? (referrerNames[d.Employee.ReferrerEmpCode] ?? null) : null })),
+  });
 }
 
 // Header fields (requestDate/remark) are editable until APPROVED — line

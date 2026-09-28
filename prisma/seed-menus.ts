@@ -35,6 +35,14 @@ export const menuSeed = [
   { DocumentType: "REQUEST_ADVANCE", MenuNameTH: "เบิกเงินล่วงหน้า", MenuNameEN: "Request - Advance", ModuleGroup: "REQUEST_APPROVE" },
   { DocumentType: "REQUEST_LOAN", MenuNameTH: "เงินกู้", MenuNameEN: "Request - Loan", ModuleGroup: "REQUEST_APPROVE" },
   { DocumentType: "REQUEST_TRAINING", MenuNameTH: "ค่าอบรม", MenuNameEN: "Request - Training", ModuleGroup: "REQUEST_APPROVE" },
+  // 4 new document types (2026-09-28) — each its own DocumentType/permission
+  // group (not folded into the 3 above) since eligibility rules, approvers,
+  // and what approving actually does to the employee record are all
+  // genuinely different per type.
+  { DocumentType: "REQUEST_COMMISSION", MenuNameTH: "ขอเบิกค่านำพา", MenuNameEN: "Request - Commission", ModuleGroup: "REQUEST_APPROVE" },
+  { DocumentType: "REQUEST_BONUS", MenuNameTH: "โบนัส", MenuNameEN: "Request - Bonus", ModuleGroup: "REQUEST_APPROVE" },
+  { DocumentType: "REQUEST_PROMOTE", MenuNameTH: "ปรับตำแหน่ง", MenuNameEN: "Request - Promotion", ModuleGroup: "REQUEST_APPROVE" },
+  { DocumentType: "REQUEST_RESIGN", MenuNameTH: "แจ้งลาออก/ประกาศพ้นหน้าที่", MenuNameEN: "Request - Resignation", ModuleGroup: "REQUEST_APPROVE" },
   { DocumentType: "DRAFT_LIST", MenuNameTH: "รายการรออนุมัติ", MenuNameEN: "Draft List", ModuleGroup: "REQUEST_APPROVE" },
 
   // Module 5 — สินค้าคงคลัง/เครื่องแบบ (BR-020–027)

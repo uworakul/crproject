@@ -31,7 +31,7 @@ interface Row {
   WorkDays: string;
   DoubleShiftDays: string;
   HolidayDays: string;
-  Employee: { EmpCode: string; FullName: string; Department: { DeptName: string } | null; Site: { SiteName: string } | null };
+  Employee: { EmpCode: string; FullName: string; EmployeeType: string; Department: { DeptName: string } | null; Site: { SiteName: string } | null };
 }
 
 interface FullTransaction {
@@ -240,6 +240,17 @@ export default function TransactionEntryView({
         </label>
         <label className="flex flex-col gap-1 text-xs text-gray-500">
           ประเภทพนักงาน
+          {/* MONTHLY briefly removed from this dropdown (2026-09-28), then
+              restored the same day — monthly employees have no Worksheet,
+              but the user confirmed they can still have รายการประจำงวด:
+              runPayrollCalculate() auto-creates their "02 เงินเดือน" line via
+              pullPayrollForMonthlyEmployees(), but this screen is still
+              where HR adds extra income/deduction lines (allowances,
+              one-off deductions, etc.) for monthly staff, same as for daily
+              staff — auto-calc only ever owns the "02" line itself, never
+              anything added here manually (see the "only own what you
+              write" comment on pullPayrollForMonthlyEmployees in
+              payroll.ts). */}
           <select value={employeeType} onChange={(e) => handleSelectType(e.target.value)} className="w-40 rounded border border-gray-300 px-2 py-1 text-sm text-gray-900">
             <option value="">-- เลือก --</option>
             {EMPLOYEE_TYPE_VALUES.map((v) => (
@@ -268,7 +279,11 @@ export default function TransactionEntryView({
                 </span>
               )}
             </div>
-            {canSave && !isLocked && (
+            {/* MONTHLY has no Worksheet at all (see the ประเภทพนักงาน dropdown's
+                own comment above) — this button would just harmlessly find 0
+                employees to pull for a monthly period, so it's hidden there
+                instead of inviting a confusing no-op click. */}
+            {canSave && !isLocked && employeeType === "DAILY" && (
               <button
                 onClick={handlePullFromWorksheet}
                 disabled={loading}
@@ -293,6 +308,7 @@ export default function TransactionEntryView({
                 <tr>
                   <th className="px-3 py-2 font-medium">รหัสพนักงาน</th>
                   <th className="px-3 py-2 font-medium">ชื่อพนักงาน</th>
+                  <th className="px-3 py-2 font-medium">ประเภทพนักงาน</th>
                   <th className="px-3 py-2 font-medium">แผนก</th>
                   <th className="px-3 py-2 font-medium">หน่วยงานต้นสังกัด</th>
                   <th className="px-3 py-2 font-medium text-right">จำนวนวันทำงานรวม</th>
@@ -317,6 +333,7 @@ export default function TransactionEntryView({
                       <tr className="border-t border-gray-100 hover:bg-gray-50">
                         <td className="px-3 py-2">{r.EmpCode}</td>
                         <td className="px-3 py-2">{r.Employee.FullName}</td>
+                        <td className="px-3 py-2 text-gray-500">{EMPLOYEE_TYPE_LABELS[r.Employee.EmployeeType as keyof typeof EMPLOYEE_TYPE_LABELS] ?? r.Employee.EmployeeType}</td>
                         <td className="px-3 py-2">{r.Employee.Department?.DeptName ?? "-"}</td>
                         <td className="px-3 py-2">{r.Employee.Site?.SiteName ?? "-"}</td>
                         <td className="px-3 py-2 text-right">{totalDays}</td>
@@ -335,7 +352,7 @@ export default function TransactionEntryView({
                       </tr>
                       {isExpanded && panelData[r.EmpCode] && (
                         <tr className="border-t border-gray-100 bg-gray-50">
-                          <td colSpan={6} className="px-3 py-3">
+                          <td colSpan={7} className="px-3 py-3">
                             <TransactionDetailPanel
                               empCode={r.EmpCode}
                               initialPeriod={panelData[r.EmpCode].period}
@@ -353,7 +370,7 @@ export default function TransactionEntryView({
                 })}
                 {rows.length === 0 && (
                   <tr>
-                    <td colSpan={6} className="px-3 py-6 text-center text-gray-400">
+                    <td colSpan={7} className="px-3 py-6 text-center text-gray-400">
                       ยังไม่มีพนักงานในงวดนี้ตามเงื่อนไขที่เลือก
                     </td>
                   </tr>

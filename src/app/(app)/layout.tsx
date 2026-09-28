@@ -102,6 +102,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       icon: "users" as const,
       items: [
         ...(canViewUsers ? [{ href: "/users", label: "ผู้ใช้งาน" }] : []),
+        { href: "/change-password", label: "เปลี่ยนรหัสผ่าน" },
         ...(canViewAuditLog ? [{ href: "/audit-log", label: "Audit Log" }] : []),
       ],
     },
@@ -125,7 +126,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       label: "การขออนุมัติ",
       icon: "approve" as const,
       items: [
-        ...(canViewAnyRequest ? [{ href: "/requests", label: "เบิกล่วงหน้า/เงินกู้/ค่าอบรม" }] : []),
+        ...(canViewAnyRequest ? [{ href: "/requests", label: "เอกสารขออนุมัติ" }] : []),
         ...(canViewDraftList ? [{ href: "/requests/draft-list", label: "รายการรออนุมัติ" }] : []),
       ],
     },
