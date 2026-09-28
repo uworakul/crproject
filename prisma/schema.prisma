@@ -44,9 +44,15 @@ datasource db {
 // mst_site — referenced by many tables
 // ============================================================
 model MstSite {
-  SiteCode    String    @id(map: "PK_mst_site") @db.VarChar(10)
-  SiteName    String    @db.NVarChar(150)
-  IsActive    Boolean   @default(true)
+  SiteCode          String    @id(map: "PK_mst_site") @db.VarChar(10)
+  SiteName          String    @db.NVarChar(150)
+  // ค่าบริการต่อเดือน (2026-09-28) — what the customer pays for security
+  // services at this site each month. Informational only for now, same as
+  // MstSitePosition/MstSitePositionIncome above — not wired into any
+  // revenue/billing calculation yet (this app's Payroll module covers what
+  // the company pays employees, not what it invoices customers).
+  MonthlyServiceFee Decimal?  @db.Decimal(12, 2)
+  IsActive          Boolean   @default(true)
   CreatedDate DateTime? @default(now()) @db.DateTime
   CreatedBy   String?   @db.VarChar(20)
   UpdatedDate DateTime? @db.DateTime

@@ -152,6 +152,53 @@ export async function parseProductWorkbook(buffer: Buffer): Promise<ParsedProduc
   return rows;
 }
 
+// mst_site's shape: code/name plus one nullable numeric column
+// (MonthlyServiceFee). Kept separate from buildProductWorkbook even though
+// both add one numeric column onto a 2-column base, because
+// MonthlyServiceFee is genuinely optional (nullable in the DB, no site is
+// required to have one) whereas product's unitCost/unitPrice are NOT NULL
+// and default to 0 when blank — a blank fee here must stay null, not become 0.
+export interface ParsedSiteRow {
+  code: string;
+  name: string;
+  monthlyServiceFee: number | null;
+}
+
+export async function buildSiteWorkbook(rows: { code: string; name: string; monthlyServiceFee: number | null }[]) {
+  const workbook = new ExcelJS.Workbook();
+  const sheet = workbook.addWorksheet("หน่วยงาน");
+  sheet.columns = [
+    { header: "รหัสหน่วยงาน", key: "code", width: 20 },
+    { header: "ชื่อหน่วยงาน", key: "name", width: 40 },
+    { header: "ค่าบริการต่อเดือน (บาท)", key: "monthlyServiceFee", width: 20 },
+  ];
+  sheet.addRows(rows.map((r) => ({ ...r, monthlyServiceFee: r.monthlyServiceFee ?? "" })));
+  return workbook.xlsx.writeBuffer();
+}
+
+// Column position matters (A=code, B=name, C=monthlyServiceFee), not exact
+// header text. A blank/unparsable fee cell stays null (never coerced to 0),
+// since the DB column is nullable and "no fee set" is a meaningful state
+// distinct from "fee is zero".
+export async function parseSiteWorkbook(buffer: Buffer): Promise<ParsedSiteRow[]> {
+  const workbook = new ExcelJS.Workbook();
+  await workbook.xlsx.load(buffer as unknown as ArrayBuffer);
+  const sheet = workbook.worksheets[0];
+  if (!sheet) return [];
+
+  const rows: ParsedSiteRow[] = [];
+  sheet.eachRow((row, rowNumber) => {
+    if (rowNumber === 1) return; // header
+    const code = String(row.getCell(1).value ?? "").trim();
+    const name = String(row.getCell(2).value ?? "").trim();
+    if (!code || !name) return;
+    const feeRaw = String(row.getCell(3).value ?? "").trim();
+    const fee = feeRaw === "" ? null : Number(feeRaw);
+    rows.push({ code, name, monthlyServiceFee: fee !== null && Number.isFinite(fee) ? fee : null });
+  });
+  return rows;
+}
+
 // Worksheet's shape: one row per employee, fixed info columns (code/name/
 // type/position/rate/total) then one column per day of the month, mirroring
 // the on-screen grid — kept separate from the 2/3-column pair above since

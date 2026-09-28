@@ -25,7 +25,7 @@ export async function PUT(request: NextRequest, ctx: RouteContext<"/api/sites/[s
   const existing = await prisma.mstSite.findUnique({ where: { SiteCode: siteCode } });
   if (!existing) return apiError(404, "SITE_NOT_FOUND");
 
-  let body: { siteName?: unknown; isActive?: unknown };
+  let body: { siteName?: unknown; isActive?: unknown; monthlyServiceFee?: unknown };
   try {
     body = await request.json();
   } catch {
@@ -35,11 +35,23 @@ export async function PUT(request: NextRequest, ctx: RouteContext<"/api/sites/[s
   const siteName = typeof body.siteName === "string" ? body.siteName.trim() : "";
   if (!siteName) return apiError(400, "INVALID_PARAMS", "siteName is required");
 
+  let monthlyServiceFee: number | undefined;
+  if (body.monthlyServiceFee !== undefined) {
+    if (body.monthlyServiceFee === null || body.monthlyServiceFee === "") {
+      monthlyServiceFee = undefined; // ReferenceTable never sends this shape today, but treat as "unset" defensively
+    } else {
+      const n = Number(body.monthlyServiceFee);
+      if (!Number.isFinite(n) || n < 0) return apiError(400, "VALIDATION_FAILED", "monthlyServiceFee must be a non-negative number");
+      monthlyServiceFee = n;
+    }
+  }
+
   const updated = await prisma.mstSite.update({
     where: { SiteCode: siteCode },
     data: {
       SiteName: siteName,
       IsActive: typeof body.isActive === "boolean" ? body.isActive : existing.IsActive,
+      ...(body.monthlyServiceFee !== undefined ? { MonthlyServiceFee: monthlyServiceFee } : {}),
       UpdatedBy: user.userId,
       UpdatedDate: new Date(),
     },

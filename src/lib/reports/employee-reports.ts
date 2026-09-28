@@ -122,10 +122,10 @@ export interface EmployeeCardData {
 
 // การ์ดพนักงาน — one full profile per employee (not a table row), so this
 // intentionally pulls far more fields than the registry above. Photo
-// (PhotoPath, a Google Drive file ID) is deliberately not embedded in this
-// round — see CLAUDE.md, that integration has its own failure modes
-// (GOOGLE_SERVICE_ACCOUNT_KEY not yet configured) and wasn't part of what
-// was asked for here.
+// (PhotoPath, a Cloudflare R2 object key) is deliberately not embedded in
+// this round — see CLAUDE.md, that integration has its own failure modes
+// (R2 credentials not yet configured) and wasn't part of what was asked for
+// here.
 export async function getEmployeeCards(filters: ReportFilters, leaveYear?: number): Promise<EmployeeCardData[]> {
   const employees = await prisma.mstEmployee.findMany({
     where: employeeWhere(filters),

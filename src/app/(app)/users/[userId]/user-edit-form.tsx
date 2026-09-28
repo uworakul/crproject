@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { ROLE_VALUES } from "@/lib/validation";
+import ChangePasswordForm from "../../change-password/change-password-form";
 
 interface Menu {
   DocumentType: string;
@@ -250,7 +251,8 @@ export default function UserEditForm({
       </form>
 
       {/* Password */}
-      {(canSave || isSelf) && (
+      {isSelf && <ChangePasswordForm userId={target.UserID} />}
+      {canSave && !isSelf && (
         <form onSubmit={savePassword} className="flex flex-col gap-3 rounded border border-gray-200 p-4">
           <h2 className="font-semibold">เปลี่ยนรหัสผ่าน</h2>
           <Field label="รหัสผ่านใหม่ (อย่างน้อย 8 ตัวอักษร)">

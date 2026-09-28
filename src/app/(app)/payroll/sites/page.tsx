@@ -7,6 +7,7 @@ import ReferenceTable, { type FieldDef } from "../../reference/reference-table";
 const siteFields: FieldDef[] = [
   { key: "SiteCode", label: "รหัสหน่วยงาน", type: "text", isKey: true },
   { key: "SiteName", label: "ชื่อหน่วยงาน", type: "text" },
+  { key: "MonthlyServiceFee", label: "ค่าบริการต่อเดือน (บาท)", type: "number" },
 ];
 
 export default async function SitesPage() {

@@ -4,7 +4,7 @@ import { verifySession } from "@/lib/dal";
 import { requirePermission } from "@/lib/authorize";
 import { logAction } from "@/lib/audit-log";
 import { apiError, apiSuccess } from "@/lib/api-response";
-import { parseTwoColumnWorkbook } from "@/lib/excel-reference";
+import { parseSiteWorkbook } from "@/lib/excel-reference";
 
 export async function POST(request: NextRequest) {
   const user = await verifySession();
@@ -29,9 +29,9 @@ export async function POST(request: NextRequest) {
   }
 
   const buffer = Buffer.from(await file.arrayBuffer());
-  let rows: { code: string; name: string }[];
+  let rows: { code: string; name: string; monthlyServiceFee: number | null }[];
   try {
-    rows = await parseTwoColumnWorkbook(buffer);
+    rows = await parseSiteWorkbook(buffer);
   } catch {
     return apiError(400, "INVALID_PARAMS", "Could not read the uploaded file as an Excel workbook");
   }
@@ -49,8 +49,8 @@ export async function POST(request: NextRequest) {
         const existing = await tx.mstSite.findUnique({ where: { SiteCode: row.code } });
         await tx.mstSite.upsert({
           where: { SiteCode: row.code },
-          create: { SiteCode: row.code, SiteName: row.name, CreatedBy: user.userId },
-          update: { SiteName: row.name, UpdatedBy: user.userId, UpdatedDate: new Date() },
+          create: { SiteCode: row.code, SiteName: row.name, MonthlyServiceFee: row.monthlyServiceFee ?? undefined, CreatedBy: user.userId },
+          update: { SiteName: row.name, MonthlyServiceFee: row.monthlyServiceFee, UpdatedBy: user.userId, UpdatedDate: new Date() },
         });
         if (existing) updated++;
         else created++;

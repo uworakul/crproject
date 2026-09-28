@@ -9,7 +9,13 @@
 // lines, >=8px markers with a surface ring), hairline recessive gridlines,
 // and a native <title> tooltip on every mark. Light mode only — this app
 // has no dark theme.
-import type { ChartDatum, GroupedResult } from "@/lib/reports/dashboard-data";
+import { useState } from "react";
+import type { ChartDatum, GroupedResult, SitePerformanceResult, UniformProfitResult } from "@/lib/reports/dashboard-data";
+import type { DrilldownResult } from "@/lib/reports/dashboard-drilldown";
+
+function formatBaht(v: number) {
+  return v.toLocaleString("th-TH", { maximumFractionDigits: 2 });
+}
 
 // Reference categorical palette (dataviz skill, references/palette.md) —
 // fixed order, never cycled/reassigned per filter change.
@@ -22,7 +28,7 @@ function formatValue(v: number, unit: string) {
   return `${n}${unit === "%" ? "%" : ` ${unit}`}`;
 }
 
-export function TableView({ data, unit }: { data: ChartDatum[]; unit: string }) {
+export function TableView({ data, unit, onSelect }: { data: ChartDatum[]; unit: string; onSelect?: (label: string) => void }) {
   const total = data.reduce((s, d) => s + d.value, 0);
   return (
     <table className="w-full border-collapse text-sm">
@@ -34,7 +40,11 @@ export function TableView({ data, unit }: { data: ChartDatum[]; unit: string }) 
       </thead>
       <tbody>
         {data.map((d) => (
-          <tr key={d.label} className="border-b border-gray-100 hover:bg-gray-50">
+          <tr
+            key={d.label}
+            onClick={onSelect ? () => onSelect(d.label) : undefined}
+            className={`border-b border-gray-100 hover:bg-gray-50 ${onSelect ? "cursor-pointer" : ""}`}
+          >
             <td className="py-2 pr-4">{d.label}</td>
             <td className="py-2 pr-4 text-right tabular-nums">{formatValue(d.value, unit)}</td>
           </tr>
@@ -50,14 +60,33 @@ export function TableView({ data, unit }: { data: ChartDatum[]; unit: string }) 
 
 // Horizontal bars — reads better than vertical columns once category names
 // are site/department names rather than short codes.
-export function BarChartView({ data, unit }: { data: ChartDatum[]; unit: string }) {
+export function BarChartView({
+  data,
+  unit,
+  onSelect,
+  colorFor,
+}: {
+  data: ChartDatum[];
+  unit: string;
+  onSelect?: (label: string) => void;
+  // Optional per-bar color override (2026-09-28) — used by the
+  // site-performance/uniform-profit profit-vs-loss charts to color losses
+  // red and profit green, instead of every other metric here which is a
+  // plain ranked magnitude (no positive/negative meaning) and stays the
+  // single sequential hue.
+  colorFor?: (d: ChartDatum) => string;
+}) {
   if (data.length === 0) return <p className="text-sm text-gray-500">ไม่มีข้อมูล</p>;
   const rowHeight = 28;
   const barThickness = 18;
   const labelWidth = 200;
   const chartWidth = 480;
   const height = data.length * rowHeight + 20;
-  const max = Math.max(...data.map((d) => d.value), 1);
+  // Magnitude drives bar width (a negative value can't produce a negative
+  // rect width) — the displayed number below still shows the real signed
+  // value via formatValue(d.value, ...), so a loss reads e.g. "-72.1%" next
+  // to a bar sized by its 72.1 magnitude, not silently shown as positive.
+  const max = Math.max(...data.map((d) => Math.abs(d.value)), 1);
 
   return (
     <svg width="100%" viewBox={`0 0 ${labelWidth + chartWidth + 70} ${height}`} role="img" aria-label="แผนภูมิแท่ง">
@@ -67,9 +96,9 @@ export function BarChartView({ data, unit }: { data: ChartDatum[]; unit: string 
       ))}
       {data.map((d, i) => {
         const y = i * rowHeight + (rowHeight - barThickness) / 2;
-        const w = (d.value / max) * chartWidth;
+        const w = (Math.abs(d.value) / max) * chartWidth;
         return (
-          <g key={d.label}>
+          <g key={d.label} onClick={onSelect ? () => onSelect(d.label) : undefined} style={onSelect ? { cursor: "pointer" } : undefined}>
             {/* A single string child, not `{a}: {b}` (which JSX compiles to a
                 multi-element children array) — React's SSR <title> serializer
                 silently renders an EMPTY <title> for any array of length > 1
@@ -80,7 +109,7 @@ export function BarChartView({ data, unit }: { data: ChartDatum[]; unit: string 
             <text x={labelWidth - 8} y={y + barThickness / 2 + 4} textAnchor="end" fontSize={12} fill={INK.secondary}>
               {d.label.length > 26 ? `${d.label.slice(0, 25)}…` : d.label}
             </text>
-            <rect x={labelWidth} y={y} width={Math.max(w, 2)} height={barThickness} rx={4} fill={SEQUENTIAL} />
+            <rect x={labelWidth} y={y} width={Math.max(w, 2)} height={barThickness} rx={4} fill={colorFor ? colorFor(d) : SEQUENTIAL} />
             <text x={labelWidth + w + 6} y={y + barThickness / 2 + 4} fontSize={12} fill={INK.primary}>
               {formatValue(d.value, unit)}
             </text>
@@ -94,7 +123,7 @@ export function BarChartView({ data, unit }: { data: ChartDatum[]; unit: string 
 
 // Position on the x-axis already carries category order/identity, so this
 // stays one hue — same rationale as the bar chart above.
-export function LineChartView({ data, unit }: { data: ChartDatum[]; unit: string }) {
+export function LineChartView({ data, unit, onSelect }: { data: ChartDatum[]; unit: string; onSelect?: (label: string) => void }) {
   if (data.length === 0) return <p className="text-sm text-gray-500">ไม่มีข้อมูล</p>;
   const width = 640;
   const height = 300;
@@ -113,7 +142,7 @@ export function LineChartView({ data, unit }: { data: ChartDatum[]; unit: string
       ))}
       <path d={path} fill="none" stroke={SEQUENTIAL} strokeWidth={2} strokeLinejoin="round" strokeLinecap="round" />
       {points.map((p) => (
-        <g key={p.d.label}>
+        <g key={p.d.label} onClick={onSelect ? () => onSelect(p.d.label) : undefined} style={onSelect ? { cursor: "pointer" } : undefined}>
           <title>{`${p.d.label}: ${formatValue(p.d.value, unit)}`}</title>
           <circle cx={p.x} cy={p.y} r={4} fill={SEQUENTIAL} stroke={INK.surface} strokeWidth={2} />
           <text
@@ -139,16 +168,32 @@ export function LineChartView({ data, unit }: { data: ChartDatum[]; unit: string
 // 8th categorical hue) — past that, per-pair legibility and the pie form
 // itself both degrade, and the raw list is always one click away in the
 // table view.
-export function PieChartView({ data, unit }: { data: ChartDatum[]; unit: string }) {
+export function PieChartView({
+  data,
+  unit,
+  onSelect,
+  colorFor,
+}: {
+  data: ChartDatum[];
+  unit: string;
+  onSelect?: (label: string) => void;
+  // Optional per-slice color override, same rationale as BarChartView's —
+  // the synthetic "อื่นๆ" slice always stays neutral gray regardless.
+  colorFor?: (d: ChartDatum) => string;
+}) {
   if (data.length === 0) return <p className="text-sm text-gray-500">ไม่มีข้อมูล</p>;
   const CAP = 7;
-  let slices = data;
+  let slices: (ChartDatum & { synthetic?: boolean })[] = data;
   if (data.length > CAP + 1) {
     const top = data.slice(0, CAP);
-    const rest = data.slice(CAP).reduce((s, d) => s + d.value, 0);
-    slices = [...top, { label: "อื่นๆ", value: rest }];
+    const rest = data.slice(CAP).reduce((s, d) => s + Math.abs(d.value), 0);
+    slices = [...top, { label: "อื่นๆ", value: rest, synthetic: true }];
   }
-  const total = slices.reduce((s, d) => s + d.value, 0) || 1;
+  // Magnitude drives slice size (a negative value can't produce a negative
+  // sweep angle) — displayed numbers/tooltips still show the real signed
+  // value via formatValue(a.value, ...) below, so a loss slice is sized
+  // correctly but still reads as negative, same rationale as BarChartView.
+  const total = slices.reduce((s, d) => s + Math.abs(d.value), 0) || 1;
   const size = 220;
   const r = size / 2;
   const cx = r;
@@ -156,9 +201,9 @@ export function PieChartView({ data, unit }: { data: ChartDatum[]; unit: string 
   // Built with reduce (not a mutated loop variable across .map iterations)
   // so cumulative angle tracking stays a pure fold, safe under the React
   // Compiler's immutability rule.
-  const arcs = slices.reduce<{ cumulative: number; items: { d: string; color: string; label: string; value: number }[] }>(
+  const arcs = slices.reduce<{ cumulative: number; items: { d: string; color: string; label: string; value: number; synthetic?: boolean }[] }>(
     (acc, d, i) => {
-      const sweep = (d.value / total) * 360;
+      const sweep = (Math.abs(d.value) / total) * 360;
       const start = (acc.cumulative * Math.PI) / 180;
       const nextCumulative = acc.cumulative + sweep;
       const end = (nextCumulative * Math.PI) / 180;
@@ -167,25 +212,41 @@ export function PieChartView({ data, unit }: { data: ChartDatum[]; unit: string 
       const x2 = cx + r * Math.cos(end);
       const y2 = cy + r * Math.sin(end);
       const largeArc = sweep > 180 ? 1 : 0;
-      const color = d.label === "อื่นๆ" ? INK.muted : CATEGORICAL[i % CATEGORICAL.length];
+      const color = d.synthetic ? INK.muted : colorFor ? colorFor(d) : CATEGORICAL[i % CATEGORICAL.length];
       const path = `M ${cx} ${cy} L ${x1} ${y1} A ${r} ${r} 0 ${largeArc} 1 ${x2} ${y2} Z`;
-      return { cumulative: nextCumulative, items: [...acc.items, { d: path, color, label: d.label, value: d.value }] };
+      return { cumulative: nextCumulative, items: [...acc.items, { d: path, color, label: d.label, value: d.value, synthetic: d.synthetic }] };
     },
     { cumulative: -90, items: [] },
   ).items;
 
+  // The "อื่นๆ" slice (synthetic) lumps together several original labels
+  // past CAP — it doesn't correspond to any single bucket the backend
+  // recognizes, so it's never clickable even when the metric otherwise
+  // supports drilldown. Every other slice is its own real bucket.
   return (
     <div className="flex flex-wrap items-center gap-6">
       <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} role="img" aria-label="แผนภูมิวงกลม">
         {arcs.map((a) => (
-          <path key={a.label} d={a.d} fill={a.color} stroke={INK.surface} strokeWidth={2}>
+          <path
+            key={a.label}
+            d={a.d}
+            fill={a.color}
+            stroke={INK.surface}
+            strokeWidth={2}
+            onClick={onSelect && !a.synthetic ? () => onSelect(a.label) : undefined}
+            style={onSelect && !a.synthetic ? { cursor: "pointer" } : undefined}
+          >
             <title>{`${a.label}: ${formatValue(a.value, unit)} (${((a.value / total) * 100).toFixed(1)}%)`}</title>
           </path>
         ))}
       </svg>
       <ul className="flex flex-col gap-1 text-sm">
         {arcs.map((a) => (
-          <li key={a.label} className="flex items-center gap-2">
+          <li
+            key={a.label}
+            onClick={onSelect && !a.synthetic ? () => onSelect(a.label) : undefined}
+            className={`flex items-center gap-2 ${onSelect && !a.synthetic ? "cursor-pointer hover:underline" : ""}`}
+          >
             <span className="inline-block h-3 w-3 shrink-0 rounded-sm" style={{ backgroundColor: a.color }} />
             <span className="text-gray-800">{a.label}</span>
             <span className="text-gray-500 tabular-nums">
@@ -205,7 +266,7 @@ export function PieChartView({ data, unit }: { data: ChartDatum[]; unit: string 
 // series here really are distinct identities being compared, not one
 // ranked measure. A legend is mandatory (>=2 series).
 
-export function GroupedTableView({ result }: { result: GroupedResult }) {
+export function GroupedTableView({ result, onSelect }: { result: GroupedResult; onSelect?: (group: string, series: string) => void }) {
   return (
     <table className="w-full border-collapse text-sm">
       <thead>
@@ -224,7 +285,11 @@ export function GroupedTableView({ result }: { result: GroupedResult }) {
           <tr key={g} className="border-b border-gray-100 hover:bg-gray-50">
             <td className="py-2 pr-4">{g}</td>
             {result.series.map((s) => (
-              <td key={s.name} className="py-2 pr-4 text-right tabular-nums">
+              <td
+                key={s.name}
+                onClick={onSelect ? () => onSelect(g, s.name) : undefined}
+                className={`py-2 pr-4 text-right tabular-nums ${onSelect ? "cursor-pointer hover:underline" : ""}`}
+              >
                 {s.values[i].toLocaleString("th-TH")} {result.unit}
               </td>
             ))}
@@ -238,7 +303,7 @@ export function GroupedTableView({ result }: { result: GroupedResult }) {
   );
 }
 
-export function GroupedBarChartView({ result }: { result: GroupedResult }) {
+export function GroupedBarChartView({ result, onSelect }: { result: GroupedResult; onSelect?: (group: string, series: string) => void }) {
   const { groups, series, unit } = result;
   if (groups.length === 0 || series.length === 0) return <p className="text-sm text-gray-500">ไม่มีข้อมูล</p>;
 
@@ -277,7 +342,7 @@ export function GroupedBarChartView({ result }: { result: GroupedResult }) {
                 const value = s.values[i];
                 const w = (value / max) * chartWidth;
                 return (
-                  <g key={s.name}>
+                  <g key={s.name} onClick={onSelect ? () => onSelect(g, s.name) : undefined} style={onSelect ? { cursor: "pointer" } : undefined}>
                     <title>{`${g} — ${s.name}: ${value.toLocaleString("th-TH")} ${unit}`}</title>
                     <rect x={labelWidth} y={y} width={Math.max(w, value > 0 ? 2 : 0)} height={barThickness} rx={3} fill={CATEGORICAL[j % CATEGORICAL.length]} />
                   </g>
@@ -287,6 +352,213 @@ export function GroupedBarChartView({ result }: { result: GroupedResult }) {
           );
         })}
       </svg>
+    </div>
+  );
+}
+
+// --- Site performance / uniform P&L (2026-09-28) ------------------------
+// Neither metric fits the plain {label,value}[] shape (each row has
+// several distinct amounts, not one) — dedicated table components, but
+// Bar/Pie reuse the existing single-series views above by having the
+// caller (dashboard-view.tsx) derive a ChartDatum[] from whichever one
+// column is the headline number for that view.
+
+export function SitePerformanceTableView({ result }: { result: SitePerformanceResult }) {
+  if (result.rows.length === 0) return <p className="text-sm text-gray-500">ไม่มีข้อมูล</p>;
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full min-w-max border-collapse text-sm">
+        <thead>
+          <tr className="border-b border-gray-300 text-left text-gray-600">
+            <th className="py-2 pr-4">หน่วยงาน</th>
+            <th className="py-2 pr-4 text-right">จำนวนคน</th>
+            <th className="py-2 pr-4 text-right">รายได้ต่อเดือน (บาท)</th>
+            <th className="py-2 pr-4 text-right">รายได้พนักงานรวม (บาท)</th>
+            <th className="py-2 pr-4 text-right">กำไร/ขาดทุน (บาท)</th>
+            <th className="py-2 pr-4 text-right">กำไร/ขาดทุน (%)</th>
+          </tr>
+        </thead>
+        <tbody>
+          {result.rows.map((r) => (
+            <tr key={r.siteCode} className="border-b border-gray-100 hover:bg-gray-50">
+              <td className="py-2 pr-4">{r.label}</td>
+              <td className="py-2 pr-4 text-right tabular-nums">{r.headcount.toLocaleString("th-TH")}</td>
+              <td className="py-2 pr-4 text-right tabular-nums">{formatBaht(r.revenue)}</td>
+              <td className="py-2 pr-4 text-right tabular-nums">{formatBaht(r.employeeIncome)}</td>
+              <td className={`py-2 pr-4 text-right tabular-nums ${r.profit < 0 ? "text-red-600" : ""}`}>{formatBaht(r.profit)}</td>
+              <td className={`py-2 pr-4 text-right tabular-nums ${r.percent < 0 ? "text-red-600" : ""}`}>{r.percent.toLocaleString("th-TH")}%</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+export function UniformProfitTableView({ result }: { result: UniformProfitResult }) {
+  if (result.rows.length === 0) return <p className="text-sm text-gray-500">ไม่มีข้อมูล</p>;
+  const totals = result.rows.reduce((s, r) => ({ revenue: s.revenue + r.revenue, cost: s.cost + r.cost, profit: s.profit + r.profit }), { revenue: 0, cost: 0, profit: 0 });
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full min-w-max border-collapse text-sm">
+        <thead>
+          <tr className="border-b border-gray-300 text-left text-gray-600">
+            <th className="py-2 pr-4">หน่วยงาน</th>
+            <th className="py-2 pr-4 text-right">ยอดจำหน่าย (บาท)</th>
+            <th className="py-2 pr-4 text-right">ต้นทุนสินค้า (บาท)</th>
+            <th className="py-2 pr-4 text-right">กำไร/ขาดทุน (บาท)</th>
+          </tr>
+        </thead>
+        <tbody>
+          {result.rows.map((r) => (
+            <tr key={r.siteCode} className="border-b border-gray-100 hover:bg-gray-50">
+              <td className="py-2 pr-4">{r.label}</td>
+              <td className="py-2 pr-4 text-right tabular-nums">{formatBaht(r.revenue)}</td>
+              <td className="py-2 pr-4 text-right tabular-nums">{formatBaht(r.cost)}</td>
+              <td className={`py-2 pr-4 text-right tabular-nums ${r.profit < 0 ? "text-red-600" : ""}`}>{formatBaht(r.profit)}</td>
+            </tr>
+          ))}
+          <tr className="font-medium">
+            <td className="py-2 pr-4">รวม</td>
+            <td className="py-2 pr-4 text-right tabular-nums">{formatBaht(totals.revenue)}</td>
+            <td className="py-2 pr-4 text-right tabular-nums">{formatBaht(totals.cost)}</td>
+            <td className={`py-2 pr-4 text-right tabular-nums ${totals.profit < 0 ? "text-red-600" : ""}`}>{formatBaht(totals.profit)}</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+// Scatter (2026-09-28) — only "ผลประกอบการแต่ละหน่วยงาน" uses this
+// (จำนวนคน × กำไรบาท, one point per site). Unlike bar/line above, the y
+// value (profit) can go negative (a site can genuinely cost more than it
+// bills), so the plot domain spans below zero with its own baseline line
+// at y=0, instead of assuming 0 is the floor.
+export function ScatterChartView({ points, xLabel, yLabel }: { points: { label: string; x: number; y: number }[]; xLabel: string; yLabel: string }) {
+  if (points.length === 0) return <p className="text-sm text-gray-500">ไม่มีข้อมูล</p>;
+  const width = 640;
+  const height = 380;
+  const padding = { top: 16, right: 24, bottom: 48, left: 72 };
+  const plotW = width - padding.left - padding.right;
+  const plotH = height - padding.top - padding.bottom;
+
+  const xMax = Math.max(...points.map((p) => p.x), 1);
+  const xMin = 0; // headcount never negative
+  const yMax = Math.max(...points.map((p) => p.y), 0);
+  const yMin = Math.min(...points.map((p) => p.y), 0);
+  const xScale = (x: number) => padding.left + ((x - xMin) / (xMax - xMin || 1)) * plotW;
+  const yScale = (y: number) => padding.top + plotH - ((y - yMin) / (yMax - yMin || 1)) * plotH;
+  const zeroY = yScale(0);
+
+  return (
+    <svg width="100%" viewBox={`0 0 ${width} ${height}`} role="img" aria-label="แผนภูมิกระจาย">
+      {[0, 0.25, 0.5, 0.75, 1].map((f) => (
+        <line key={f} x1={padding.left} y1={padding.top + f * plotH} x2={width - padding.right} y2={padding.top + f * plotH} stroke={INK.gridline} strokeWidth={1} />
+      ))}
+      {/* y = 0 baseline, distinct from the regular gridlines above when the domain crosses zero */}
+      <line x1={padding.left} y1={zeroY} x2={width - padding.right} y2={zeroY} stroke={INK.baseline} strokeWidth={1} />
+      <line x1={padding.left} y1={padding.top} x2={padding.left} y2={padding.top + plotH} stroke={INK.baseline} strokeWidth={1} />
+      {[0, 0.5, 1].map((f) => (
+        <text key={f} x={padding.left - 8} y={padding.top + plotH - f * plotH + 4} textAnchor="end" fontSize={11} fill={INK.muted}>
+          {formatBaht(yMin + f * (yMax - yMin))}
+        </text>
+      ))}
+      {[0, 0.5, 1].map((f) => (
+        <text key={f} x={padding.left + f * plotW} y={height - padding.bottom + 16} textAnchor="middle" fontSize={11} fill={INK.muted}>
+          {Math.round(xMin + f * (xMax - xMin)).toLocaleString("th-TH")}
+        </text>
+      ))}
+      <text x={padding.left + plotW / 2} y={height - 6} textAnchor="middle" fontSize={12} fill={INK.secondary}>
+        {xLabel}
+      </text>
+      <text x={14} y={padding.top + plotH / 2} textAnchor="middle" fontSize={12} fill={INK.secondary} transform={`rotate(-90 14 ${padding.top + plotH / 2})`}>
+        {yLabel}
+      </text>
+      {points.map((p, i) => (
+        <g key={p.label}>
+          <title>{`${p.label}: ${xLabel} ${p.x.toLocaleString("th-TH")}, ${yLabel} ${formatBaht(p.y)}`}</title>
+          <circle cx={xScale(p.x)} cy={yScale(p.y)} r={6} fill={CATEGORICAL[i % CATEGORICAL.length]} stroke={INK.surface} strokeWidth={1.5} fillOpacity={0.85} />
+        </g>
+      ))}
+    </svg>
+  );
+}
+
+// --- Drilldown table (2026-09-28) ---------------------------------------
+// Renders the "which employees" list behind a clicked bar/slice/row.
+// Sortable by every column (click header, click again to flip direction) —
+// same click-to-sort convention as reference-table.tsx elsewhere in this
+// app, including the default sort on the first column rather than leaving
+// the table unsorted. Numeric columns (align:"right") compare numerically;
+// everything else (including ISO "YYYY-MM-DD" date strings, which already
+// sort correctly as plain strings) uses a Thai-aware localeCompare.
+export function DrilldownTable({ result, title, onClose }: { result: DrilldownResult; title: string; onClose: () => void }) {
+  const [sortKey, setSortKey] = useState(result.columns[0]?.key ?? "");
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
+
+  function toggleSort(key: string) {
+    if (key === sortKey) setSortDir(sortDir === "asc" ? "desc" : "asc");
+    else {
+      setSortKey(key);
+      setSortDir("asc");
+    }
+  }
+
+  const numericKeys = new Set(result.columns.filter((c) => c.align === "right").map((c) => c.key));
+  const sortedRows = [...result.rows].sort((a, b) => {
+    const av = a[sortKey];
+    const bv = b[sortKey];
+    const cmp = numericKeys.has(sortKey) ? Number(av) - Number(bv) : String(av).localeCompare(String(bv), "th");
+    return sortDir === "asc" ? cmp : -cmp;
+  });
+
+  return (
+    <div className="mt-4 rounded border border-gray-300 bg-gray-50 p-4">
+      <div className="mb-3 flex items-center justify-between">
+        <h3 className="text-sm font-medium text-gray-900">{title}</h3>
+        <button onClick={onClose} className="text-sm text-gray-500 hover:text-gray-800">
+          ปิด ✕
+        </button>
+      </div>
+      {result.rows.length === 0 ? (
+        <p className="text-sm text-gray-500">ไม่พบพนักงานที่ตรงกับรายการนี้</p>
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-max border-collapse bg-white text-sm">
+            <thead>
+              <tr className="border-b border-gray-300 text-gray-600">
+                <th className="py-2 px-3 text-right">ลำดับที่</th>
+                {result.columns.map((c) => {
+                  const active = sortKey === c.key;
+                  return (
+                    <th
+                      key={c.key}
+                      onClick={() => toggleSort(c.key)}
+                      className={`cursor-pointer select-none py-2 px-3 ${c.align === "right" ? "text-right" : "text-left"} hover:bg-gray-100`}
+                    >
+                      {c.label} {active ? (sortDir === "asc" ? "▲" : "▼") : ""}
+                    </th>
+                  );
+                })}
+              </tr>
+            </thead>
+            <tbody>
+              {sortedRows.map((row, i) => (
+                <tr key={i} className="border-b border-gray-100 hover:bg-gray-50">
+                  <td className="py-2 px-3 text-right tabular-nums text-gray-500">{i + 1}</td>
+                  {result.columns.map((c) => (
+                    <td key={c.key} className={`py-2 px-3 tabular-nums ${c.align === "right" ? "text-right" : "text-left"}`}>
+                      {row[c.key]}
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+      <p className="mt-2 text-xs text-gray-500">รวม {result.rows.length.toLocaleString("th-TH")} รายการ</p>
     </div>
   );
 }

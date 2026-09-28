@@ -27,7 +27,7 @@ export async function POST(request: NextRequest) {
   const denied = await requirePermission(user, "SITE", "save");
   if (denied) return denied;
 
-  let body: { siteCode?: unknown; siteName?: unknown };
+  let body: { siteCode?: unknown; siteName?: unknown; monthlyServiceFee?: unknown };
   try {
     body = await request.json();
   } catch {
@@ -41,12 +41,21 @@ export async function POST(request: NextRequest) {
     return apiError(400, "INVALID_PARAMS", "siteCode and siteName are required");
   }
 
+  let monthlyServiceFee: number | undefined;
+  if (body.monthlyServiceFee !== undefined && body.monthlyServiceFee !== null && body.monthlyServiceFee !== "") {
+    const n = Number(body.monthlyServiceFee);
+    if (!Number.isFinite(n) || n < 0) return apiError(400, "VALIDATION_FAILED", "monthlyServiceFee must be a non-negative number");
+    monthlyServiceFee = n;
+  }
+
   const existing = await prisma.mstSite.findUnique({ where: { SiteCode: siteCode } });
   if (existing) {
     return apiError(409, "SITE_ALREADY_EXISTS", undefined, { siteCode });
   }
 
-  const created = await prisma.mstSite.create({ data: { SiteCode: siteCode, SiteName: siteName, CreatedBy: user.userId } });
+  const created = await prisma.mstSite.create({
+    data: { SiteCode: siteCode, SiteName: siteName, MonthlyServiceFee: monthlyServiceFee, CreatedBy: user.userId },
+  });
 
   await logAction(user.userId, "CREATE_SITE", { targetTable: "mst_site", targetId: siteCode });
 

@@ -96,7 +96,7 @@ export async function verifySessionRecord() {
     data: { LastActivityDate: new Date() },
   });
 
-  return { record, tenantClient: tenant.client };
+  return { record, tenantClient: tenant.client, tenantCode: tenant.code };
 }
 
 /** Revokes the current session in the DB (audit trail kept) and clears the cookie. */

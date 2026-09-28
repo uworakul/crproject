@@ -18,6 +18,7 @@ interface EmployeeRow {
   StartDate: Date | string | null;
   ResignDate: Date | string | null;
   DeptCode: string | null;
+  CompanyCode: string | null;
   DeptName: string | null;
   PositionName: string | null;
   SiteCode: string | null;
@@ -31,20 +32,24 @@ export default function EmployeesTable({
   employees,
   departments,
   sites,
+  companies,
   canDelete,
 }: {
   employees: EmployeeRow[];
   departments: { DeptCode: string; DeptName: string }[];
   sites: { SiteCode: string; SiteName: string }[];
+  companies: { CompanyCode: string; CompanyName: string }[];
   canDelete: boolean;
 }) {
   const router = useRouter();
+  const [companyCode, setCompanyCode] = useState("");
   const [deptCode, setDeptCode] = useState("");
   const [siteCode, setSiteCode] = useState("");
   const [nameQuery, setNameQuery] = useState("");
   const [message, setMessage] = useState<string | null>(null);
 
   const filtered = employees.filter((e) => {
+    if (companyCode && e.CompanyCode !== companyCode) return false;
     if (deptCode && e.DeptCode !== deptCode) return false;
     if (siteCode && e.SiteCode !== siteCode) return false;
     if (nameQuery && !e.FullName.toLowerCase().includes(nameQuery.toLowerCase()) && !e.EmpCode.toLowerCase().includes(nameQuery.toLowerCase())) return false;
@@ -71,6 +76,14 @@ export default function EmployeesTable({
   return (
     <div>
       <div className="mb-4 flex flex-wrap items-center gap-3">
+        <select aria-label="บริษัท" value={companyCode} onChange={(e) => setCompanyCode(e.target.value)} className={`${inputCls} max-w-full`}>
+          <option value="">- ทุกบริษัท -</option>
+          {companies.map((company) => (
+            <option key={company.CompanyCode} value={company.CompanyCode}>
+              {company.CompanyName}
+            </option>
+          ))}
+        </select>
         <select value={deptCode} onChange={(e) => setDeptCode(e.target.value)} className={inputCls}>
           <option value="">- ทุกแผนก -</option>
           {departments.map((d) => (

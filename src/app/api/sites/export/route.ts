@@ -2,7 +2,7 @@ import { prisma } from "@/lib/prisma";
 import { verifySession } from "@/lib/dal";
 import { requirePermission } from "@/lib/authorize";
 import { apiError } from "@/lib/api-response";
-import { buildTwoColumnWorkbook } from "@/lib/excel-reference";
+import { buildSiteWorkbook } from "@/lib/excel-reference";
 
 export async function GET() {
   const user = await verifySession();
@@ -11,11 +11,8 @@ export async function GET() {
   if (denied) return denied;
 
   const sites = await prisma.mstSite.findMany({ orderBy: { SiteCode: "asc" } });
-  const buffer = await buildTwoColumnWorkbook(
-    "หน่วยงาน",
-    "รหัสหน่วยงาน",
-    "ชื่อหน่วยงาน",
-    sites.map((s) => ({ code: s.SiteCode, name: s.SiteName })),
+  const buffer = await buildSiteWorkbook(
+    sites.map((s) => ({ code: s.SiteCode, name: s.SiteName, monthlyServiceFee: s.MonthlyServiceFee ? Number(s.MonthlyServiceFee) : null })),
   );
 
   return new Response(buffer, {

@@ -12,6 +12,8 @@ import {
   getGenderBySite,
   getAgeBySite,
   getLeaveStatsByType,
+  getSitePerformance,
+  getUniformProfitBySite,
 } from "@/lib/reports/dashboard-data";
 
 // GET /api/employee-dashboard?metric=...&...filters
@@ -54,6 +56,17 @@ export async function GET(request: NextRequest) {
     const year = searchParams.get("year");
     if (!year) return apiError(400, "INVALID_PARAMS", "year is required for this metric");
     return apiSuccess(await getLeaveStatsByType(Number(year), filters));
+  }
+  if (metric === "site-performance") {
+    const periodId = searchParams.get("periodId");
+    if (!periodId) return apiError(400, "INVALID_PARAMS", "periodId is required for this metric");
+    return apiSuccess(await getSitePerformance(Number(periodId), filters));
+  }
+  if (metric === "uniform-profit") {
+    const year = searchParams.get("year");
+    const month = searchParams.get("month");
+    if (!year || !month) return apiError(400, "INVALID_PARAMS", "year and month are required for this metric");
+    return apiSuccess(await getUniformProfitBySite(Number(year), Number(month), filters));
   }
   return apiError(404, "METRIC_NOT_FOUND", "Unknown metric", { metric });
 }

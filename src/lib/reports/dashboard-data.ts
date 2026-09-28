@@ -18,7 +18,7 @@ export interface DashboardResult {
   unit: string;
 }
 
-function calculateAge(birthDate: Date, asOf: Date = new Date()): number {
+export function calculateAge(birthDate: Date, asOf: Date = new Date()): number {
   let age = asOf.getFullYear() - birthDate.getFullYear();
   const hasHadBirthdayThisYear = asOf.getMonth() > birthDate.getMonth() || (asOf.getMonth() === birthDate.getMonth() && asOf.getDate() >= birthDate.getDate());
   if (!hasHadBirthdayThisYear) age -= 1;
@@ -29,7 +29,7 @@ function calculateAge(birthDate: Date, asOf: Date = new Date()): number {
 // continuous variable), so charts render this with a single sequential hue
 // rather than per-bucket categorical colors, except in pie mode where each
 // slice still needs its own hue to be legible at all.
-const AGE_BUCKETS: { label: string; min: number; max: number }[] = [
+export const AGE_BUCKETS: { label: string; min: number; max: number }[] = [
   { label: "< 20 ปี", min: 0, max: 19 },
   { label: "20-29 ปี", min: 20, max: 29 },
   { label: "30-39 ปี", min: 30, max: 39 },
@@ -38,7 +38,7 @@ const AGE_BUCKETS: { label: string; min: number; max: number }[] = [
   { label: "60 ปีขึ้นไป", min: 60, max: 999 },
 ];
 
-const INVALID_AGE_LABEL = "ข้อมูลวันเกิดไม่ถูกต้อง";
+export const INVALID_AGE_LABEL = "ข้อมูลวันเกิดไม่ถูกต้อง";
 
 export async function getAgeDistribution(filters: ReportFilters): Promise<DashboardResult> {
   const employees = await prisma.mstEmployee.findMany({
@@ -220,9 +220,9 @@ export interface GroupedResult {
 }
 
 const TOP_SITE_CAP = 10;
-const OTHER_SITE_LABEL = "อื่นๆ";
+export const OTHER_SITE_LABEL = "อื่นๆ";
 
-function topSitesOf(employees: { Site: { SiteName: string } | null }[]): { topSites: string[]; labelFor: (raw: string) => string } {
+export function topSitesOf(employees: { Site: { SiteName: string } | null }[]): { topSites: string[]; labelFor: (raw: string) => string } {
   const headcount = new Map<string, number>();
   for (const e of employees) {
     const label = e.Site?.SiteName ?? "(ไม่ระบุหน่วยงาน)";
@@ -260,6 +260,131 @@ export async function getGenderBySite(filters: ReportFilters): Promise<GroupedRe
     .filter((s) => s.values.some((v) => v > 0));
 
   return { groups, series, unit: "คน" };
+}
+
+// --- Site performance / uniform P&L (2026-09-28) -----------------------
+
+// "ผลประกอบการแต่ละหน่วยงาน" — per site: MonthlyServiceFee (the site's
+// monthly revenue, set on the หน่วยงาน (Site) screen) vs. total employee
+// INCOME for that site in the selected period. "รายได้พนักงาน" is GROSS
+// income only (GrossWage + OtherIncome, the two INCOME-side totals on
+// trn_payroll_transaction) — explicitly NOT NetPay and explicitly NOT
+// netted against any DEDUCTION-side figure, per the user's correction
+// while this was being built ("รายได้อย่างเดียวนะ ไม่ใช่ netpay
+// ผลประกอบการ" / "รายการหักไม่เอามาคิดนะ"). Grouped by Employee.Site (the
+// employee's own DefaultSiteCode), same reasoning as getCostBySite above —
+// trn_payroll_transaction.SiteCode is just "whichever site's worksheet
+// touched this transaction last".
+export interface SitePerformanceRow {
+  siteCode: string;
+  label: string;
+  headcount: number;
+  revenue: number; // MonthlyServiceFee
+  employeeIncome: number; // GrossWage + OtherIncome, summed
+  profit: number; // revenue - employeeIncome
+  percent: number; // profit / revenue * 100 — "กำไร/ขาดทุน(%)", can go negative (0 when revenue is 0/unset)
+}
+export interface SitePerformanceResult {
+  rows: SitePerformanceRow[];
+}
+
+export async function getSitePerformance(periodId: number, filters: ReportFilters): Promise<SitePerformanceResult> {
+  const transactions = await prisma.trnPayrollTransaction.findMany({
+    where: { PeriodID: periodId, Employee: employeeWhere(filters) },
+    include: { Employee: { include: { Site: true } } },
+  });
+
+  const headcount = new Map<string, number>();
+  const income = new Map<string, number>();
+  const siteName = new Map<string, string>();
+  const revenueBySite = new Map<string, number>();
+  for (const t of transactions) {
+    const code = t.Employee.DefaultSiteCode;
+    if (!code) continue; // no site to attribute this employee's income to
+    headcount.set(code, (headcount.get(code) ?? 0) + 1);
+    income.set(code, (income.get(code) ?? 0) + Number(t.GrossWage) + Number(t.OtherIncome));
+    siteName.set(code, t.Employee.Site?.SiteName ?? code);
+    revenueBySite.set(code, t.Employee.Site?.MonthlyServiceFee ? Number(t.Employee.Site.MonthlyServiceFee) : 0);
+  }
+
+  const rows: SitePerformanceRow[] = [...siteName.keys()]
+    .map((code) => {
+      const revenue = revenueBySite.get(code) ?? 0;
+      const employeeIncome = Math.round((income.get(code) ?? 0) * 100) / 100;
+      const profit = Math.round((revenue - employeeIncome) * 100) / 100;
+      const percent = revenue > 0 ? Math.round((profit / revenue) * 1000) / 10 : 0;
+      return { siteCode: code, label: siteName.get(code)!, headcount: headcount.get(code) ?? 0, revenue, employeeIncome, profit, percent };
+    })
+    .sort((a, b) => b.profit - a.profit);
+
+  return { rows };
+}
+
+// "กำไร/ขาดทุน ค่าเครื่องแบบ" — รายได้(ยอดจำหน่าย) - ต้นทุนสินค้า, per
+// site, for a calendar year+month (inv_issue_header isn't linked to
+// sys_period at all — confirmed with the user to use DeliveryDate directly
+// rather than force-fitting a payroll period onto it). Revenue = the
+// Amount already recorded on non-welfare Issue lines of APPROVED
+// documents (welfare lines are always priced at 0 — see inv_issue_detail —
+// so they'd contribute nothing to revenue anyway, but are excluded
+// explicitly to match "ยอดเงินรวม ไม่รวมสวัสดิการ" used elsewhere in this
+// app). Cost uses inv_product's CURRENT UnitCost (weighted-average,
+// recomputed on every Purchase approval) applied to every line regardless
+// of when it was sold — same acknowledged ESTIMATE limitation as
+// getStockValueByMonth/getWelfareValueByMonth above (no historical cost
+// snapshot exists per sale). Grouped by the selling employee's
+// DefaultSiteCode (inv_issue_header has no site of its own — an issue is
+// always "to an employee", not "at a site").
+export const UNIFORM_PROFIT_UNIT = "บาท (ต้นทุนใช้ค่าปัจจุบัน ประมาณการ)";
+
+export interface UniformProfitRow {
+  siteCode: string;
+  label: string;
+  revenue: number;
+  cost: number;
+  profit: number;
+}
+export interface UniformProfitResult {
+  rows: UniformProfitRow[];
+}
+
+export async function getUniformProfitBySite(year: number, month: number, filters: ReportFilters): Promise<UniformProfitResult> {
+  const start = new Date(Date.UTC(year, month - 1, 1));
+  const end = new Date(Date.UTC(year, month, 0, 23, 59, 59, 999));
+
+  const [lines, products] = await Promise.all([
+    prisma.invIssueDetail.findMany({
+      where: { IsWelfare: false, Header: { Status: "APPROVED", DeliveryDate: { gte: start, lte: end }, Employee: employeeWhere(filters) } },
+      select: {
+        ProductCode: true,
+        Qty: true,
+        Amount: true,
+        Header: { select: { Employee: { select: { DefaultSiteCode: true, Site: { select: { SiteName: true } } } } } },
+      },
+    }),
+    prisma.invProduct.findMany({ select: { ProductCode: true, UnitCost: true } }),
+  ]);
+  const unitCost = new Map(products.map((p) => [p.ProductCode, p.UnitCost]));
+
+  const revenue = new Map<string, number>();
+  const cost = new Map<string, number>();
+  const siteName = new Map<string, string>();
+  for (const l of lines) {
+    const code = l.Header.Employee.DefaultSiteCode ?? "(ไม่ระบุหน่วยงาน)";
+    siteName.set(code, l.Header.Employee.DefaultSiteCode ? (l.Header.Employee.Site?.SiteName ?? code) : "(ไม่ระบุหน่วยงาน)");
+    revenue.set(code, (revenue.get(code) ?? 0) + Number(l.Amount));
+    cost.set(code, (cost.get(code) ?? 0) + Number(l.Qty) * Number(unitCost.get(l.ProductCode) ?? 0));
+  }
+
+  const rows: UniformProfitRow[] = [...siteName.keys()]
+    .map((code) => {
+      const rev = Math.round((revenue.get(code) ?? 0) * 100) / 100;
+      const c = Math.round((cost.get(code) ?? 0) * 100) / 100;
+      return { siteCode: code, label: siteName.get(code)!, revenue: rev, cost: c, profit: Math.round((rev - c) * 100) / 100 };
+    })
+    .sort((a, b) => b.profit - a.profit);
+
+  return { rows };
 }
 
 export async function getAgeBySite(filters: ReportFilters): Promise<GroupedResult> {

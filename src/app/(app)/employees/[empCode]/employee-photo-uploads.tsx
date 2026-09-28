@@ -33,7 +33,7 @@ function PhotoBox({
         type="button"
         disabled={!canSave || busy}
         onClick={onClick}
-        className="flex h-20 w-20 items-center justify-center overflow-hidden rounded border border-dashed border-gray-300 bg-gray-50 text-xs text-gray-400 hover:border-gray-400 disabled:cursor-default disabled:hover:border-gray-300"
+        className="flex h-30 w-30 items-center justify-center overflow-hidden rounded border border-dashed border-gray-300 bg-gray-50 text-xs text-gray-400 hover:border-gray-400 disabled:cursor-default disabled:hover:border-gray-300"
       >
         {exists ? (
           // eslint-disable-next-line @next/next/no-img-element -- served from our own authenticated proxy route, not a static/remote asset Next's Image optimizer can pre-configure a domain for

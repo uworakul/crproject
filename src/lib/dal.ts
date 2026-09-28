@@ -8,6 +8,11 @@ export interface CurrentUser {
   role: string;
   displayName: string;
   defaultSiteCode: string | null;
+  // Which tenant (tenants.json entry, e.g. "001"/"002") this session belongs
+  // to — 2026-09-28, so any Route Handler can namespace shared resources
+  // (e.g. Cloudflare R2 object keys, one bucket shared across all tenants)
+  // by tenant without re-deriving it from the cookie itself.
+  tenantCode: string;
 }
 
 /**
@@ -37,5 +42,6 @@ export const verifySession = cache(async (): Promise<CurrentUser | null> => {
     role: record.User.Role,
     displayName: record.User.DisplayName,
     defaultSiteCode: record.User.DefaultSiteCode,
+    tenantCode: result.tenantCode,
   };
 });
