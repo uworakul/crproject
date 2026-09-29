@@ -16,11 +16,16 @@ interface ReportDef {
   key: string;
   label: string;
   groupable?: boolean;
+  pdfOnly?: boolean; // legal-form reports: no Excel export
 }
 const REPORTS: ReportDef[] = [
   { key: "employee-registry", label: "ทะเบียนพนักงาน", groupable: true },
   { key: "employee-card", label: "การ์ดพนักงาน" },
+  { key: "employee-profile", label: "ประวัติพนักงาน" },
   { key: "payment-history", label: "ประวัติการชำระเงิน", groupable: true },
+  { key: "nda-contract", label: "สัญญาไม่เปิดเผยข้อมูลความลับของบริษัท", pdfOnly: true },
+  { key: "pdpa-consent", label: "หนังสือยินยอมในการจัดเก็บเอกสาร PDPA", pdfOnly: true },
+  { key: "tbor6-form", label: "แบบ ธภ.6 (คำขอรับใบอนุญาตพนักงานรักษาความปลอดภัย)", pdfOnly: true },
 ];
 
 const GROUP_BY_OPTIONS: { value: string; label: string }[] = [
@@ -322,9 +327,11 @@ export default function EmployeeReportsView({
         <button onClick={() => generate("pdf")} disabled={pending !== null} className="rounded-md border border-gray-300 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-50">
           {pending === "pdf" ? "กำลังสร้าง..." : "ออกรายงาน PDF"}
         </button>
-        <button onClick={() => generate("excel")} disabled={pending !== null} className="rounded-md border border-gray-300 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-50">
-          {pending === "excel" ? "กำลังสร้าง..." : "ส่งออก Excel"}
-        </button>
+        {!report.pdfOnly && (
+          <button onClick={() => generate("excel")} disabled={pending !== null} className="rounded-md border border-gray-300 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-50">
+            {pending === "excel" ? "กำลังสร้าง..." : "ส่งออก Excel"}
+          </button>
+        )}
       </div>
 
       {message && <p className="text-sm text-red-600">{message}</p>}
@@ -338,9 +345,11 @@ export default function EmployeeReportsView({
                 <button onClick={() => previewBlob && downloadBlob(previewBlob, "pdf")} className="rounded-md bg-gray-900 px-3 py-1.5 text-sm text-white hover:bg-gray-700">
                   ดาวน์โหลด PDF
                 </button>
-                <button onClick={() => generate("excel")} disabled={pending !== null} className="rounded-md border border-gray-300 px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-50">
-                  {pending === "excel" ? "กำลังสร้าง..." : "ส่งออก Excel"}
-                </button>
+                {!report.pdfOnly && (
+                  <button onClick={() => generate("excel")} disabled={pending !== null} className="rounded-md border border-gray-300 px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-50">
+                    {pending === "excel" ? "กำลังสร้าง..." : "ส่งออก Excel"}
+                  </button>
+                )}
                 <button onClick={closePreview} className="rounded-md border border-gray-300 px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50">
                   ปิด
                 </button>

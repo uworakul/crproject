@@ -70,11 +70,15 @@ function periodDayCount(p: PeriodInfo): number {
 // system — RateBasis is DAILY|MONTHLY only) so it stays purely informational.
 // Returns null (meaning "don't touch Amount") when the code has no
 // configured rate, so manual entry keeps working exactly as before.
-function computeAmountFromDays(code: string, days: string, rateConfig: RateConfig, dayCount: number): string | null {
+// 2026-09-29: rateBasis "OT_HOURLY" (MONTHLY employees, codes 05-09 — sent by
+// by-employee as MonthlySalary/30/8×multiplier per hour) computes from HOURS
+// instead: Amount = hours × per-hour rate. Typing an amount manually still wins.
+function computeAmountFromDays(code: string, days: string, rateConfig: RateConfig, dayCount: number, hours: string = ""): string | null {
   const rate = rateConfig[code];
   if (!rate) return null;
-  const d = Number(days) || 0;
   const rateAmount = Number(rate.amount);
+  if (rate.rateBasis === "OT_HOURLY") return ((Number(hours) || 0) * rateAmount).toFixed(2);
+  const d = Number(days) || 0;
   if (rate.rateBasis === "MONTHLY") {
     if (dayCount <= 0) return null;
     return ((d / dayCount) * rateAmount).toFixed(2);
@@ -246,7 +250,17 @@ export default function TransactionDetailPanel({
                   <td className="px-3 py-2 text-gray-500">{d.Position?.PositionName ?? "-"}</td>
                   <td className="px-3 py-2 text-right">
                     {isEditing ? (
-                      <input type="number" step="any" value={editForm.hours} onChange={(e) => setEditForm({ ...editForm, hours: e.target.value })} className="w-20 rounded border border-gray-300 px-2 py-1 text-right text-sm" />
+                      <input
+                        type="number"
+                        step="any"
+                        value={editForm.hours}
+                        onChange={(e) => {
+                          const hours = e.target.value;
+                          const computed = computeAmountFromDays(d.Code, editForm.days, rateConfig, dayCount, hours);
+                          setEditForm({ ...editForm, hours, ...(computed !== null && rateConfig[d.Code]?.rateBasis === "OT_HOURLY" ? { amount: computed } : {}) });
+                        }}
+                        className="w-20 rounded border border-gray-300 px-2 py-1 text-right text-sm"
+                      />
                     ) : (
                       (d.Hours ?? "-")
                     )}
@@ -259,8 +273,8 @@ export default function TransactionDetailPanel({
                         value={editForm.days}
                         onChange={(e) => {
                           const days = e.target.value;
-                          const computed = computeAmountFromDays(d.Code, days, rateConfig, dayCount);
-                          setEditForm({ ...editForm, days, ...(computed !== null ? { amount: computed } : {}) });
+                          const computed = computeAmountFromDays(d.Code, days, rateConfig, dayCount, editForm.hours);
+                          setEditForm({ ...editForm, days, ...(computed !== null && rateConfig[d.Code]?.rateBasis !== "OT_HOURLY" ? { amount: computed } : {}) });
                         }}
                         className="w-20 rounded border border-gray-300 px-2 py-1 text-right text-sm"
                       />
@@ -343,7 +357,7 @@ export default function TransactionDetailPanel({
               <SearchableSelect
                 value={form.code}
                 onChange={(code) => {
-                  const computed = computeAmountFromDays(code, form.days, rateConfig, dayCount);
+                  const computed = computeAmountFromDays(code, form.days, rateConfig, dayCount, form.hours);
                   setForm({ ...form, code, ...(computed !== null ? { amount: computed } : {}) });
                 }}
                 options={typeOptions}
@@ -353,7 +367,17 @@ export default function TransactionDetailPanel({
           </label>
           <label className="flex flex-col gap-1 text-xs text-gray-500">
             จำนวนชม.
-            <input type="number" step="any" value={form.hours} onChange={(e) => setForm({ ...form, hours: e.target.value })} className="w-20 rounded border border-gray-300 px-2 py-1 text-sm text-gray-900" />
+            <input
+              type="number"
+              step="any"
+              value={form.hours}
+              onChange={(e) => {
+                const hours = e.target.value;
+                const computed = computeAmountFromDays(form.code, form.days, rateConfig, dayCount, hours);
+                setForm({ ...form, hours, ...(computed !== null && rateConfig[form.code]?.rateBasis === "OT_HOURLY" ? { amount: computed } : {}) });
+              }}
+              className="w-20 rounded border border-gray-300 px-2 py-1 text-sm text-gray-900"
+            />
           </label>
           <label className="flex flex-col gap-1 text-xs text-gray-500">
             จำนวนวัน
@@ -363,8 +387,8 @@ export default function TransactionDetailPanel({
               value={form.days}
               onChange={(e) => {
                 const days = e.target.value;
-                const computed = computeAmountFromDays(form.code, days, rateConfig, dayCount);
-                setForm({ ...form, days, ...(computed !== null ? { amount: computed } : {}) });
+                const computed = computeAmountFromDays(form.code, days, rateConfig, dayCount, form.hours);
+                setForm({ ...form, days, ...(computed !== null && rateConfig[form.code]?.rateBasis !== "OT_HOURLY" ? { amount: computed } : {}) });
               }}
               className="w-20 rounded border border-gray-300 px-2 py-1 text-sm text-gray-900"
             />

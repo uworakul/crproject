@@ -7,7 +7,7 @@ import { apiError } from "@/lib/api-response";
 import type { ReportFilters } from "@/lib/reports/types";
 import { getPayslipRows, getBankRemittanceRows, getPaySummaryMatrix } from "@/lib/reports/payroll-reports";
 import { DEBT_REPORT_CATEGORIES, getDebtRows, type DebtReportKey } from "@/lib/reports/debt-reports";
-import { getEmployeeRegistryRows, getEmployeeCards, EMPLOYEE_CARD_SECTIONS, type EmployeeCardSection } from "@/lib/reports/employee-reports";
+import { getEmployeeRegistryRows, getEmployeeCards, EMPLOYEE_CARD_SECTIONS, type EmployeeCardSection, getEmployeeProfiles, getNdaContracts, getTbor6Forms } from "@/lib/reports/employee-reports";
 import { getPaymentHistoryRows } from "@/lib/reports/payment-history";
 import { getSsoRemitMonthlyRows, getSsoRemitCheckRows, getWelfareFundRemitRows, getWithholdingTaxRows, getAnnualTaxSummaryRows } from "@/lib/reports/government-reports";
 import { buildReportWorkbook, type ReportExcelColumn } from "@/lib/reports/excel-builder";
@@ -15,6 +15,10 @@ import { money, type ReportColumn } from "@/lib/pdf/layout";
 import TableReportPdf from "@/lib/reports/pdf/table-report-pdf";
 import PayslipPdf from "@/lib/reports/pdf/payslip-pdf";
 import EmployeeCardPdf from "@/lib/reports/pdf/employee-card-pdf";
+import EmployeeProfilePdf from "@/lib/reports/pdf/employee-profile-pdf";
+import NdaPdf from "@/lib/reports/pdf/nda-pdf";
+import PdpaPdf from "@/lib/reports/pdf/pdpa-pdf";
+import Tbor6Pdf from "@/lib/reports/pdf/tbor6-pdf";
 import { parseGroupBy, parseSortBy, parseSortDir, sortRows, groupRows, buildGroupedRows, buildGroupedExcelRows, sumField, type GroupByField, type SortByField, type SortDir, type GroupableRow, type RowGroup } from "@/lib/reports/group-sort";
 
 // Single dispatcher for every /payroll/reports report (2026-09-22) —
@@ -585,6 +589,71 @@ export async function GET(request: NextRequest, ctx: RouteContext<"/api/payroll/
       })),
     );
     return excelResponse(buffer, "employee-card");
+  }
+
+  if (reportKey === "tbor6-form") {
+    if (format !== "pdf") return apiError(400, "FORMAT_NOT_SUPPORTED", "เอกสารนี้ออกได้เฉพาะ PDF");
+    const forms = await getTbor6Forms(filters);
+    if (forms.length === 0) return apiError(404, "NO_DATA", "ไม่พบพนักงานตามเงื่อนไขที่เลือก");
+    const buffer = await renderToBuffer(<Tbor6Pdf forms={forms} />);
+    return pdfResponse(buffer, reportKey);
+  }
+
+  if (reportKey === "nda-contract" ||reportKey === "pdpa-consent") {
+    // Legal forms — printable only; a spreadsheet of a contract has no
+    // meaning, so Excel is rejected rather than faked.
+    if (format !== "pdf") return apiError(400, "FORMAT_NOT_SUPPORTED", "เอกสารนี้ออกได้เฉพาะ PDF");
+    const contracts = await getNdaContracts(filters);
+    if (contracts.length === 0) return apiError(404, "NO_DATA", "ไม่พบพนักงานตามเงื่อนไขที่เลือก");
+    const buffer = await renderToBuffer(reportKey === "nda-contract" ? <NdaPdf contracts={contracts} /> : <PdpaPdf contracts={contracts} />);
+    return pdfResponse(buffer, reportKey);
+  }
+
+  if (reportKey === "employee-profile") {
+    const profiles = await getEmployeeProfiles(filters);
+    if (format === "pdf") {
+      const buffer = await renderToBuffer(<EmployeeProfilePdf companyName={companyName} recordedByName={user.displayName} profiles={profiles} />);
+      return pdfResponse(buffer, "employee-profile");
+    }
+    const columns: ReportExcelColumn[] = [
+      { header: "รหัสพนักงาน", key: "empCode", width: 12 },
+      { header: "ชื่อ-สกุล", key: "fullName", width: 26 },
+      { header: "ตำแหน่ง", key: "positionName", width: 16 },
+      { header: "ส่วนสูง (ซม.)", key: "height", width: 10 },
+      { header: "น้ำหนัก (กก.)", key: "weight", width: 10 },
+      { header: "วันเกิด", key: "birthDate", width: 12 },
+      { header: "อายุ", key: "age", width: 6 },
+      { header: "ที่อยู่ตามทะเบียนบ้าน", key: "permanentAddress", width: 30 },
+      { header: "ที่อยู่ปัจจุบัน", key: "currentAddress", width: 30 },
+      { header: "เบอร์โทรศัพท์", key: "phoneNo", width: 14 },
+      { header: "รูปพรรณสัณฐาน", key: "distinguishingMarks", width: 24 },
+      { header: "บุคคลอ้างอิง 1", key: "referencePerson1Name", width: 18 },
+      { header: "บุคคลอ้างอิง 2", key: "referencePerson2Name", width: 18 },
+      { header: "เลขที่ใบอนุญาต ธภ.6", key: "licenseNo6", width: 16 },
+      { header: "เลขที่ใบอนุญาต ธภ.7", key: "licenseNo7", width: 16 },
+    ];
+    const buffer = await buildReportWorkbook(
+      "ประวัติพนักงาน",
+      columns,
+      profiles.map((p) => ({
+        empCode: p.empCode,
+        fullName: p.fullName,
+        positionName: p.positionName ?? "",
+        height: p.height ?? "",
+        weight: p.weight ?? "",
+        birthDate: p.birthDate ?? "",
+        age: p.age ?? "",
+        permanentAddress: p.permanentAddress ?? "",
+        currentAddress: p.currentAddress ?? "",
+        phoneNo: p.phoneNo ?? "",
+        distinguishingMarks: p.distinguishingMarks ?? "",
+        referencePerson1Name: p.referencePerson1Name ?? "",
+        referencePerson2Name: p.referencePerson2Name ?? "",
+        licenseNo6: p.licenseNo6 ?? "",
+        licenseNo7: p.licenseNo7 ?? "",
+      })),
+    );
+    return excelResponse(buffer, "employee-profile");
   }
 
   if (reportKey === "sso-remit" || reportKey === "sso-remit-check" || reportKey === "welfare-fund-remit") {

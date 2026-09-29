@@ -6,6 +6,8 @@ import { apiError, apiSuccess } from "@/lib/api-response";
 import { getRateConfigForEmployee, recomputeTransactionOtherTotals } from "@/lib/payroll";
 import { isEmployeeInScope } from "@/lib/employee-scope";
 
+const MONTHLY_OT_MULTIPLIERS: Record<string, number> = { "05": 1, "06": 1.25, "07": 1.5, "08": 2.5, "09": 3 };
+
 // 2026-09-22 — each detail line's SiteCode/PositionCode (set only for lines
 // pulled from Worksheet, per-site) needs a display name; manual lines have
 // both null and the client shows "-" for those.
@@ -54,6 +56,17 @@ export async function GET(request: NextRequest) {
   const rateConfigMap = await getRateConfigForEmployee(employee);
   const rateConfig: Record<string, { amount: string; rateBasis: string }> = {};
   for (const [code, cfg] of rateConfigMap) rateConfig[code] = { amount: cfg.amount.toString(), rateBasis: cfg.rateBasis };
+
+  // 2026-09-29: MONTHLY employees — OT codes 05-09 are computed from hours as
+  // MonthlySalary / 30 / 8 × multiplier per hour (confirmed with user). Sent to
+  // the client as a synthetic "OT_HOURLY" rate (amount = per-hour rate) so the
+  // client just multiplies by hours; an amount typed manually still wins.
+  if (employee.EmployeeType === "MONTHLY" && employee.MonthlySalary && Number(employee.MonthlySalary) > 0) {
+    const perHour = employee.MonthlySalary.div(30).div(8);
+    for (const [code, mult] of Object.entries(MONTHLY_OT_MULTIPLIERS)) {
+      rateConfig[code] = { amount: perHour.mul(mult).toFixed(6), rateBasis: "OT_HOURLY" };
+    }
+  }
 
   // Union of Site+Position codes and Position-only codes, for seeding new
   // transactions below — Site-specific IncomeType name wins if both exist
