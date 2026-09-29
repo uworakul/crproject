@@ -3,6 +3,7 @@ import { verifySession } from "@/lib/dal";
 import { requirePermission } from "@/lib/authorize";
 import { apiError, apiSuccess } from "@/lib/api-response";
 import { REQUEST_DOCUMENT_DOCTYPE, COMMISSION_MIN_DAYS, type RequestDocumentCode } from "@/lib/request";
+import { employeeScopeWhere } from "@/lib/employee-scope";
 
 // GET /api/requests/[id]/commission-candidates — backs the "Load" button on
 // a COMMISSION (ขอเบิกค่านำพา) document's detail page (2026-09-28): finds
@@ -42,6 +43,7 @@ export async function GET(_req: Request, ctx: RouteContext<"/api/requests/[id]/c
       CommissionClaimedDate: null,
       EmployeeStatus: { not: "RESIGNED" },
       ResignDate: null,
+      ...employeeScopeWhere(user),
     },
     select: { EmpCode: true, FullName: true, StartDate: true, EmployeeStatus: true, ReferrerEmpCode: true, Site: { select: { SiteName: true } } },
     orderBy: { EmpCode: "asc" },

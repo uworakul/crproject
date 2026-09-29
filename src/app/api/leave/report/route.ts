@@ -4,6 +4,7 @@ import { verifySession } from "@/lib/dal";
 import { requirePermission } from "@/lib/authorize";
 import { apiError, apiSuccess } from "@/lib/api-response";
 import { getLeaveBalanceSummary } from "@/lib/leave-balance";
+import { employeeScopeWhere, isEmployeeInScope } from "@/lib/employee-scope";
 
 // Leave History Report (BR scope: 2 screens for this module — Leave Request
 // and this report). Filterable by employee and/or year; returns the raw
@@ -28,6 +29,7 @@ export async function GET(request: NextRequest) {
     where: {
       ...(empCode ? { EmpCode: empCode } : {}),
       ...(year ? { StartDate: { gte: new Date(Date.UTC(year, 0, 1)), lt: new Date(Date.UTC(year + 1, 0, 1)) } } : {}),
+      Employee: employeeScopeWhere(user),
     },
     include: { Employee: { select: { FullName: true } }, LeaveType: { select: { LeaveTypeName: true } } },
     orderBy: { StartDate: "desc" },
@@ -35,9 +37,11 @@ export async function GET(request: NextRequest) {
 
   let balances: (Awaited<ReturnType<typeof getLeaveBalanceSummary>>[number] & { empCode: string; employeeName: string; year: number })[] = [];
   if (empCode && year) {
-    const employee = await prisma.mstEmployee.findUnique({ where: { EmpCode: empCode }, select: { FullName: true } });
-    const summary = await getLeaveBalanceSummary(empCode, year);
-    balances = summary.map((s) => ({ ...s, empCode, employeeName: employee?.FullName ?? empCode, year }));
+    const employee = await prisma.mstEmployee.findUnique({ where: { EmpCode: empCode }, select: { FullName: true, CompanyCode: true, EmployeeType: true } });
+    if (employee && isEmployeeInScope(user, employee)) {
+      const summary = await getLeaveBalanceSummary(empCode, year);
+      balances = summary.map((s) => ({ ...s, empCode, employeeName: employee.FullName, year }));
+    }
   }
 
   return apiSuccess({ history, balances });

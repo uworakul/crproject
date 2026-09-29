@@ -5,6 +5,7 @@ import { requirePermission } from "@/lib/authorize";
 import { logAction, computeDiff } from "@/lib/audit-log";
 import { apiError, apiSuccess } from "@/lib/api-response";
 import { isValidEmployeeType, isValidEmployeeStatus } from "@/lib/validation";
+import { isEmployeeInScope } from "@/lib/employee-scope";
 
 export async function GET(_req: NextRequest, ctx: RouteContext<"/api/employees/[empCode]">) {
   const user = await verifySession();
@@ -15,6 +16,9 @@ export async function GET(_req: NextRequest, ctx: RouteContext<"/api/employees/[
   const { empCode } = await ctx.params;
   const employee = await prisma.mstEmployee.findUnique({ where: { EmpCode: empCode } });
   if (!employee) return apiError(404, "EMPLOYEE_NOT_FOUND");
+  // Same code as "doesn't exist" (2026-09-28) — an out-of-scope EmpCode
+  // shouldn't be distinguishable from one that was never created at all.
+  if (!isEmployeeInScope(user, employee)) return apiError(404, "EMPLOYEE_NOT_FOUND");
 
   return apiSuccess(employee);
 }
@@ -51,6 +55,7 @@ export async function PUT(request: NextRequest, ctx: RouteContext<"/api/employee
   const { empCode } = await ctx.params;
   const existing = await prisma.mstEmployee.findUnique({ where: { EmpCode: empCode } });
   if (!existing) return apiError(404, "EMPLOYEE_NOT_FOUND");
+  if (!isEmployeeInScope(user, existing)) return apiError(404, "EMPLOYEE_NOT_FOUND");
 
   let body: {
     fullName?: unknown;
@@ -338,6 +343,7 @@ export async function DELETE(request: NextRequest, ctx: RouteContext<"/api/emplo
   const { empCode } = await ctx.params;
   const existing = await prisma.mstEmployee.findUnique({ where: { EmpCode: empCode } });
   if (!existing) return apiError(404, "EMPLOYEE_NOT_FOUND");
+  if (!isEmployeeInScope(user, existing)) return apiError(404, "EMPLOYEE_NOT_FOUND");
 
   let body: { reason?: unknown };
   try {

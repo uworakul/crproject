@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { verifySession } from "@/lib/dal";
 import { hasPermission } from "@/lib/authorize";
 import { prisma } from "@/lib/prisma";
+import { employeeScopeWhere, companyScopeWhere } from "@/lib/employee-scope";
 import PayrollCalculateView from "./payroll-calculate-view";
 
 export default async function PayrollCalculatePage() {
@@ -16,9 +17,9 @@ export default async function PayrollCalculatePage() {
     hasPermission(user, "PAYROLL_LOCK", "approve"),
     hasPermission(user, "PAYROLL_LOCK", "read"),
     prisma.sysPeriod.findMany({ orderBy: { PeriodID: "desc" } }),
-    prisma.refCompany.findMany({ orderBy: { CompanyCode: "asc" }, select: { CompanyCode: true, CompanyName: true } }),
+    prisma.refCompany.findMany({ where: companyScopeWhere(user), orderBy: { CompanyCode: "asc" }, select: { CompanyCode: true, CompanyName: true } }),
     prisma.refDepartment.findMany({ where: { IsActive: true }, orderBy: { DeptCode: "asc" }, select: { DeptCode: true, DeptName: true } }),
-    prisma.mstEmployee.findMany({ where: { EmployeeStatus: "ACTIVE" }, orderBy: { EmpCode: "asc" }, select: { EmpCode: true, FullName: true } }),
+    prisma.mstEmployee.findMany({ where: { EmployeeStatus: "ACTIVE", ...employeeScopeWhere(user) }, orderBy: { EmpCode: "asc" }, select: { EmpCode: true, FullName: true } }),
   ]);
 
   const periods = JSON.parse(JSON.stringify(periodsRaw));

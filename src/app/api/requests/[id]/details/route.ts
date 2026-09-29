@@ -5,6 +5,7 @@ import { requirePermission } from "@/lib/authorize";
 import { logAction } from "@/lib/audit-log";
 import { apiError, apiSuccess } from "@/lib/api-response";
 import { REQUEST_DOCUMENT_DOCTYPE, REQUEST_DOCUMENT_KIND, type RequestDocumentCode } from "@/lib/request";
+import { isEmployeeInScope } from "@/lib/employee-scope";
 
 // Add one employee line to a request document — allowed until the header
 // is APPROVED (per the user: "เพิ่ม/แก้ไข/ลบรายการได้ จนกว่ารายการจะอนุมัติ"),
@@ -49,6 +50,7 @@ export async function POST(request: NextRequest, ctx: RouteContext<"/api/request
 
   const employee = await prisma.mstEmployee.findUnique({ where: { EmpCode: empCode } });
   if (!employee) return apiError(404, "EMPLOYEE_NOT_FOUND", undefined, { empCode });
+  if (!isEmployeeInScope(user, employee)) return apiError(404, "EMPLOYEE_NOT_FOUND", undefined, { empCode });
   // Server-side mirror of the employee-picker dropdown's own filter
   // (EmployeeStatus="ACTIVE") — the dropdown hiding a resigned employee was
   // never actually enforced here, so a resigned EmpCode could still be added

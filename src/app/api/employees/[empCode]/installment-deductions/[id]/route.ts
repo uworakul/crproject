@@ -4,6 +4,7 @@ import { verifySession } from "@/lib/dal";
 import { requirePermission } from "@/lib/authorize";
 import { logAction } from "@/lib/audit-log";
 import { apiError, apiSuccess } from "@/lib/api-response";
+import { isEmployeeInScope } from "@/lib/employee-scope";
 
 // Edit description/deductPerPeriod/remainingAmount. Status is no longer a
 // manual OPEN/CLOSED toggle (2026-09-19, per user request) — it's derived
@@ -23,6 +24,9 @@ export async function PUT(request: NextRequest, ctx: RouteContext<"/api/employee
 
   const existing = await prisma.invEmployeeDebt.findUnique({ where: { DebtID: debtId } });
   if (!existing || existing.EmpCode !== empCode) return apiError(404, "DEBT_NOT_FOUND");
+
+  const employeeScope = await prisma.mstEmployee.findUnique({ where: { EmpCode: empCode }, select: { CompanyCode: true, EmployeeType: true } });
+  if (!employeeScope || !isEmployeeInScope(user, employeeScope)) return apiError(404, "DEBT_NOT_FOUND");
 
   let body: { description?: unknown; deductPerPeriod?: unknown; remainingAmount?: unknown };
   try {
@@ -83,6 +87,9 @@ export async function DELETE(_req: Request, ctx: RouteContext<"/api/employees/[e
 
   const existing = await prisma.invEmployeeDebt.findUnique({ where: { DebtID: debtId } });
   if (!existing || existing.EmpCode !== empCode) return apiError(404, "DEBT_NOT_FOUND");
+
+  const employeeScope = await prisma.mstEmployee.findUnique({ where: { EmpCode: empCode }, select: { CompanyCode: true, EmployeeType: true } });
+  if (!employeeScope || !isEmployeeInScope(user, employeeScope)) return apiError(404, "DEBT_NOT_FOUND");
   if (existing.MovementID !== null) {
     return apiError(409, "MOVEMENT_ORIGIN_DEBT_CANNOT_BE_DELETED", "รายการนี้เกิดจากรายการเบิกสินค้า ต้องแก้ไขผ่านโมดูลคลังสินค้า");
   }

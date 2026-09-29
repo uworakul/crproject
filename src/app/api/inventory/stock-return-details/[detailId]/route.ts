@@ -4,6 +4,7 @@ import { verifySession } from "@/lib/dal";
 import { requirePermission } from "@/lib/authorize";
 import { logAction } from "@/lib/audit-log";
 import { apiError, apiSuccess } from "@/lib/api-response";
+import { isEmployeeInScope } from "@/lib/employee-scope";
 
 // Flat endpoint — see stock-count-details/[detailId]/route.ts.
 export async function PUT(request: NextRequest, ctx: RouteContext<"/api/inventory/stock-return-details/[detailId]">) {
@@ -21,6 +22,8 @@ export async function PUT(request: NextRequest, ctx: RouteContext<"/api/inventor
 
   const header = await prisma.invReturnHeader.findUnique({ where: { ReturnHeaderID: existing.ReturnHeaderID } });
   if (!header) return apiError(404, "STOCK_RETURN_NOT_FOUND");
+  const employeeScope = await prisma.mstEmployee.findUnique({ where: { EmpCode: header.EmpCode }, select: { CompanyCode: true, EmployeeType: true } });
+  if (!employeeScope || !isEmployeeInScope(user, employeeScope)) return apiError(404, "STOCK_RETURN_DETAIL_NOT_FOUND");
   if (header.Status === "APPROVED") {
     return apiError(409, "STOCK_RETURN_LOCKED", "An APPROVED return can no longer be edited", { status: header.Status });
   }
@@ -68,6 +71,8 @@ export async function DELETE(_req: NextRequest, ctx: RouteContext<"/api/inventor
 
   const header = await prisma.invReturnHeader.findUnique({ where: { ReturnHeaderID: existing.ReturnHeaderID } });
   if (!header) return apiError(404, "STOCK_RETURN_NOT_FOUND");
+  const employeeScope = await prisma.mstEmployee.findUnique({ where: { EmpCode: header.EmpCode }, select: { CompanyCode: true, EmployeeType: true } });
+  if (!employeeScope || !isEmployeeInScope(user, employeeScope)) return apiError(404, "STOCK_RETURN_DETAIL_NOT_FOUND");
   if (header.Status === "APPROVED") {
     return apiError(409, "STOCK_RETURN_LOCKED", "An APPROVED return can no longer be edited", { status: header.Status });
   }

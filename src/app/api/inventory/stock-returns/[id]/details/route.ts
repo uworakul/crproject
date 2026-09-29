@@ -4,6 +4,7 @@ import { verifySession } from "@/lib/dal";
 import { requirePermission } from "@/lib/authorize";
 import { logAction } from "@/lib/audit-log";
 import { apiError, apiSuccess } from "@/lib/api-response";
+import { isEmployeeInScope } from "@/lib/employee-scope";
 
 // Unlike Issue, unitPrice is always manually entered here ("ใส่ยอดรับคืน
 // ต่อหน่วยสินค้า") — a return's value doesn't have to match the original
@@ -20,6 +21,8 @@ export async function POST(request: NextRequest, ctx: RouteContext<"/api/invento
 
   const header = await prisma.invReturnHeader.findUnique({ where: { ReturnHeaderID: returnId } });
   if (!header) return apiError(404, "STOCK_RETURN_NOT_FOUND");
+  const employeeScope = await prisma.mstEmployee.findUnique({ where: { EmpCode: header.EmpCode }, select: { CompanyCode: true, EmployeeType: true } });
+  if (!employeeScope || !isEmployeeInScope(user, employeeScope)) return apiError(404, "STOCK_RETURN_NOT_FOUND");
   if (header.Status === "APPROVED") {
     return apiError(409, "STOCK_RETURN_LOCKED", "An APPROVED return can no longer be edited", { status: header.Status });
   }

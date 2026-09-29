@@ -4,6 +4,7 @@ import { verifySession } from "@/lib/dal";
 import { requirePermission } from "@/lib/authorize";
 import { logAction } from "@/lib/audit-log";
 import { apiError, apiSuccess } from "@/lib/api-response";
+import { isEmployeeInScope } from "@/lib/employee-scope";
 
 export async function GET(_req: NextRequest, ctx: RouteContext<"/api/inventory/stock-issues/[id]">) {
   const user = await verifySession();
@@ -19,11 +20,12 @@ export async function GET(_req: NextRequest, ctx: RouteContext<"/api/inventory/s
     where: { IssueHeaderID: issueId },
     include: {
       Warehouse: { select: { WarehouseName: true } },
-      Employee: { select: { FullName: true, Site: { select: { SiteName: true } } } },
+      Employee: { select: { FullName: true, Site: { select: { SiteName: true } }, CompanyCode: true, EmployeeType: true } },
       Details: { orderBy: { IssueDetailID: "asc" }, include: { Product: { select: { ProductName: true, UnitOfMeasure: true, UnitPrice: true } } } },
     },
   });
   if (!header) return apiError(404, "STOCK_ISSUE_NOT_FOUND");
+  if (!isEmployeeInScope(user, header.Employee)) return apiError(404, "STOCK_ISSUE_NOT_FOUND");
   return apiSuccess(header);
 }
 
@@ -39,6 +41,8 @@ export async function PUT(request: NextRequest, ctx: RouteContext<"/api/inventor
 
   const existing = await prisma.invIssueHeader.findUnique({ where: { IssueHeaderID: issueId } });
   if (!existing) return apiError(404, "STOCK_ISSUE_NOT_FOUND");
+  const employeeScope = await prisma.mstEmployee.findUnique({ where: { EmpCode: existing.EmpCode }, select: { CompanyCode: true, EmployeeType: true } });
+  if (!employeeScope || !isEmployeeInScope(user, employeeScope)) return apiError(404, "STOCK_ISSUE_NOT_FOUND");
   if (existing.Status === "APPROVED") {
     return apiError(409, "STOCK_ISSUE_LOCKED", "An APPROVED issue can no longer be edited", { status: existing.Status });
   }
@@ -99,6 +103,8 @@ export async function DELETE(_req: NextRequest, ctx: RouteContext<"/api/inventor
 
   const existing = await prisma.invIssueHeader.findUnique({ where: { IssueHeaderID: issueId } });
   if (!existing) return apiError(404, "STOCK_ISSUE_NOT_FOUND");
+  const employeeScope = await prisma.mstEmployee.findUnique({ where: { EmpCode: existing.EmpCode }, select: { CompanyCode: true, EmployeeType: true } });
+  if (!employeeScope || !isEmployeeInScope(user, employeeScope)) return apiError(404, "STOCK_ISSUE_NOT_FOUND");
   if (existing.Status !== "DRAFT") {
     return apiError(409, "STOCK_ISSUE_LOCKED", "Only a DRAFT issue can be deleted", { status: existing.Status });
   }

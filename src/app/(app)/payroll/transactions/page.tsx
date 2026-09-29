@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { verifySession } from "@/lib/dal";
 import { hasPermission } from "@/lib/authorize";
 import { prisma } from "@/lib/prisma";
+import { employeeScopeWhere, companyScopeWhere } from "@/lib/employee-scope";
 import TransactionEntryView from "./transaction-entry-view";
 
 export default async function PayrollTransactionsPage() {
@@ -16,9 +17,9 @@ export default async function PayrollTransactionsPage() {
     hasPermission(user, "PAYROLL_TRANSACTION", "delete"),
     hasPermission(user, "PAYROLL_LOCK", "read"),
     prisma.sysPeriod.findMany({ orderBy: { PeriodID: "desc" } }),
-    prisma.refCompany.findMany({ orderBy: { CompanyCode: "asc" }, select: { CompanyCode: true, CompanyName: true } }),
+    prisma.refCompany.findMany({ where: companyScopeWhere(user), orderBy: { CompanyCode: "asc" }, select: { CompanyCode: true, CompanyName: true } }),
     prisma.mstEmployee.findMany({
-      where: { EmployeeStatus: "ACTIVE" },
+      where: { EmployeeStatus: "ACTIVE", ...employeeScopeWhere(user) },
       orderBy: { EmpCode: "asc" },
       select: { EmpCode: true, FullName: true, EmployeeType: true, CompanyCode: true },
     }),

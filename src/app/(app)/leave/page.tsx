@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { verifySession } from "@/lib/dal";
 import { hasPermission } from "@/lib/authorize";
 import { prisma } from "@/lib/prisma";
+import { employeeScopeWhere } from "@/lib/employee-scope";
 import LeaveListView from "./leave-list-view";
 
 export default async function LeavePage() {
@@ -15,10 +16,15 @@ export default async function LeavePage() {
     hasPermission(user, "LEAVE_REQUEST", "save"),
     hasPermission(user, "LEAVE_REQUEST", "approve"),
     prisma.trnLeaveRequest.findMany({
+      where: { Employee: employeeScopeWhere(user) },
       include: { Employee: { select: { FullName: true } }, LeaveType: { select: { LeaveTypeName: true } } },
       orderBy: { CreatedDate: "desc" },
     }),
-    prisma.mstEmployee.findMany({ where: { EmployeeStatus: "ACTIVE" }, orderBy: { EmpCode: "asc" }, select: { EmpCode: true, FullName: true, EmployeeType: true } }),
+    prisma.mstEmployee.findMany({
+      where: { EmployeeStatus: "ACTIVE", ...employeeScopeWhere(user) },
+      orderBy: { EmpCode: "asc" },
+      select: { EmpCode: true, FullName: true, EmployeeType: true },
+    }),
     prisma.mstLeaveType.findMany({ orderBy: { LeaveTypeCode: "asc" } }),
   ]);
 

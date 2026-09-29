@@ -264,6 +264,7 @@ model RefCompany {
   AddressZipCode            String?   @db.VarChar(10)
 
   Employees MstEmployee[]
+  UserScope SysUserCompany[]
 
   @@map("ref_company")
 }
@@ -407,6 +408,8 @@ model SysUser {
   DefaultSite MstSite? @relation(fields: [DefaultSiteCode], references: [SiteCode], map: "FK_sys_user_mst_site", onUpdate: NoAction, onDelete: NoAction)
 
   Permissions               SysUserPermission[]
+  CompanyScope              SysUserCompany[]
+  EmployeeTypeScope         SysUserEmployeeType[]
   ProcessLogs               SysProcessLog[]
   Sessions                  SysSession[]
   RecordedEmployeeHistory   MstEmployeeHistory[]
@@ -448,6 +451,13 @@ model SysUserPermission {
   CanSave      Boolean   @default(false)
   CanDelete    Boolean   @default(false)
   CanApprove   Boolean   @default(false)
+  // "ขออนุมัติ" (2026-09-28) — a real permission bit distinct from CanSave,
+  // for the ~8 "submit for approval" routes across the app (Worksheet,
+  // Leave, Requests, Inventory stock docs) that used to just reuse CanSave.
+  // Also now what gates the payroll-closing Lock step (formerly shared the
+  // exact same CanApprove bit as the Approve step itself, with no real
+  // separation between "can request a lock" and "can approve it").
+  CanSubmit    Boolean   @default(false)
   CreatedDate  DateTime? @default(now()) @db.DateTime
   CreatedBy    String?   @db.VarChar(20)
   UpdatedDate  DateTime? @db.DateTime
@@ -459,6 +469,42 @@ model SysUserPermission {
 
   @@unique([UserID, DocumentType, SiteCode], map: "UQ_sys_user_permission")
   @@map("sys_user_permission")
+}
+
+// Global per-user scoping (2026-09-28) — NOT per-DocumentType like
+// SiteCode above. "Which companies/employee-types can this user touch at
+// all" is a single checklist per user, enforced as a real data filter
+// wherever mst_employee is queried (see src/lib/employee-scope.ts), not a
+// per-menu permission dimension. Zero rows for a user = unrestricted
+// (sees everything) — same "absence = no restriction" convention
+// SysUserPermission.SiteCode=NULL already uses, so every existing account
+// keeps working unchanged the moment this ships; an admin has to
+// deliberately check boxes to narrow someone down.
+model SysUserCompany {
+  SysUserCompanyID Int       @id(map: "PK_sys_user_company") @default(autoincrement())
+  UserID           String    @db.VarChar(20)
+  CompanyCode      String    @db.VarChar(10)
+  CreatedDate      DateTime? @default(now()) @db.DateTime
+  CreatedBy        String?   @db.VarChar(20)
+
+  User    SysUser    @relation(fields: [UserID], references: [UserID], map: "FK_sys_user_company_sys_user", onUpdate: NoAction, onDelete: NoAction)
+  Company RefCompany @relation(fields: [CompanyCode], references: [CompanyCode], map: "FK_sys_user_company_ref_company", onUpdate: NoAction, onDelete: NoAction)
+
+  @@unique([UserID, CompanyCode], map: "UQ_sys_user_company")
+  @@map("sys_user_company")
+}
+
+model SysUserEmployeeType {
+  SysUserEmployeeTypeID Int       @id(map: "PK_sys_user_employee_type") @default(autoincrement())
+  UserID                String    @db.VarChar(20)
+  EmployeeType          String    @db.VarChar(20) // "DAILY" | "MONTHLY" — same values as mst_employee.EmployeeType
+  CreatedDate           DateTime? @default(now()) @db.DateTime
+  CreatedBy             String?   @db.VarChar(20)
+
+  User SysUser @relation(fields: [UserID], references: [UserID], map: "FK_sys_user_employee_type_sys_user", onUpdate: NoAction, onDelete: NoAction)
+
+  @@unique([UserID, EmployeeType], map: "UQ_sys_user_employee_type")
+  @@map("sys_user_employee_type")
 }
 
 // ============================================================

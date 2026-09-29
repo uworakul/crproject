@@ -21,6 +21,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     canViewReference,
     canViewTax,
     canViewIncomeDeduction,
+    canViewDashboard,
     canViewEmployees,
     canViewPeriod,
     canViewDraftList,
@@ -35,6 +36,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     canViewReturn,
     canApproveAnyStock,
     canViewSite,
+    canViewWorksheet,
     canApproveWorksheet,
     canViewPayrollWorkspace,
     canViewPayrollReport,
@@ -46,7 +48,13 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     hasPermission(user, "PROCESS_LOG", "read"),
     hasPermission(user, "REFERENCE", "read"),
     hasPermission(user, "TAX_RATE", "read"),
-    hasPermission(user, "INCOME_DEDUCTION", "read"),
+    // Split into 2 DocumentTypes (2026-09-28) — menu link shows if the user
+    // can read either tab; each tab's own read/save/delete is checked again
+    // inside the page itself (see reference/income-deduction/page.tsx).
+    Promise.all([hasPermission(user, "INCOME_TYPE", "read"), hasPermission(user, "DEDUCTION_TYPE", "read")]).then((r) => r.some(Boolean)),
+    // Dashboard (2026-09-28) — used to reuse PAYROLL_REPORT; now its own
+    // DocumentType so it can be granted independently of the reports page.
+    hasPermission(user, "DASHBOARD", "read"),
     hasPermission(user, "EMPLOYEE", "read"),
     hasPermission(user, "PERIOD", "read"),
     hasPermission(user, "DRAFT_LIST", "read"),
@@ -67,6 +75,13 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       hasPermission(user, "STOCK_RETURN", "approve"),
     ]).then((r) => r.some(Boolean)),
     hasPermission(user, "SITE", "read"),
+    // 2026-09-29 fix: this item was previously unconditional (no read-permission
+    // gate at all) — an account with zero WORKSHEET rows could still see and
+    // open the menu. No siteCode passed -> matches ANY sys_user_permission row
+    // for WORKSHEET+CanRead (site-specific or SiteCode=NULL), i.e. "can read at
+    // least one site" — just for the menu-visibility gate; /worksheet itself
+    // scopes which sites' worksheets actually show.
+    hasPermission(user, "WORKSHEET", "read"),
     // No siteCode passed -> matches ANY sys_user_permission row for
     // WORKSHEET+CanApprove (site-specific or SiteCode=NULL) per
     // hasPermission's OR-clause, i.e. "can approve at least one site" — just
@@ -155,7 +170,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       icon: "worksheet" as const,
       items: [
         ...(canViewSite ? [{ href: "/payroll/sites", label: "หน่วยงาน (Site)" }] : []),
-        { href: "/worksheet", label: "Worksheet" },
+        ...(canViewWorksheet ? [{ href: "/worksheet", label: "Worksheet" }] : []),
         ...(canApproveWorksheet ? [{ href: "/worksheet/pending-approval", label: "รายการรออนุมัติ" }] : []),
       ],
     },
@@ -187,7 +202,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       icon: "employee" as const,
       items: [
         ...(canViewPayrollReport ? [{ href: "/employee-reports", label: "รายงาน" }] : []),
-        ...(canViewPayrollReport ? [{ href: "/employee-reports/dashboard", label: "Dashboard" }] : []),
+        ...(canViewDashboard ? [{ href: "/employee-reports/dashboard", label: "Dashboard" }] : []),
       ],
     },
   ].filter((g) => g.items.length > 0);

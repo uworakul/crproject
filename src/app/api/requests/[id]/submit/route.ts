@@ -4,6 +4,7 @@ import { requirePermission } from "@/lib/authorize";
 import { logAction } from "@/lib/audit-log";
 import { apiError, apiSuccess } from "@/lib/api-response";
 import { REQUEST_DOCUMENT_DOCTYPE, type RequestDocumentCode } from "@/lib/request";
+import { isEmployeeInScope } from "@/lib/employee-scope";
 
 export async function POST(_req: Request, ctx: RouteContext<"/api/requests/[id]/submit">) {
   const user = await verifySession();
@@ -13,10 +14,14 @@ export async function POST(_req: Request, ctx: RouteContext<"/api/requests/[id]/
   const requestId = Number(id);
   if (!Number.isInteger(requestId)) return apiError(400, "INVALID_PARAMS");
 
-  const existing = await prisma.trnRequestHeader.findUnique({ where: { RequestHeaderID: requestId }, include: { Details: true } });
+  const existing = await prisma.trnRequestHeader.findUnique({
+    where: { RequestHeaderID: requestId },
+    include: { Details: { include: { Employee: { select: { CompanyCode: true, EmployeeType: true } } } } },
+  });
   if (!existing) return apiError(404, "REQUEST_NOT_FOUND");
+  if (!existing.Details.every((d) => isEmployeeInScope(user, d.Employee))) return apiError(404, "REQUEST_NOT_FOUND");
 
-  const denied = await requirePermission(user, REQUEST_DOCUMENT_DOCTYPE[existing.DocumentCode as RequestDocumentCode], "save");
+  const denied = await requirePermission(user, REQUEST_DOCUMENT_DOCTYPE[existing.DocumentCode as RequestDocumentCode], "submit");
   if (denied) return denied;
 
   if (existing.Status !== "DRAFT") {

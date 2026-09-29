@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { verifySession } from "@/lib/dal";
 import { hasPermission } from "@/lib/authorize";
 import { prisma } from "@/lib/prisma";
+import { employeeScopeWhere } from "@/lib/employee-scope";
 import { getOrCreateDraftWorksheet, getWorksheetDetail } from "@/lib/worksheet";
 import WorksheetView, { type WorksheetData } from "./worksheet-view";
 
@@ -23,7 +24,7 @@ export default async function WorksheetPage({
     // 2026-09-21: "รหัสพนักงานสแปร์" ค้นหาได้จากทะเบียนพนักงาน — เฉพาะสถานะ
     // ปกติ/ทดลองงาน (คนที่ยังทำงานอยู่จริงและยังไม่ได้ลาออก/พักงาน/เลิกจ้าง)
     prisma.mstEmployee.findMany({
-      where: { EmployeeStatus: { in: ["ACTIVE", "PROBATION"] } },
+      where: { EmployeeStatus: { in: ["ACTIVE", "PROBATION"] }, ...employeeScopeWhere(user) },
       orderBy: { EmpCode: "asc" },
       select: { EmpCode: true, FullName: true },
     }),

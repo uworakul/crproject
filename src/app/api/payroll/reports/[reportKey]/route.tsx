@@ -114,7 +114,7 @@ export async function GET(request: NextRequest, ctx: RouteContext<"/api/payroll/
   const { reportKey } = await ctx.params;
   const { searchParams } = new URL(request.url);
   const format = searchParams.get("format") === "excel" ? "excel" : "pdf";
-  const filters = parseFilters(searchParams);
+  const filters = { ...parseFilters(searchParams), allowedCompanyCodes: user.allowedCompanyCodes, allowedEmployeeTypes: user.allowedEmployeeTypes };
   const sg = parseSortGroup(searchParams);
   const companyName = await resolveCompanyName(filters.companyCode);
 

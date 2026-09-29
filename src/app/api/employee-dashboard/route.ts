@@ -19,15 +19,15 @@ import {
 // GET /api/employee-dashboard?metric=...&...filters
 // Interactive JSON endpoint for the Dashboard screen (not a PDF/Excel export
 // like the rest of /payroll/reports — this data is rendered client-side as
-// a chart or on-screen table). Same PAYROLL_REPORT read permission as the
-// other reports for every metric, including the two stock/welfare ones
-// added 2026-09-24 (not strictly employee data, but the page itself is
-// already gated on this permission — no separate inventory-permission
-// check is worth adding just for those two).
+// a chart or on-screen table). Own "DASHBOARD" read permission (split off
+// PAYROLL_REPORT 2026-09-28) covers every metric here, including the two
+// stock/welfare ones added 2026-09-24 (not strictly employee data, but the
+// page itself is already gated on this permission — no separate
+// inventory-permission check is worth adding just for those two).
 export async function GET(request: NextRequest) {
   const user = await verifySession();
   if (!user) return apiError(401, "UNAUTHORIZED");
-  const denied = await requirePermission(user, "PAYROLL_REPORT", "read");
+  const denied = await requirePermission(user, "DASHBOARD", "read");
   if (denied) return denied;
 
   const { searchParams } = new URL(request.url);
@@ -39,6 +39,8 @@ export async function GET(request: NextRequest) {
     bankCode: searchParams.get("bankCode") || undefined,
     employeeType: searchParams.get("employeeType") || undefined,
     empCode: searchParams.get("empCode") || undefined,
+    allowedCompanyCodes: user.allowedCompanyCodes,
+    allowedEmployeeTypes: user.allowedEmployeeTypes,
   };
 
   if (metric === "age") return apiSuccess(await getAgeDistribution(filters));

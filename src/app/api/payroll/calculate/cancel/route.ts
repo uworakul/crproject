@@ -22,12 +22,13 @@ export async function POST(request: NextRequest) {
   if (!Number.isInteger(periodId)) return apiError(400, "INVALID_PARAMS", "periodId is required and must be an integer");
 
   try {
-    const result = await cancelPayrollCalculate(periodId, user.userId);
+    const result = await cancelPayrollCalculate(periodId, user.userId, user.allowedEmployeeTypes);
     await logAction(user.userId, "PAYROLL_CANCEL_CALCULATE", { targetTable: "trn_payroll_transaction", targetId: String(periodId) });
     return apiSuccess({ employeeCount: result.employeeCount, totalAmount: result.totalAmount.toString() });
   } catch (err) {
     if (err instanceof Error && err.message === "PERIOD_NOT_FOUND") return apiError(404, "PERIOD_NOT_FOUND");
     if (err instanceof Error && err.message === "PERIOD_LOCKED") return apiError(409, "PERIOD_LOCKED");
+    if (err instanceof Error && err.message === "PERIOD_TYPE_NOT_IN_SCOPE") return apiError(403, "PERIOD_TYPE_NOT_IN_SCOPE", "You are not allowed to operate on this period's employee type");
     throw err;
   }
 }

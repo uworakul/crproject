@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { verifySession } from "@/lib/dal";
 import { requirePermission } from "@/lib/authorize";
 import { apiError, apiSuccess } from "@/lib/api-response";
+import { employeeScopeWhere } from "@/lib/employee-scope";
 
 // Used by the Return screen to let the user pick which OPEN debt a return
 // should settle, and generally to see an employee's outstanding balances.
@@ -17,7 +18,7 @@ export async function GET(request: NextRequest) {
   const status = searchParams.get("status");
 
   const debts = await prisma.invEmployeeDebt.findMany({
-    where: { ...(empCode ? { EmpCode: empCode } : {}), ...(status ? { Status: status } : {}) },
+    where: { ...(empCode ? { EmpCode: empCode } : {}), ...(status ? { Status: status } : {}), Employee: employeeScopeWhere(user) },
     include: { Employee: { select: { EmpCode: true, FullName: true } }, Movement: { select: { MovementID: true, MovementDate: true } } },
     orderBy: { DebtID: "desc" },
   });

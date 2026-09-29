@@ -4,6 +4,7 @@ import { requirePermission } from "@/lib/authorize";
 import { logAction } from "@/lib/audit-log";
 import { apiError, apiSuccess } from "@/lib/api-response";
 import { getLeaveBalanceForType } from "@/lib/leave-balance";
+import { isEmployeeInScope } from "@/lib/employee-scope";
 
 // Balance check is computed live (2026-09-21) — no more
 // mst_employee_leave_balance row dependency, so there's no LEAVE_BALANCE_NOT_FOUND
@@ -22,6 +23,8 @@ export async function POST(_req: Request, ctx: RouteContext<"/api/leave/requests
 
   const existing = await prisma.trnLeaveRequest.findUnique({ where: { LeaveID: leaveId }, include: { LeaveType: true } });
   if (!existing) return apiError(404, "LEAVE_REQUEST_NOT_FOUND");
+  const employeeScope = await prisma.mstEmployee.findUnique({ where: { EmpCode: existing.EmpCode }, select: { CompanyCode: true, EmployeeType: true } });
+  if (!employeeScope || !isEmployeeInScope(user, employeeScope)) return apiError(404, "LEAVE_REQUEST_NOT_FOUND");
   if (existing.Status !== "SUBMITTED") {
     return apiError(409, "INVALID_STATUS_TRANSITION", "Only a SUBMITTED leave request can be approved", { currentStatus: existing.Status });
   }

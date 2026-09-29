@@ -8,7 +8,7 @@ import { apiError, apiSuccess } from "@/lib/api-response";
 export async function PUT(request: NextRequest, ctx: RouteContext<"/api/reference/deduction-types/[code]">) {
   const user = await verifySession();
   if (!user) return apiError(401, "UNAUTHORIZED");
-  const denied = await requirePermission(user, "INCOME_DEDUCTION", "save");
+  const denied = await requirePermission(user, "DEDUCTION_TYPE", "save");
   if (denied) return denied;
 
   const { code } = await ctx.params;
@@ -42,7 +42,7 @@ export async function PUT(request: NextRequest, ctx: RouteContext<"/api/referenc
 export async function DELETE(_req: Request, ctx: RouteContext<"/api/reference/deduction-types/[code]">) {
   const user = await verifySession();
   if (!user) return apiError(401, "UNAUTHORIZED");
-  const denied = await requirePermission(user, "INCOME_DEDUCTION", "delete");
+  const denied = await requirePermission(user, "DEDUCTION_TYPE", "delete");
   if (denied) return denied;
 
   const { code } = await ctx.params;

@@ -4,6 +4,7 @@ import { verifySession } from "@/lib/dal";
 import { requirePermission } from "@/lib/authorize";
 import { logAction } from "@/lib/audit-log";
 import { apiError, apiSuccess } from "@/lib/api-response";
+import { isEmployeeInScope } from "@/lib/employee-scope";
 
 export async function POST(request: NextRequest, ctx: RouteContext<"/api/inventory/stock-returns/[id]/reject">) {
   const user = await verifySession();
@@ -17,6 +18,8 @@ export async function POST(request: NextRequest, ctx: RouteContext<"/api/invento
 
   const existing = await prisma.invReturnHeader.findUnique({ where: { ReturnHeaderID: returnId } });
   if (!existing) return apiError(404, "STOCK_RETURN_NOT_FOUND");
+  const employeeScope = await prisma.mstEmployee.findUnique({ where: { EmpCode: existing.EmpCode }, select: { CompanyCode: true, EmployeeType: true } });
+  if (!employeeScope || !isEmployeeInScope(user, employeeScope)) return apiError(404, "STOCK_RETURN_NOT_FOUND");
 
   if (existing.Status !== "SUBMITTED") {
     return apiError(409, "INVALID_STATUS_TRANSITION", "Only a SUBMITTED return can be rejected", { currentStatus: existing.Status });

@@ -4,6 +4,7 @@ import { verifySession } from "@/lib/dal";
 import { requirePermission } from "@/lib/authorize";
 import { logAction } from "@/lib/audit-log";
 import { apiError, apiSuccess } from "@/lib/api-response";
+import { isEmployeeInScope } from "@/lib/employee-scope";
 import { getCurrentPeriodInstallmentAllocations } from "@/lib/payroll";
 
 // รายการหักต่องวด — every inv_employee_debt row for this employee, whichever
@@ -45,6 +46,7 @@ export async function POST(request: NextRequest, ctx: RouteContext<"/api/employe
   const { empCode } = await ctx.params;
   const employee = await prisma.mstEmployee.findUnique({ where: { EmpCode: empCode } });
   if (!employee) return apiError(404, "EMPLOYEE_NOT_FOUND");
+  if (!isEmployeeInScope(user, employee)) return apiError(404, "EMPLOYEE_NOT_FOUND");
 
   let body: { deductionCode?: unknown; totalAmount?: unknown; deductPerPeriod?: unknown; description?: unknown };
   try {

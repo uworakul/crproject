@@ -3,12 +3,17 @@ import { prisma } from "./prisma";
 import { apiError } from "./api-response";
 import type { CurrentUser } from "./dal";
 
-export type PermissionAction = "read" | "save" | "delete" | "approve";
+export type PermissionAction = "read" | "save" | "delete" | "submit" | "approve";
 
-const ACTION_COLUMN: Record<PermissionAction, "CanRead" | "CanSave" | "CanDelete" | "CanApprove"> = {
+const ACTION_COLUMN: Record<PermissionAction, "CanRead" | "CanSave" | "CanDelete" | "CanSubmit" | "CanApprove"> = {
   read: "CanRead",
   save: "CanSave",
   delete: "CanDelete",
+  // "ขออนุมัติ" (2026-09-28) — distinct from "save" now. Previously every
+  // submit-for-approval route just reused CanSave; see the ~8 submit
+  // routes across Worksheet/Leave/Requests/Inventory that were updated
+  // alongside this to check "submit" instead.
+  submit: "CanSubmit",
   approve: "CanApprove",
 };
 

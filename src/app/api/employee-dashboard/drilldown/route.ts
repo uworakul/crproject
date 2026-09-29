@@ -24,7 +24,7 @@ import {
 export async function GET(request: NextRequest) {
   const user = await verifySession();
   if (!user) return apiError(401, "UNAUTHORIZED");
-  const denied = await requirePermission(user, "PAYROLL_REPORT", "read");
+  const denied = await requirePermission(user, "DASHBOARD", "read");
   if (denied) return denied;
 
   const { searchParams } = new URL(request.url);
@@ -39,6 +39,8 @@ export async function GET(request: NextRequest) {
     bankCode: searchParams.get("bankCode") || undefined,
     employeeType: searchParams.get("employeeType") || undefined,
     empCode: searchParams.get("empCode") || undefined,
+    allowedCompanyCodes: user.allowedCompanyCodes,
+    allowedEmployeeTypes: user.allowedEmployeeTypes,
   };
 
   if (metric === "age") {

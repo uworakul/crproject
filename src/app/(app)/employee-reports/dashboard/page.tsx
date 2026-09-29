@@ -5,9 +5,10 @@ import { prisma } from "@/lib/prisma";
 import { getAgeDistribution } from "@/lib/reports/dashboard-data";
 import DashboardView from "./dashboard-view";
 
-// 2026-09-23 — Dashboard screen under the "ทะเบียนพนักงาน" menu. Same
-// PAYROLL_REPORT permission gate as the sibling "รายงาน" page (same
-// underlying data). Initial data (the default metric, no filters) is
+// 2026-09-23 — Dashboard screen under the "ทะเบียนพนักงาน" menu. Its own
+// "DASHBOARD" permission (2026-09-28, split off PAYROLL_REPORT so it can be
+// granted independently of the sibling "รายงาน" page). Initial data (the
+// default metric, no filters) is
 // fetched server-side like every other page in this app; the "แสดงผล"
 // button in DashboardView re-fetches from an event handler when the
 // viewer changes metric/chart type/filters — never from an effect, per
@@ -16,7 +17,7 @@ export default async function EmployeeDashboardPage() {
   const user = await verifySession();
   if (!user) redirect("/login");
 
-  const canRead = await hasPermission(user, "PAYROLL_REPORT", "read");
+  const canRead = await hasPermission(user, "DASHBOARD", "read");
   if (!canRead) redirect("/");
 
   const [companies, departments, sites, banks, employees, periodsRaw, initialResult] = await Promise.all([

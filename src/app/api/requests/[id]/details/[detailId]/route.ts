@@ -5,6 +5,7 @@ import { requirePermission } from "@/lib/authorize";
 import { logAction } from "@/lib/audit-log";
 import { apiError, apiSuccess } from "@/lib/api-response";
 import { REQUEST_DOCUMENT_DOCTYPE, REQUEST_DOCUMENT_KIND, type RequestDocumentCode } from "@/lib/request";
+import { isEmployeeInScope } from "@/lib/employee-scope";
 
 // 2026-09-28 — body shape depends on the header's DocumentCode kind, same
 // as POST .../details (see that file's comment). OldPositionCode/OldIncome
@@ -31,6 +32,8 @@ export async function PUT(request: NextRequest, ctx: RouteContext<"/api/requests
 
   const existing = await prisma.trnRequestDetail.findUnique({ where: { RequestDetailID: detailIdNum } });
   if (!existing || existing.RequestHeaderID !== requestId) return apiError(404, "REQUEST_DETAIL_NOT_FOUND");
+  const employeeScope = await prisma.mstEmployee.findUnique({ where: { EmpCode: existing.EmpCode }, select: { CompanyCode: true, EmployeeType: true } });
+  if (!employeeScope || !isEmployeeInScope(user, employeeScope)) return apiError(404, "REQUEST_DETAIL_NOT_FOUND");
 
   let body: Record<string, unknown>;
   try {
@@ -118,6 +121,8 @@ export async function DELETE(_req: NextRequest, ctx: RouteContext<"/api/requests
 
   const existing = await prisma.trnRequestDetail.findUnique({ where: { RequestDetailID: detailIdNum } });
   if (!existing || existing.RequestHeaderID !== requestId) return apiError(404, "REQUEST_DETAIL_NOT_FOUND");
+  const employeeScope = await prisma.mstEmployee.findUnique({ where: { EmpCode: existing.EmpCode }, select: { CompanyCode: true, EmployeeType: true } });
+  if (!employeeScope || !isEmployeeInScope(user, employeeScope)) return apiError(404, "REQUEST_DETAIL_NOT_FOUND");
 
   await prisma.trnRequestDetail.delete({ where: { RequestDetailID: detailIdNum } });
   await logAction(user.userId, "DELETE_REQUEST_DETAIL", { targetTable: "trn_request_detail", targetId: detailId });

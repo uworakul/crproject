@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { verifySession } from "@/lib/dal";
 import { hasPermission } from "@/lib/authorize";
 import { prisma } from "@/lib/prisma";
+import { employeeScopeWhere } from "@/lib/employee-scope";
 import LeaveBalancesView from "./leave-balances-view";
 
 export default async function LeaveBalancesPage() {
@@ -13,7 +14,7 @@ export default async function LeaveBalancesPage() {
 
   const canSave = await hasPermission(user, "LEAVE_REQUEST", "save");
   const employees = await prisma.mstEmployee.findMany({
-    where: { EmployeeStatus: "ACTIVE" },
+    where: { EmployeeStatus: "ACTIVE", ...employeeScopeWhere(user) },
     orderBy: { EmpCode: "asc" },
     select: { EmpCode: true, FullName: true },
   });

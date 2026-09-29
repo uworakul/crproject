@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { verifySession } from "@/lib/dal";
 import { hasPermission } from "@/lib/authorize";
 import { prisma } from "@/lib/prisma";
+import { employeeScopeWhere } from "@/lib/employee-scope";
 import { getStockBalancesForWarehouse } from "@/lib/inventory";
 import Tabs from "../../reference/tabs";
 import StockSummaryView, { type StockSummaryRow } from "../stock-summary-view";
@@ -56,7 +57,7 @@ export default async function InventoryTransactionsPage() {
       prisma.invWarehouse.findMany({ where: { IsActive: true }, orderBy: { WarehouseCode: "asc" } }),
       canReadPurchase ? prisma.invSupplier.findMany({ where: { IsActive: true }, orderBy: { SupplierCode: "asc" } }) : Promise.resolve([]),
       canReadIssue || canReadReturn
-        ? prisma.mstEmployee.findMany({ where: { EmployeeStatus: "ACTIVE" }, orderBy: { EmpCode: "asc" }, select: { EmpCode: true, FullName: true } })
+        ? prisma.mstEmployee.findMany({ where: { EmployeeStatus: "ACTIVE", ...employeeScopeWhere(user) }, orderBy: { EmpCode: "asc" }, select: { EmpCode: true, FullName: true } })
         : Promise.resolve([]),
       prisma.invProduct.findMany({ where: { IsActive: true }, orderBy: { ProductCode: "asc" } }),
       prisma.invProductCategory.findMany({ where: { IsActive: true }, orderBy: { CategoryCode: "asc" } }),
@@ -75,12 +76,14 @@ export default async function InventoryTransactionsPage() {
         : Promise.resolve([]),
       canReadIssue
         ? prisma.invIssueHeader.findMany({
+            where: { Employee: employeeScopeWhere(user) },
             include: { Details: true, Warehouse: { select: { WarehouseName: true } }, Employee: { select: { FullName: true, Site: { select: { SiteName: true } } } } },
             orderBy: { CreatedDate: "desc" },
           })
         : Promise.resolve([]),
       canReadReturn
         ? prisma.invReturnHeader.findMany({
+            where: { Employee: employeeScopeWhere(user) },
             include: { Details: true, Warehouse: { select: { WarehouseName: true } }, Employee: { select: { FullName: true, Site: { select: { SiteName: true } } } } },
             orderBy: { CreatedDate: "desc" },
           })

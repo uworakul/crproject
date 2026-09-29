@@ -4,6 +4,7 @@ import { verifySession } from "@/lib/dal";
 import { requirePermission } from "@/lib/authorize";
 import { logAction } from "@/lib/audit-log";
 import { apiError, apiSuccess } from "@/lib/api-response";
+import { isEmployeeInScope } from "@/lib/employee-scope";
 
 export async function PUT(request: NextRequest, ctx: RouteContext<"/api/employees/[empCode]/training-experience/[id]">) {
   const user = await verifySession();
@@ -17,6 +18,9 @@ export async function PUT(request: NextRequest, ctx: RouteContext<"/api/employee
 
   const existing = await prisma.mstEmployeeTrainingExperience.findUnique({ where: { TrainingExperienceID: trainingExperienceId } });
   if (!existing || existing.EmpCode !== empCode) return apiError(404, "TRAINING_EXPERIENCE_NOT_FOUND");
+
+  const employeeScope = await prisma.mstEmployee.findUnique({ where: { EmpCode: empCode }, select: { CompanyCode: true, EmployeeType: true } });
+  if (!employeeScope || !isEmployeeInScope(user, employeeScope)) return apiError(404, "TRAINING_EXPERIENCE_NOT_FOUND");
 
   let body: {
     organization?: unknown;
@@ -77,6 +81,9 @@ export async function DELETE(_req: Request, ctx: RouteContext<"/api/employees/[e
 
   const existing = await prisma.mstEmployeeTrainingExperience.findUnique({ where: { TrainingExperienceID: trainingExperienceId } });
   if (!existing || existing.EmpCode !== empCode) return apiError(404, "TRAINING_EXPERIENCE_NOT_FOUND");
+
+  const employeeScope = await prisma.mstEmployee.findUnique({ where: { EmpCode: empCode }, select: { CompanyCode: true, EmployeeType: true } });
+  if (!employeeScope || !isEmployeeInScope(user, employeeScope)) return apiError(404, "TRAINING_EXPERIENCE_NOT_FOUND");
 
   await prisma.mstEmployeeTrainingExperience.delete({ where: { TrainingExperienceID: trainingExperienceId } });
   await logAction(user.userId, "DELETE_EMPLOYEE_TRAINING_EXPERIENCE", { targetTable: "mst_employee_training_experience", targetId: id });

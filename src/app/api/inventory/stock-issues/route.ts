@@ -5,6 +5,7 @@ import { requirePermission } from "@/lib/authorize";
 import { logAction } from "@/lib/audit-log";
 import { apiError, apiSuccess } from "@/lib/api-response";
 import { consumeDocumentNumber } from "@/lib/document-number";
+import { employeeScopeWhere, isEmployeeInScope } from "@/lib/employee-scope";
 
 export async function GET() {
   const user = await verifySession();
@@ -13,6 +14,7 @@ export async function GET() {
   if (denied) return denied;
 
   const headers = await prisma.invIssueHeader.findMany({
+    where: { Employee: employeeScopeWhere(user) },
     include: {
       Details: true,
       Warehouse: { select: { WarehouseName: true } },
@@ -53,6 +55,7 @@ export async function POST(request: NextRequest) {
   if (!empCode) return apiError(400, "INVALID_PARAMS", "empCode is required");
   const employee = await prisma.mstEmployee.findUnique({ where: { EmpCode: empCode } });
   if (!employee) return apiError(404, "EMPLOYEE_NOT_FOUND", undefined, { empCode });
+  if (!isEmployeeInScope(user, employee)) return apiError(404, "EMPLOYEE_NOT_FOUND", undefined, { empCode });
   // Server-side mirror of the employee-picker dropdown's own filter
   // (EmployeeStatus="ACTIVE") — the dropdown hiding a resigned employee was
   // never actually enforced here, so a resigned EmpCode could still receive

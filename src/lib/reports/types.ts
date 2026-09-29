@@ -18,19 +18,48 @@ export interface ReportFilters {
   bankCode?: string;
   employeeType?: string;
   empCode?: string;
+  // ENFORCED scope (2026-09-28 permission redesign), distinct from the
+  // user-chosen filters above — set by the calling route from
+  // CurrentUser.allowedCompanyCodes/allowedEmployeeTypes (src/lib/dal.ts),
+  // never by anything the viewer picks in a dropdown. null = unrestricted.
+  allowedCompanyCodes?: string[] | null;
+  allowedEmployeeTypes?: string[] | null;
 }
+
+// A sentinel that matches no real row — used when an explicit filter value
+// falls outside the enforced scope, so the query returns empty rather than
+// silently ignoring the scope restriction (fail closed, never a bypass).
+const NONE = ["__NONE__"];
 
 // Shared WHERE-clause fragment for mst_employee, reused by every report
 // that filters on the employee dimension (all of them except the pure
 // dept/site summary matrices, which filter at the transaction level
 // instead since that's where SiteCode/EmpCode live for payroll rows).
 export function employeeWhere(filters: ReportFilters) {
+  const companyCodes = filters.allowedCompanyCodes
+    ? filters.companyCode
+      ? filters.allowedCompanyCodes.includes(filters.companyCode)
+        ? [filters.companyCode]
+        : NONE
+      : filters.allowedCompanyCodes
+    : filters.companyCode
+      ? [filters.companyCode]
+      : null;
+  const employeeTypes = filters.allowedEmployeeTypes
+    ? filters.employeeType
+      ? filters.allowedEmployeeTypes.includes(filters.employeeType)
+        ? [filters.employeeType]
+        : NONE
+      : filters.allowedEmployeeTypes
+    : filters.employeeType
+      ? [filters.employeeType]
+      : null;
   return {
-    ...(filters.companyCode ? { CompanyCode: filters.companyCode } : {}),
+    ...(companyCodes ? { CompanyCode: { in: companyCodes } } : {}),
     ...(filters.deptCode ? { DeptCode: filters.deptCode } : {}),
     ...(filters.siteCode ? { DefaultSiteCode: filters.siteCode } : {}),
     ...(filters.bankCode ? { BankCode: filters.bankCode } : {}),
-    ...(filters.employeeType ? { EmployeeType: filters.employeeType } : {}),
+    ...(employeeTypes ? { EmployeeType: { in: employeeTypes } } : {}),
     ...(filters.empCode ? { EmpCode: filters.empCode } : {}),
   };
 }

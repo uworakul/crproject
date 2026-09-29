@@ -9,7 +9,7 @@ import { parseTwoColumnWorkbook } from "@/lib/excel-reference";
 export async function POST(request: NextRequest) {
   const user = await verifySession();
   if (!user) return apiError(401, "UNAUTHORIZED");
-  const deniedSave = await requirePermission(user, "INCOME_DEDUCTION", "save");
+  const deniedSave = await requirePermission(user, "INCOME_TYPE", "save");
   if (deniedSave) return deniedSave;
 
   let form: FormData;
@@ -24,7 +24,7 @@ export async function POST(request: NextRequest) {
   const clearFirst = form.get("clearFirst") === "true";
 
   if (clearFirst) {
-    const deniedDelete = await requirePermission(user, "INCOME_DEDUCTION", "delete");
+    const deniedDelete = await requirePermission(user, "INCOME_TYPE", "delete");
     if (deniedDelete) return deniedDelete;
   }
 

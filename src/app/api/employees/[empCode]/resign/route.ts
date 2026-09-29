@@ -4,6 +4,7 @@ import { verifySession } from "@/lib/dal";
 import { requirePermission } from "@/lib/authorize";
 import { logAction } from "@/lib/audit-log";
 import { apiError, apiSuccess } from "@/lib/api-response";
+import { isEmployeeInScope } from "@/lib/employee-scope";
 
 export async function POST(request: NextRequest, ctx: RouteContext<"/api/employees/[empCode]/resign">) {
   const user = await verifySession();
@@ -14,6 +15,7 @@ export async function POST(request: NextRequest, ctx: RouteContext<"/api/employe
   const { empCode } = await ctx.params;
   const existing = await prisma.mstEmployee.findUnique({ where: { EmpCode: empCode } });
   if (!existing) return apiError(404, "EMPLOYEE_NOT_FOUND");
+  if (!isEmployeeInScope(user, existing)) return apiError(404, "EMPLOYEE_NOT_FOUND");
   if (existing.EmployeeStatus === "RESIGNED") {
     return apiError(409, "ALREADY_RESIGNED");
   }

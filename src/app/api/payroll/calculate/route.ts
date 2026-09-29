@@ -28,6 +28,8 @@ export async function POST(request: NextRequest) {
     companyCode: str(body.companyCode),
     deptCode: str(body.deptCode),
     empCode: str(body.empCode),
+    allowedCompanyCodes: user.allowedCompanyCodes,
+    allowedEmployeeTypes: user.allowedEmployeeTypes,
   };
 
   try {
@@ -45,6 +47,7 @@ export async function POST(request: NextRequest) {
     }
     if (err instanceof Error && err.message === "PERIOD_NOT_FOUND") return apiError(404, "PERIOD_NOT_FOUND");
     if (err instanceof Error && err.message === "PERIOD_LOCKED") return apiError(409, "PERIOD_LOCKED");
+    if (err instanceof Error && err.message === "PERIOD_TYPE_NOT_IN_SCOPE") return apiError(403, "PERIOD_TYPE_NOT_IN_SCOPE", "You are not allowed to operate on this period's employee type");
     throw err;
   }
 }

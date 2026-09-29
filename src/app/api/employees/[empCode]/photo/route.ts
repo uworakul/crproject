@@ -5,6 +5,7 @@ import { requirePermission } from "@/lib/authorize";
 import { apiError, apiSuccess } from "@/lib/api-response";
 import { logAction } from "@/lib/audit-log";
 import { uploadFileToR2, deleteFileFromR2, downloadFileFromR2, R2NotConfiguredError } from "@/lib/r2";
+import { isEmployeeInScope } from "@/lib/employee-scope";
 
 // รูปพนักงาน/รูปบัตรประชาชน — เก็บบน Cloudflare R2 (2026-09-26, เดิมเคยเป็น
 // Google Drive แต่เปลี่ยนมาใช้ R2 แทนตามที่ผู้ใช้ขอ) ดู src/lib/r2.ts สำหรับ
@@ -40,8 +41,9 @@ export async function GET(request: NextRequest, ctx: RouteContext<"/api/employee
   const type = parseType(request.nextUrl.searchParams.get("type"));
   if (!type) return apiError(400, "INVALID_PARAMS", "type must be EMPLOYEE or IDCARD");
 
-  const employee = await prisma.mstEmployee.findUnique({ where: { EmpCode: empCode }, select: { PhotoPath: true, IDCardPhotoPath: true } });
+  const employee = await prisma.mstEmployee.findUnique({ where: { EmpCode: empCode }, select: { PhotoPath: true, IDCardPhotoPath: true, CompanyCode: true, EmployeeType: true } });
   if (!employee) return apiError(404, "EMPLOYEE_NOT_FOUND", undefined, { empCode });
+  if (!isEmployeeInScope(user, employee)) return apiError(404, "EMPLOYEE_NOT_FOUND", undefined, { empCode });
 
   const fileId = employee[photoColumn(type)];
   if (!fileId) return apiError(404, "PHOTO_NOT_FOUND", "No photo has been uploaded for this employee/type yet");
@@ -65,8 +67,9 @@ export async function POST(request: NextRequest, ctx: RouteContext<"/api/employe
   const type = parseType(request.nextUrl.searchParams.get("type"));
   if (!type) return apiError(400, "INVALID_PARAMS", "type must be EMPLOYEE or IDCARD");
 
-  const employee = await prisma.mstEmployee.findUnique({ where: { EmpCode: empCode }, select: { PhotoPath: true, IDCardPhotoPath: true } });
+  const employee = await prisma.mstEmployee.findUnique({ where: { EmpCode: empCode }, select: { PhotoPath: true, IDCardPhotoPath: true, CompanyCode: true, EmployeeType: true } });
   if (!employee) return apiError(404, "EMPLOYEE_NOT_FOUND", undefined, { empCode });
+  if (!isEmployeeInScope(user, employee)) return apiError(404, "EMPLOYEE_NOT_FOUND", undefined, { empCode });
 
   let form: FormData;
   try {

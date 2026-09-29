@@ -4,6 +4,7 @@ import { verifySession } from "@/lib/dal";
 import { requirePermission } from "@/lib/authorize";
 import { apiError, apiSuccess } from "@/lib/api-response";
 import { getRateConfigForEmployee, recomputeTransactionOtherTotals } from "@/lib/payroll";
+import { isEmployeeInScope } from "@/lib/employee-scope";
 
 // 2026-09-22 — each detail line's SiteCode/PositionCode (set only for lines
 // pulled from Worksheet, per-site) needs a display name; manual lines have
@@ -29,6 +30,7 @@ export async function GET(request: NextRequest) {
 
   const employee = await prisma.mstEmployee.findUnique({ where: { EmpCode: empCode } });
   if (!employee) return apiError(404, "EMPLOYEE_NOT_FOUND", undefined, { empCode });
+  if (!isEmployeeInScope(user, employee)) return apiError(404, "EMPLOYEE_NOT_FOUND", undefined, { empCode });
 
   const period = await prisma.sysPeriod.findFirst({ where: { EmployeeType: employee.EmployeeType, IsCurrent: true } });
   if (!period) return apiError(404, "NO_CURRENT_PERIOD", `No period is marked as current for EmployeeType ${employee.EmployeeType}`, { employeeType: employee.EmployeeType });

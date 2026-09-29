@@ -5,6 +5,7 @@ import { hasPermission } from "@/lib/authorize";
 import { logAction } from "@/lib/audit-log";
 import { apiError, apiSuccess } from "@/lib/api-response";
 import { resolveEffectiveDailyRate } from "@/lib/worksheet";
+import { isEmployeeInScope } from "@/lib/employee-scope";
 
 // 2026-09-21 — เปลี่ยนตำแหน่งของ SPARE row (เฉพาะ SPARE เท่านั้น — REGULAR
 // snapshot มาจาก mst_employee.PositionCode อัตโนมัติตอนดึงเข้า ไม่ให้แก้ตรงนี้
@@ -50,6 +51,7 @@ export async function PUT(request: NextRequest, ctx: RouteContext<"/api/workshee
   if (!position) return apiError(404, "POSITION_NOT_FOUND", undefined, { positionCode });
 
   const employee = await prisma.mstEmployee.findUniqueOrThrow({ where: { EmpCode: empCode } });
+  if (!isEmployeeInScope(user, employee)) return apiError(404, "EMPLOYEE_NOT_ON_WORKSHEET", undefined, { empCode });
   const effectiveDailyRate = await resolveEffectiveDailyRate(header.SiteCode, employee.DailyRate, positionCode);
   if (!effectiveDailyRate) {
     return apiError(400, "VALIDATION_FAILED", "Employee has no DailyRate set (and no Site/Position rate fallback for the chosen position)", { empCode, positionCode });

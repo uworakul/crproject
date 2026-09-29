@@ -5,6 +5,7 @@ import { requirePermission } from "@/lib/authorize";
 import { logAction } from "@/lib/audit-log";
 import { apiError, apiSuccess } from "@/lib/api-response";
 import { consumeDocumentNumber } from "@/lib/document-number";
+import { employeeScopeWhere, isEmployeeInScope } from "@/lib/employee-scope";
 
 export async function GET() {
   const user = await verifySession();
@@ -13,6 +14,7 @@ export async function GET() {
   if (denied) return denied;
 
   const headers = await prisma.invReturnHeader.findMany({
+    where: { Employee: employeeScopeWhere(user) },
     include: {
       Details: true,
       Warehouse: { select: { WarehouseName: true } },
@@ -45,6 +47,7 @@ export async function POST(request: NextRequest) {
   if (!empCode) return apiError(400, "INVALID_PARAMS", "empCode is required");
   const employee = await prisma.mstEmployee.findUnique({ where: { EmpCode: empCode } });
   if (!employee) return apiError(404, "EMPLOYEE_NOT_FOUND", undefined, { empCode });
+  if (!isEmployeeInScope(user, employee)) return apiError(404, "EMPLOYEE_NOT_FOUND", undefined, { empCode });
 
   const deliveryDate = typeof body.deliveryDate === "string" ? body.deliveryDate : "";
   if (!deliveryDate) return apiError(400, "INVALID_PARAMS", "deliveryDate is required");

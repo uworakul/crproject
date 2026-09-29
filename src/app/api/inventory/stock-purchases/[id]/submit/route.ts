@@ -7,7 +7,7 @@ import { apiError, apiSuccess } from "@/lib/api-response";
 export async function POST(_req: Request, ctx: RouteContext<"/api/inventory/stock-purchases/[id]/submit">) {
   const user = await verifySession();
   if (!user) return apiError(401, "UNAUTHORIZED");
-  const denied = await requirePermission(user, "STOCK_PURCHASE", "save");
+  const denied = await requirePermission(user, "STOCK_PURCHASE", "submit");
   if (denied) return denied;
 
   const { id } = await ctx.params;

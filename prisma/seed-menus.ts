@@ -24,7 +24,12 @@ export const menuSeed = [
   { DocumentType: "CHANGE_EMPLOYEE_NO", MenuNameTH: "เปลี่ยนรหัสพนักงาน", MenuNameEN: "Change Employee No.", ModuleGroup: "SYSTEM_SETTING" },
   { DocumentType: "REFERENCE", MenuNameTH: "รหัสอ้างอิง (ธนาคาร/แผนก/ตำแหน่ง/SSO/Black List)", MenuNameEN: "Reference (Bank/Dept/Position/SSO/Black List)", ModuleGroup: "SYSTEM_SETTING" },
   { DocumentType: "TAX_RATE", MenuNameTH: "ภาษี/ค่าลดหย่อน/กองทุนฯ", MenuNameEN: "Tax & Rate & Fund", ModuleGroup: "SYSTEM_SETTING" },
-  { DocumentType: "INCOME_DEDUCTION", MenuNameTH: "รายได้และรายการหัก", MenuNameEN: "Income & Deduction Types", ModuleGroup: "SYSTEM_SETTING" },
+  // Split from the single "INCOME_DEDUCTION" DocumentType (2026-09-28) —
+  // the user's permission redesign asked for R/S/D on "รายได้" and
+  // "รายการหัก" as two separate line items, not one combined bit covering
+  // both tabs of /reference/income-deduction.
+  { DocumentType: "INCOME_TYPE", MenuNameTH: "ประเภทรายได้", MenuNameEN: "Income Types", ModuleGroup: "SYSTEM_SETTING" },
+  { DocumentType: "DEDUCTION_TYPE", MenuNameTH: "ประเภทรายการหัก", MenuNameEN: "Deduction Types", ModuleGroup: "SYSTEM_SETTING" },
 
   // Module 3 — ข้อมูลหลักพนักงาน (BR-010–014)
   { DocumentType: "EMPLOYEE", MenuNameTH: "ทะเบียนพนักงาน", MenuNameEN: "Employee", ModuleGroup: "EMPLOYEE_MASTER" },
@@ -70,4 +75,9 @@ export const menuSeed = [
 
   // Module 9 — ใบลงเวลาปฏิบัติงานประจำเดือน (BR-040–047) — single DocumentType per BR-045
   { DocumentType: "WORKSHEET", MenuNameTH: "ใบลงเวลาปฏิบัติงานประจำเดือน", MenuNameEN: "Worksheet", ModuleGroup: "WORKSHEET" },
+
+  // Dashboard (2026-09-28) — used to just reuse PAYROLL_REPORT's permission
+  // (no dedicated DocumentType existed). Split out so "เข้าเมนู Dashboard"
+  // can be granted independently of the reports page.
+  { DocumentType: "DASHBOARD", MenuNameTH: "Dashboard", MenuNameEN: "Dashboard", ModuleGroup: "DASHBOARD" },
 ] as const;

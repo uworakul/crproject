@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { verifySession } from "@/lib/dal";
 import { hasPermission } from "@/lib/authorize";
 import { prisma } from "@/lib/prisma";
+import { employeeScopeWhere } from "@/lib/employee-scope";
 import StockApprovalTable from "./stock-count-approval-table";
 
 export default async function StockApprovalsPage() {
@@ -46,13 +47,13 @@ export default async function StockApprovalsPage() {
       : Promise.resolve([]),
     canReadIssue
       ? prisma.invIssueHeader.findMany({
-          where: { Status: "SUBMITTED" },
+          where: { Status: "SUBMITTED", Employee: employeeScopeWhere(user) },
           include: { Details: true, Warehouse: { select: { WarehouseName: true } }, Employee: { select: { FullName: true } } },
         })
       : Promise.resolve([]),
     canReadReturn
       ? prisma.invReturnHeader.findMany({
-          where: { Status: "SUBMITTED" },
+          where: { Status: "SUBMITTED", Employee: employeeScopeWhere(user) },
           include: { Details: true, Warehouse: { select: { WarehouseName: true } }, Employee: { select: { FullName: true } } },
         })
       : Promise.resolve([]),

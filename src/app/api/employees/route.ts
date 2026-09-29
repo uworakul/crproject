@@ -6,6 +6,7 @@ import { logAction } from "@/lib/audit-log";
 import { apiError, apiSuccess } from "@/lib/api-response";
 import { isValidEmployeeType } from "@/lib/validation";
 import { computeNextNumber, findNextFreeEmployeeCode, getOrCreateDocumentNumber } from "@/lib/document-number";
+import { employeeScopeWhere } from "@/lib/employee-scope";
 
 const NEW_EMPLOYEE_DOCUMENT_CODE = "NEW_EMPNO";
 
@@ -16,6 +17,7 @@ export async function GET() {
   if (denied) return denied;
 
   const employees = await prisma.mstEmployee.findMany({
+    where: employeeScopeWhere(user),
     select: {
       EmpCode: true,
       FullName: true,
@@ -68,6 +70,13 @@ export async function POST(request: NextRequest) {
   }
   if (!isValidEmployeeType(body.employeeType)) {
     return apiError(400, "VALIDATION_FAILED", "employeeType must be one of the allowed values");
+  }
+  // A user scoped to specific employee types can't create an employee of a
+  // type outside their own scope (2026-09-28) — CompanyCode isn't set at
+  // creation time (only via a later edit), so there's nothing to check for
+  // company scope here.
+  if (user.allowedEmployeeTypes && !user.allowedEmployeeTypes.includes(body.employeeType as string)) {
+    return apiError(403, "EMPLOYEE_TYPE_NOT_IN_SCOPE", "You are not allowed to create employees of this type");
   }
 
   // EmpCode collisions used to be a hard block; now (2026-09-19) they're

@@ -4,6 +4,7 @@ import { verifySession } from "@/lib/dal";
 import { requirePermission } from "@/lib/authorize";
 import { logAction } from "@/lib/audit-log";
 import { apiError, apiSuccess } from "@/lib/api-response";
+import { isEmployeeInScope } from "@/lib/employee-scope";
 
 export async function GET(request: NextRequest) {
   const user = await verifySession();
@@ -18,6 +19,7 @@ export async function GET(request: NextRequest) {
 
   const employee = await prisma.mstEmployee.findUnique({ where: { EmpCode: empCode } });
   if (!employee) return apiError(404, "EMPLOYEE_NOT_FOUND");
+  if (!isEmployeeInScope(user, employee)) return apiError(404, "EMPLOYEE_NOT_FOUND");
 
   const leaveTypes = await prisma.mstLeaveType.findMany({ orderBy: { LeaveTypeCode: "asc" } });
   const balances = await prisma.mstEmployeeLeaveBalance.findMany({ where: { EmpCode: empCode, Year: year } });
@@ -62,6 +64,7 @@ export async function POST(request: NextRequest) {
 
   const employee = await prisma.mstEmployee.findUnique({ where: { EmpCode: empCode } });
   if (!employee) return apiError(404, "EMPLOYEE_NOT_FOUND");
+  if (!isEmployeeInScope(user, employee)) return apiError(404, "EMPLOYEE_NOT_FOUND");
 
   if (!Array.isArray(body.entries)) return apiError(400, "INVALID_PARAMS", "entries must be an array");
   const entries = body.entries as { leaveTypeCode?: unknown; entitled?: unknown }[];

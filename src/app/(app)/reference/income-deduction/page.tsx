@@ -20,12 +20,21 @@ export default async function IncomeDeductionPage() {
   const user = await verifySession();
   if (!user) redirect("/login");
 
-  const canRead = await hasPermission(user, "INCOME_DEDUCTION", "read");
-  if (!canRead) redirect("/");
+  // Split into two DocumentTypes (2026-09-28, permission redesign) — a
+  // user can now have read/save/delete on one tab without the other. Page
+  // itself only needs READ on at least one to be worth showing at all;
+  // each <ReferenceTable> below gates its own save/delete independently.
+  const [canReadIncome, canReadDeduction] = await Promise.all([
+    hasPermission(user, "INCOME_TYPE", "read"),
+    hasPermission(user, "DEDUCTION_TYPE", "read"),
+  ]);
+  if (!canReadIncome && !canReadDeduction) redirect("/");
 
-  const [canSave, canDelete, incomeTypesRaw, deductionTypesRaw] = await Promise.all([
-    hasPermission(user, "INCOME_DEDUCTION", "save"),
-    hasPermission(user, "INCOME_DEDUCTION", "delete"),
+  const [canSaveIncome, canDeleteIncome, canSaveDeduction, canDeleteDeduction, incomeTypesRaw, deductionTypesRaw] = await Promise.all([
+    hasPermission(user, "INCOME_TYPE", "save"),
+    hasPermission(user, "INCOME_TYPE", "delete"),
+    hasPermission(user, "DEDUCTION_TYPE", "save"),
+    hasPermission(user, "DEDUCTION_TYPE", "delete"),
     prisma.refIncomeType.findMany({ orderBy: { IncomeCode: "asc" } }),
     prisma.refDeductionType.findMany({ orderBy: { DeductionCode: "asc" } }),
   ]);
@@ -44,8 +53,8 @@ export default async function IncomeDeductionPage() {
                 key="/api/reference/income-types"
                 apiBase="/api/reference/income-types"
                 fields={incomeFields}
-                canSave={canSave}
-                canDelete={canDelete}
+                canSave={canSaveIncome}
+                canDelete={canDeleteIncome}
                 allowExport
                 allowImport
                 initialRows={incomeTypes}
@@ -59,8 +68,8 @@ export default async function IncomeDeductionPage() {
                 key="/api/reference/deduction-types"
                 apiBase="/api/reference/deduction-types"
                 fields={deductionFields}
-                canSave={canSave}
-                canDelete={canDelete}
+                canSave={canSaveDeduction}
+                canDelete={canDeleteDeduction}
                 allowExport
                 allowImport
                 initialRows={deductionTypes}

@@ -4,6 +4,7 @@ import { verifySession } from "@/lib/dal";
 import { hasPermission } from "@/lib/authorize";
 import { prisma } from "@/lib/prisma";
 import { REQUEST_DOCUMENT_DOCTYPE, type RequestDocumentCode } from "@/lib/request";
+import { employeeScopeWhere, isEmployeeInScope } from "@/lib/employee-scope";
 import RequestDetailView from "./request-detail-view";
 
 export default async function RequestDetailPage({ params }: { params: Promise<{ id: string }> }) {
@@ -21,7 +22,17 @@ export default async function RequestDetailPage({ params }: { params: Promise<{ 
         orderBy: { RequestDetailID: "asc" },
         include: {
           Employee: {
-            select: { FullName: true, EmployeeStatus: true, StartDate: true, PositionCode: true, ReferrerEmpCode: true, EmployeeType: true, DailyRate: true, MonthlySalary: true },
+            select: {
+              FullName: true,
+              EmployeeStatus: true,
+              StartDate: true,
+              PositionCode: true,
+              ReferrerEmpCode: true,
+              EmployeeType: true,
+              DailyRate: true,
+              MonthlySalary: true,
+              CompanyCode: true,
+            },
           },
           OldPosition: { select: { PositionName: true } },
           NewPosition: { select: { PositionName: true } },
@@ -30,6 +41,11 @@ export default async function RequestDetailPage({ params }: { params: Promise<{ 
     },
   });
   if (!header) notFound();
+  // Out-of-scope if ANY line names an employee outside the caller's
+  // company/employee-type scope (2026-09-28) — this is one approval
+  // document, not a filterable list; showing a partial view of it would be
+  // actively misleading for something that gets approved as a whole.
+  if (!header.Details.every((d) => isEmployeeInScope(user, d.Employee))) notFound();
 
   const docType = REQUEST_DOCUMENT_DOCTYPE[header.DocumentCode as RequestDocumentCode];
   const canRead = await hasPermission(user, docType, "read");
@@ -61,7 +77,7 @@ export default async function RequestDetailPage({ params }: { params: Promise<{ 
     // permission the person filling this form may not have (they only need
     // REQUEST_PROMOTE).
     prisma.mstEmployee.findMany({
-      where: { EmployeeStatus: "ACTIVE" },
+      where: { EmployeeStatus: "ACTIVE", ...employeeScopeWhere(user) },
       orderBy: { EmpCode: "asc" },
       select: { EmpCode: true, FullName: true, PositionCode: true, Position: { select: { PositionName: true } }, EmployeeType: true, DailyRate: true, MonthlySalary: true },
     }),

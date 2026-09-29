@@ -3,11 +3,12 @@ import { verifySession } from "@/lib/dal";
 import { requirePermission } from "@/lib/authorize";
 import { logAction } from "@/lib/audit-log";
 import { apiError, apiSuccess } from "@/lib/api-response";
+import { isEmployeeInScope } from "@/lib/employee-scope";
 
 export async function POST(_req: Request, ctx: RouteContext<"/api/inventory/stock-returns/[id]/submit">) {
   const user = await verifySession();
   if (!user) return apiError(401, "UNAUTHORIZED");
-  const denied = await requirePermission(user, "STOCK_RETURN", "save");
+  const denied = await requirePermission(user, "STOCK_RETURN", "submit");
   if (denied) return denied;
 
   const { id } = await ctx.params;
@@ -16,6 +17,8 @@ export async function POST(_req: Request, ctx: RouteContext<"/api/inventory/stoc
 
   const existing = await prisma.invReturnHeader.findUnique({ where: { ReturnHeaderID: returnId }, include: { Details: true } });
   if (!existing) return apiError(404, "STOCK_RETURN_NOT_FOUND");
+  const employeeScope = await prisma.mstEmployee.findUnique({ where: { EmpCode: existing.EmpCode }, select: { CompanyCode: true, EmployeeType: true } });
+  if (!employeeScope || !isEmployeeInScope(user, employeeScope)) return apiError(404, "STOCK_RETURN_NOT_FOUND");
 
   if (existing.Status !== "DRAFT") {
     return apiError(409, "INVALID_STATUS_TRANSITION", "Only a DRAFT return can be submitted", { currentStatus: existing.Status });

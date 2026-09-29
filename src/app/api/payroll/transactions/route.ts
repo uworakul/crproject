@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { verifySession } from "@/lib/dal";
 import { requirePermission } from "@/lib/authorize";
 import { apiError, apiSuccess } from "@/lib/api-response";
+import { employeeScopeWhere } from "@/lib/employee-scope";
 
 export async function GET(request: NextRequest) {
   const user = await verifySession();
@@ -21,9 +22,9 @@ export async function GET(request: NextRequest) {
     where: {
       PeriodID: periodId,
       ...(empCode ? { EmpCode: empCode } : {}),
-      ...(companyCode || deptCode
-        ? { Employee: { ...(companyCode ? { CompanyCode: companyCode } : {}), ...(deptCode ? { DeptCode: deptCode } : {}) } }
-        : {}),
+      // Own companyCode/deptCode filter (explicit, user-chosen) merged with
+      // employeeScopeWhere (enforced, not user-chosen) — 2026-09-28.
+      Employee: { ...employeeScopeWhere(user), ...(companyCode ? { CompanyCode: companyCode } : {}), ...(deptCode ? { DeptCode: deptCode } : {}) },
     },
     include: {
       // Department/Site here are the EMPLOYEE's own DeptCode/DefaultSiteCode

@@ -44,7 +44,12 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   const user = await verifySession();
   if (!user) return apiError(401, "UNAUTHORIZED");
-  const denied = await requirePermission(user, "PAYROLL_LOCK", "approve");
+  // Lock = "ขออนุมัติปิดสิ้นงวด" (submit), distinct from the actual Approve
+  // step below (POST /api/payroll/approve, still "approve") — previously
+  // both shared the identical PAYROLL_LOCK/"approve" check, so anyone who
+  // could request a lock could also approve it with no real separation
+  // (2026-09-28 permission redesign).
+  const denied = await requirePermission(user, "PAYROLL_LOCK", "submit");
   if (denied) return denied;
 
   let body: { periodId?: unknown };

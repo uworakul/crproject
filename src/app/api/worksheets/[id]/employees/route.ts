@@ -5,6 +5,7 @@ import { hasPermission } from "@/lib/authorize";
 import { logAction } from "@/lib/audit-log";
 import { apiError, apiSuccess } from "@/lib/api-response";
 import { resolveEffectiveDailyRate } from "@/lib/worksheet";
+import { isEmployeeInScope } from "@/lib/employee-scope";
 
 // Adds a SPARE employee row (REGULAR employees are pulled in automatically
 // when the draft is created — see getOrCreateDraftWorksheet).
@@ -45,6 +46,7 @@ export async function POST(request: NextRequest, ctx: RouteContext<"/api/workshe
 
   const employee = await prisma.mstEmployee.findUnique({ where: { EmpCode: empCode } });
   if (!employee) return apiError(404, "EMPLOYEE_NOT_FOUND", undefined, { empCode });
+  if (!isEmployeeInScope(user, employee)) return apiError(404, "EMPLOYEE_NOT_FOUND", undefined, { empCode });
   // Server-side mirror of the SPARE search dropdown's own filter
   // (EmployeeStatus in ACTIVE/PROBATION — "สถานะปกติ/ทดลองงาน เท่านั้น") — the
   // dropdown hiding a resigned employee was never actually enforced here, so

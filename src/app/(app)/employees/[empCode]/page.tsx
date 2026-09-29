@@ -3,6 +3,7 @@ import Link from "next/link";
 import { verifySession } from "@/lib/dal";
 import { hasPermission } from "@/lib/authorize";
 import { prisma } from "@/lib/prisma";
+import { isEmployeeInScope } from "@/lib/employee-scope";
 import Tabs from "../../reference/tabs";
 import EmployeeInfoTab from "./employee-info-tab";
 import PersonalInfoTab from "./personal-info-tab";
@@ -107,6 +108,9 @@ export default async function EmployeeDetailPage({ params }: { params: Promise<{
   ]);
 
   if (!employeeRaw) notFound();
+  // Out-of-scope by company/employee-type (2026-09-28) — 404, same as "not
+  // found", never a 403 that would confirm the record exists at all.
+  if (!isEmployeeInScope(user, employeeRaw)) notFound();
 
   // mst_employee_leave_balance is no longer the source of truth (2026-09-21)
   // — Entitled/Used/Remaining are computed live per year via

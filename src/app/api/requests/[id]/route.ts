@@ -5,6 +5,7 @@ import { requirePermission } from "@/lib/authorize";
 import { logAction } from "@/lib/audit-log";
 import { apiError, apiSuccess } from "@/lib/api-response";
 import { REQUEST_DOCUMENT_DOCTYPE, type RequestDocumentCode } from "@/lib/request";
+import { isEmployeeInScope } from "@/lib/employee-scope";
 
 export async function GET(_req: NextRequest, ctx: RouteContext<"/api/requests/[id]">) {
   const user = await verifySession();
@@ -21,7 +22,17 @@ export async function GET(_req: NextRequest, ctx: RouteContext<"/api/requests/[i
         orderBy: { RequestDetailID: "asc" },
         include: {
           Employee: {
-            select: { FullName: true, EmployeeStatus: true, StartDate: true, PositionCode: true, ReferrerEmpCode: true, EmployeeType: true, DailyRate: true, MonthlySalary: true },
+            select: {
+              FullName: true,
+              EmployeeStatus: true,
+              StartDate: true,
+              PositionCode: true,
+              ReferrerEmpCode: true,
+              EmployeeType: true,
+              DailyRate: true,
+              MonthlySalary: true,
+              CompanyCode: true,
+            },
           },
           OldPosition: { select: { PositionName: true } },
           NewPosition: { select: { PositionName: true } },
@@ -30,6 +41,7 @@ export async function GET(_req: NextRequest, ctx: RouteContext<"/api/requests/[i
     },
   });
   if (!header) return apiError(404, "REQUEST_NOT_FOUND");
+  if (!header.Details.every((d) => isEmployeeInScope(user, d.Employee))) return apiError(404, "REQUEST_NOT_FOUND");
 
   const denied = await requirePermission(user, REQUEST_DOCUMENT_DOCTYPE[header.DocumentCode as RequestDocumentCode], "read");
   if (denied) return denied;

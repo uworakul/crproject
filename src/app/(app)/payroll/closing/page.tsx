@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { verifySession } from "@/lib/dal";
 import { hasPermission } from "@/lib/authorize";
 import { prisma } from "@/lib/prisma";
+import { companyScopeWhere } from "@/lib/employee-scope";
 import PayrollClosingView from "./payroll-closing-view";
 
 export default async function PayrollClosingPage() {
@@ -13,7 +14,7 @@ export default async function PayrollClosingPage() {
 
   const [periodsRaw, companies] = await Promise.all([
     prisma.sysPeriod.findMany({ orderBy: { PeriodID: "desc" } }),
-    prisma.refCompany.findMany({ orderBy: { CompanyCode: "asc" }, select: { CompanyCode: true, CompanyName: true } }),
+    prisma.refCompany.findMany({ where: companyScopeWhere(user), orderBy: { CompanyCode: "asc" }, select: { CompanyCode: true, CompanyName: true } }),
   ]);
 
   const periods = JSON.parse(JSON.stringify(periodsRaw));

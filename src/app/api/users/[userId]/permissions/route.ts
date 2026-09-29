@@ -11,6 +11,7 @@ interface PermissionInput {
   canRead?: boolean;
   canSave?: boolean;
   canDelete?: boolean;
+  canSubmit?: boolean;
   canApprove?: boolean;
 }
 
@@ -25,7 +26,7 @@ export async function GET(_req: NextRequest, ctx: RouteContext<"/api/users/[user
 
   const permissions = await prisma.sysUserPermission.findMany({
     where: { UserID: userId },
-    select: { PermissionID: true, DocumentType: true, SiteCode: true, CanRead: true, CanSave: true, CanDelete: true, CanApprove: true },
+    select: { PermissionID: true, DocumentType: true, SiteCode: true, CanRead: true, CanSave: true, CanDelete: true, CanSubmit: true, CanApprove: true },
     orderBy: { DocumentType: "asc" },
   });
 
@@ -67,7 +68,7 @@ export async function PUT(request: NextRequest, ctx: RouteContext<"/api/users/[u
   }
 
   // Drop rows with every flag off — equivalent to no permission at all.
-  const toInsert = rows.filter((r) => r.canRead || r.canSave || r.canDelete || r.canApprove);
+  const toInsert = rows.filter((r) => r.canRead || r.canSave || r.canDelete || r.canSubmit || r.canApprove);
 
   await prisma.$transaction([
     prisma.sysUserPermission.deleteMany({ where: { UserID: userId } }),
@@ -81,6 +82,7 @@ export async function PUT(request: NextRequest, ctx: RouteContext<"/api/users/[u
               CanRead: !!r.canRead,
               CanSave: !!r.canSave,
               CanDelete: !!r.canDelete,
+              CanSubmit: !!r.canSubmit,
               CanApprove: !!r.canApprove,
               CreatedBy: user.userId,
             })),

@@ -7,7 +7,7 @@ import { buildThreeColumnWorkbook } from "@/lib/excel-reference";
 export async function GET() {
   const user = await verifySession();
   if (!user) return apiError(401, "UNAUTHORIZED");
-  const denied = await requirePermission(user, "INCOME_DEDUCTION", "read");
+  const denied = await requirePermission(user, "DEDUCTION_TYPE", "read");
   if (denied) return denied;
 
   const deductionTypes = await prisma.refDeductionType.findMany({ orderBy: { DeductionCode: "asc" } });

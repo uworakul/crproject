@@ -317,6 +317,35 @@ export interface CalculateFilters {
   companyCode?: string; // mst_employee.CompanyCode — "คำนวณเฉพาะบริษัท" (2026-09-21, คำนวณเงินได้ประจำงวด)
   deptCode?: string; // mst_employee.DeptCode — "คำนวณเฉพาะแผนก"
   empCode?: string; // single specific employee — "รหัสพนักงานเฉพาะคน"
+  // ENFORCED scope (2026-09-28), not user-chosen — see ReportFilters in
+  // src/lib/reports/types.ts for the same convention. companyCode above
+  // ANDs with this if both are set (an explicit pick outside scope yields
+  // zero rows, never a silent bypass). EmployeeType isn't filtered
+  // per-row here — every employee selected already shares the period's own
+  // EmployeeType, so the caller checks that once against
+  // allowedEmployeeTypes before calling in at all (see the PERIOD_TYPE_NOT_IN_SCOPE
+  // guard in runPayrollCalculate/cancelPayrollCalculate/pullPayrollFromWorksheet).
+  allowedCompanyCodes?: string[] | null;
+  allowedEmployeeTypes?: string[] | null;
+}
+
+// Same fail-closed merge as src/lib/reports/types.ts's employeeWhere() —
+// an explicit companyCode pick outside the enforced scope matches nothing,
+// rather than silently ignoring the scope restriction.
+function scopedCompanyCodes(companyCode: string | null | undefined, allowed: string[] | null | undefined): string[] | null {
+  if (!allowed) return companyCode ? [companyCode] : null;
+  if (!companyCode) return allowed;
+  return allowed.includes(companyCode) ? [companyCode] : ["__NONE__"];
+}
+
+// Blocks the whole operation up front if the period's own EmployeeType
+// falls outside the caller's scope — every employee a Calculate/Cancel/Pull
+// touches shares this period's EmployeeType by construction, so this one
+// check covers all of them (no per-row EmployeeType filtering needed).
+function assertPeriodTypeInScope(periodEmployeeType: string, allowedEmployeeTypes: string[] | null | undefined) {
+  if (allowedEmployeeTypes && !allowedEmployeeTypes.includes(periodEmployeeType)) {
+    throw new Error("PERIOD_TYPE_NOT_IN_SCOPE");
+  }
 }
 
 // BR-030: select EmployeeType + Period (+ optional employee code range),
@@ -335,6 +364,7 @@ export async function runPayrollCalculate(
 ): Promise<CalculateResult> {
   const period = await prisma.sysPeriod.findUnique({ where: { PeriodID: periodId } });
   if (!period) throw new Error("PERIOD_NOT_FOUND");
+  assertPeriodTypeInScope(period.EmployeeType, filters.allowedEmployeeTypes);
 
   const lock = await prisma.trnPayrollLock.findFirst({ where: { PeriodID: periodId, IsLocked: true } });
   if (lock) throw new Error("PERIOD_LOCKED");
@@ -348,16 +378,15 @@ export async function runPayrollCalculate(
     await pullPayrollForMonthlyEmployees(periodId, calculatedBy, filters);
   }
 
-  const { empCodeFrom, empCodeTo, companyCode, deptCode, empCode } = filters;
+  const { empCodeFrom, empCodeTo, companyCode, deptCode, empCode, allowedCompanyCodes } = filters;
+  const companyCodes = scopedCompanyCodes(companyCode, allowedCompanyCodes);
   const transactions = await prisma.trnPayrollTransaction.findMany({
     where: {
       PeriodID: periodId,
       ...(empCodeFrom ? { EmpCode: { gte: empCodeFrom } } : {}),
       ...(empCodeTo ? { EmpCode: { lte: empCodeTo } } : {}),
       ...(empCode ? { EmpCode: empCode } : {}),
-      ...(companyCode || deptCode
-        ? { Employee: { ...(companyCode ? { CompanyCode: companyCode } : {}), ...(deptCode ? { DeptCode: deptCode } : {}) } }
-        : {}),
+      ...(companyCodes || deptCode ? { Employee: { ...(companyCodes ? { CompanyCode: { in: companyCodes } } : {}), ...(deptCode ? { DeptCode: deptCode } : {}) } } : {}),
     },
   });
 
@@ -404,9 +433,14 @@ export async function runPayrollCalculate(
 // reset to 0 — all four are Calculate-owned, same lifecycle), recomputing
 // NetPay from whatever else is on the row, then re-runnable via Calculate
 // again.
-export async function cancelPayrollCalculate(periodId: number, calculatedBy: string): Promise<CalculateResult> {
+export async function cancelPayrollCalculate(
+  periodId: number,
+  calculatedBy: string,
+  allowedEmployeeTypes?: string[] | null,
+): Promise<CalculateResult> {
   const period = await prisma.sysPeriod.findUnique({ where: { PeriodID: periodId } });
   if (!period) throw new Error("PERIOD_NOT_FOUND");
+  assertPeriodTypeInScope(period.EmployeeType, allowedEmployeeTypes);
 
   const lock = await prisma.trnPayrollLock.findFirst({ where: { PeriodID: periodId, IsLocked: true } });
   if (lock) throw new Error("PERIOD_LOCKED");
@@ -662,12 +696,16 @@ export async function pullPayrollFromWorksheet(
   employeeType: string,
   companyCode: string | null,
   userId: string,
+  allowedCompanyCodes?: string[] | null,
+  allowedEmployeeTypes?: string[] | null,
 ): Promise<PullFromWorksheetResult> {
   const period = await prisma.sysPeriod.findUnique({ where: { PeriodID: periodId } });
   if (!period) throw new Error("PERIOD_NOT_FOUND");
+  assertPeriodTypeInScope(employeeType, allowedEmployeeTypes);
 
   const lock = await prisma.trnPayrollLock.findFirst({ where: { PeriodID: periodId, IsLocked: true } });
   if (lock) throw new Error("PERIOD_LOCKED");
+  const companyCodes = scopedCompanyCodes(companyCode, allowedCompanyCodes);
 
   const zero = new Prisma.Decimal(0);
   const attendanceCodes = await prisma.mstAttendanceCode.findMany();
@@ -679,7 +717,7 @@ export async function pullPayrollFromWorksheet(
       AttendCode: { not: null },
       Detail: {
         Header: { Status: "APPROVED" },
-        Employee: { EmployeeType: employeeType, ...(companyCode ? { CompanyCode: companyCode } : {}) },
+        Employee: { EmployeeType: employeeType, ...(companyCodes ? { CompanyCode: { in: companyCodes } } : {}) },
       },
     },
     select: {
@@ -907,7 +945,8 @@ export async function pullPayrollForMonthlyEmployees(periodId: number, userId: s
   const lock = await prisma.trnPayrollLock.findFirst({ where: { PeriodID: periodId, IsLocked: true } });
   if (lock) throw new Error("PERIOD_LOCKED");
 
-  const { empCodeFrom, empCodeTo, companyCode, deptCode, empCode } = filters;
+  const { empCodeFrom, empCodeTo, companyCode, deptCode, empCode, allowedCompanyCodes } = filters;
+  const companyCodes = scopedCompanyCodes(companyCode, allowedCompanyCodes);
   const employees = await prisma.mstEmployee.findMany({
     where: {
       EmployeeType: period.EmployeeType,
@@ -922,7 +961,7 @@ export async function pullPayrollForMonthlyEmployees(periodId: number, userId: s
       ...(empCodeFrom ? { EmpCode: { gte: empCodeFrom } } : {}),
       ...(empCodeTo ? { EmpCode: { lte: empCodeTo } } : {}),
       ...(empCode ? { EmpCode: empCode } : {}),
-      ...(companyCode ? { CompanyCode: companyCode } : {}),
+      ...(companyCodes ? { CompanyCode: { in: companyCodes } } : {}),
       ...(deptCode ? { DeptCode: deptCode } : {}),
     },
   });

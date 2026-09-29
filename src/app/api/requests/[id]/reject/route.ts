@@ -5,6 +5,7 @@ import { requirePermission } from "@/lib/authorize";
 import { logAction } from "@/lib/audit-log";
 import { apiError, apiSuccess } from "@/lib/api-response";
 import { REQUEST_DOCUMENT_DOCTYPE, type RequestDocumentCode } from "@/lib/request";
+import { isEmployeeInScope } from "@/lib/employee-scope";
 
 // Rejected requests go back to DRAFT (RejectedBy/RejectedDate/RejectReason
 // kept as the historical record) so the requester can fix and resubmit —
@@ -17,8 +18,12 @@ export async function POST(request: NextRequest, ctx: RouteContext<"/api/request
   const requestId = Number(id);
   if (!Number.isInteger(requestId)) return apiError(400, "INVALID_PARAMS");
 
-  const existing = await prisma.trnRequestHeader.findUnique({ where: { RequestHeaderID: requestId } });
+  const existing = await prisma.trnRequestHeader.findUnique({
+    where: { RequestHeaderID: requestId },
+    include: { Details: { include: { Employee: { select: { CompanyCode: true, EmployeeType: true } } } } },
+  });
   if (!existing) return apiError(404, "REQUEST_NOT_FOUND");
+  if (!existing.Details.every((d) => isEmployeeInScope(user, d.Employee))) return apiError(404, "REQUEST_NOT_FOUND");
 
   const denied = await requirePermission(user, REQUEST_DOCUMENT_DOCTYPE[existing.DocumentCode as RequestDocumentCode], "approve");
   if (denied) return denied;

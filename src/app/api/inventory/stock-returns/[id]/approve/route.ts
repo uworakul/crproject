@@ -3,6 +3,7 @@ import { verifySession } from "@/lib/dal";
 import { requirePermission } from "@/lib/authorize";
 import { logAction } from "@/lib/audit-log";
 import { apiError, apiSuccess } from "@/lib/api-response";
+import { isEmployeeInScope } from "@/lib/employee-scope";
 import { decimalOf, minDecimal } from "@/lib/inventory";
 
 // Approve = mark APPROVED + post the return, all in one DB transaction.
@@ -30,6 +31,8 @@ export async function POST(_req: Request, ctx: RouteContext<"/api/inventory/stoc
     include: { Details: true },
   });
   if (!existing) return apiError(404, "STOCK_RETURN_NOT_FOUND");
+  const employeeScope = await prisma.mstEmployee.findUnique({ where: { EmpCode: existing.EmpCode }, select: { CompanyCode: true, EmployeeType: true } });
+  if (!employeeScope || !isEmployeeInScope(user, employeeScope)) return apiError(404, "STOCK_RETURN_NOT_FOUND");
 
   if (existing.Status !== "SUBMITTED") {
     return apiError(409, "INVALID_STATUS_TRANSITION", "Only a SUBMITTED return can be approved", { currentStatus: existing.Status });

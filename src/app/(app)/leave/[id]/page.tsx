@@ -2,6 +2,7 @@ import { redirect, notFound } from "next/navigation";
 import { verifySession } from "@/lib/dal";
 import { hasPermission } from "@/lib/authorize";
 import { prisma } from "@/lib/prisma";
+import { isEmployeeInScope } from "@/lib/employee-scope";
 import LeaveDetailView from "./leave-detail-view";
 
 export default async function LeaveDetailPage({ params }: { params: Promise<{ id: string }> }) {
@@ -20,10 +21,11 @@ export default async function LeaveDetailPage({ params }: { params: Promise<{ id
     hasPermission(user, "LEAVE_REQUEST", "approve"),
     prisma.trnLeaveRequest.findUnique({
       where: { LeaveID: leaveId },
-      include: { Employee: { select: { FullName: true } }, LeaveType: true },
+      include: { Employee: { select: { FullName: true, CompanyCode: true, EmployeeType: true } }, LeaveType: true },
     }),
   ]);
   if (!leaveRaw) notFound();
+  if (!isEmployeeInScope(user, leaveRaw.Employee)) notFound();
 
   const leave = JSON.parse(JSON.stringify(leaveRaw));
 

@@ -34,10 +34,11 @@ export async function POST(request: NextRequest) {
 
   let result;
   try {
-    result = await pullPayrollFromWorksheet(periodId, employeeType, companyCode, user.userId);
+    result = await pullPayrollFromWorksheet(periodId, employeeType, companyCode, user.userId, user.allowedCompanyCodes, user.allowedEmployeeTypes);
   } catch (err) {
     if (err instanceof Error && err.message === "PERIOD_NOT_FOUND") return apiError(404, "PERIOD_NOT_FOUND");
     if (err instanceof Error && err.message === "PERIOD_LOCKED") return apiError(409, "PERIOD_LOCKED", "งวดนี้ถูกล็อกแล้ว ไม่สามารถดึงข้อมูลจาก Worksheet ได้");
+    if (err instanceof Error && err.message === "PERIOD_TYPE_NOT_IN_SCOPE") return apiError(403, "PERIOD_TYPE_NOT_IN_SCOPE", "You are not allowed to operate on this period's employee type");
     throw err;
   }
 

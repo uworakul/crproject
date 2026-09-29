@@ -5,6 +5,7 @@ import { logAction } from "@/lib/audit-log";
 import { apiError, apiSuccess } from "@/lib/api-response";
 import { REQUEST_DOCUMENT_DOCTYPE, REQUEST_DOCUMENT_KIND, REQUEST_INCOME_CODE, COMMISSION_MIN_DAYS, type RequestDocumentCode } from "@/lib/request";
 import { findOrCreateCurrentPeriodTransaction, recomputeTransactionOtherTotals } from "@/lib/payroll";
+import { isEmployeeInScope } from "@/lib/employee-scope";
 
 // Carries a specific error code (+ context, e.g. which empCode failed) out
 // of the $transaction callback below so the route can map it to a proper
@@ -59,6 +60,7 @@ export async function POST(_req: Request, ctx: RouteContext<"/api/requests/[id]/
     include: { Details: { include: { Employee: true } } },
   });
   if (!existing) return apiError(404, "REQUEST_NOT_FOUND");
+  if (!existing.Details.every((d) => isEmployeeInScope(user, d.Employee))) return apiError(404, "REQUEST_NOT_FOUND");
 
   const documentCode = existing.DocumentCode as RequestDocumentCode;
   const denied = await requirePermission(user, REQUEST_DOCUMENT_DOCTYPE[documentCode], "approve");

@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { verifySession } from "@/lib/dal";
 import { hasPermission } from "@/lib/authorize";
 import { prisma } from "@/lib/prisma";
+import { employeeScopeWhere } from "@/lib/employee-scope";
 import LeaveReportView from "./leave-report-view";
 
 export default async function LeaveReportPage() {
@@ -11,7 +12,7 @@ export default async function LeaveReportPage() {
   const canRead = await hasPermission(user, "LEAVE_REPORT", "read");
   if (!canRead) redirect("/");
 
-  const employees = await prisma.mstEmployee.findMany({ orderBy: { EmpCode: "asc" }, select: { EmpCode: true, FullName: true } });
+  const employees = await prisma.mstEmployee.findMany({ where: employeeScopeWhere(user), orderBy: { EmpCode: "asc" }, select: { EmpCode: true, FullName: true } });
 
   return (
     <div className="w-full px-6 py-8">

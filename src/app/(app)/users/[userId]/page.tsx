@@ -18,7 +18,7 @@ export default async function UserDetailPage({
 
   const { userId } = await params;
 
-  const [target, menus, sites, otherUsers, canSave] = await Promise.all([
+  const [target, menus, sites, otherUsers, canSave, companies, companyScopeRaw, employeeTypeScopeRaw] = await Promise.all([
     prisma.sysUser.findUnique({
       where: { UserID: userId },
       select: {
@@ -29,18 +29,25 @@ export default async function UserDetailPage({
         DefaultSiteCode: true,
         IsActive: true,
         Permissions: {
-          select: { DocumentType: true, SiteCode: true, CanRead: true, CanSave: true, CanDelete: true, CanApprove: true },
+          select: { DocumentType: true, SiteCode: true, CanRead: true, CanSave: true, CanDelete: true, CanSubmit: true, CanApprove: true },
         },
       },
     }),
     prisma.sysMenu.findMany({ where: { IsActive: true }, orderBy: [{ ModuleGroup: "asc" }, { DocumentType: "asc" }] }),
-    prisma.mstSite.findMany({ where: { IsActive: true }, orderBy: { SiteCode: "asc" } }),
+    // select-limited (2026-09-29 fix) — mst_site now also carries
+    // MonthlyServiceFee (a Prisma Decimal), which can't cross the Server->
+    // Client Component boundary un-serialized; UserEditForm only ever reads
+    // SiteCode/SiteName for the "หน่วยงานหลัก" dropdown anyway.
+    prisma.mstSite.findMany({ where: { IsActive: true }, orderBy: { SiteCode: "asc" }, select: { SiteCode: true, SiteName: true } }),
     prisma.sysUser.findMany({
       where: { UserID: { not: userId } },
       select: { UserID: true, DisplayName: true },
       orderBy: { UserID: "asc" },
     }),
     hasPermission(currentUser, "USER", "save"),
+    prisma.refCompany.findMany({ orderBy: { CompanyCode: "asc" }, select: { CompanyCode: true, CompanyName: true } }),
+    prisma.sysUserCompany.findMany({ where: { UserID: userId }, select: { CompanyCode: true } }),
+    prisma.sysUserEmployeeType.findMany({ where: { UserID: userId }, select: { EmployeeType: true } }),
   ]);
 
   if (!target) notFound();
@@ -61,6 +68,9 @@ export default async function UserDetailPage({
         otherUsers={otherUsers}
         canSave={canSave}
         isSelf={currentUser.userId === target.UserID}
+        companies={companies}
+        initialCompanyScope={companyScopeRaw.map((r) => r.CompanyCode)}
+        initialEmployeeTypeScope={employeeTypeScopeRaw.map((r) => r.EmployeeType)}
       />
     </div>
   );

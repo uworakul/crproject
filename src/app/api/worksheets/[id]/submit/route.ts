@@ -15,7 +15,7 @@ export async function POST(_req: Request, ctx: RouteContext<"/api/worksheets/[id
   const header = await prisma.trnWorksheetHeader.findUnique({ where: { WorksheetID: worksheetId } });
   if (!header) return apiError(404, "WORKSHEET_NOT_FOUND");
 
-  const denied = !(await hasPermission(user, "WORKSHEET", "save", header.SiteCode));
+  const denied = !(await hasPermission(user, "WORKSHEET", "submit", header.SiteCode));
   if (denied) return apiError(403, "FORBIDDEN", "Missing 'save' permission on 'WORKSHEET' for this site");
 
   if (header.Status !== "DRAFT") {

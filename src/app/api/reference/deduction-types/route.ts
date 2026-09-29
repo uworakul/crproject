@@ -8,7 +8,7 @@ import { apiError, apiSuccess } from "@/lib/api-response";
 export async function GET() {
   const user = await verifySession();
   if (!user) return apiError(401, "UNAUTHORIZED");
-  const denied = await requirePermission(user, "INCOME_DEDUCTION", "read");
+  const denied = await requirePermission(user, "DEDUCTION_TYPE", "read");
   if (denied) return denied;
 
   const deductionTypes = await prisma.refDeductionType.findMany({ orderBy: { DeductionCode: "asc" } });
@@ -18,7 +18,7 @@ export async function GET() {
 export async function POST(request: NextRequest) {
   const user = await verifySession();
   if (!user) return apiError(401, "UNAUTHORIZED");
-  const denied = await requirePermission(user, "INCOME_DEDUCTION", "save");
+  const denied = await requirePermission(user, "DEDUCTION_TYPE", "save");
   if (denied) return denied;
 
   let body: { deductionCode?: unknown; deductionName?: unknown; isInstallment?: unknown; isAutoCalculated?: unknown };

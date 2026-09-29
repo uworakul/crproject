@@ -3,6 +3,7 @@ import Link from "next/link";
 import { verifySession } from "@/lib/dal";
 import { hasPermission } from "@/lib/authorize";
 import { prisma } from "@/lib/prisma";
+import { employeeScopeWhere, companyScopeWhere } from "@/lib/employee-scope";
 import EmployeesTable from "./employees-table";
 
 export default async function EmployeesPage() {
@@ -14,6 +15,7 @@ export default async function EmployeesPage() {
 
   const [employeesRaw, departments, sites, companies, canCreate, canDelete] = await Promise.all([
     prisma.mstEmployee.findMany({
+      where: employeeScopeWhere(user),
       select: {
         EmpCode: true,
         FullName: true,
@@ -32,8 +34,11 @@ export default async function EmployeesPage() {
       orderBy: { EmpCode: "asc" },
     }),
     prisma.refDepartment.findMany({ where: { IsActive: true }, orderBy: { DeptCode: "asc" } }),
-    prisma.mstSite.findMany({ where: { IsActive: true }, orderBy: { SiteCode: "asc" } }),
+    // select-limited (2026-09-29 fix) — mst_site's MonthlyServiceFee is a
+    // Prisma Decimal, which can't cross into a Client Component un-serialized.
+    prisma.mstSite.findMany({ where: { IsActive: true }, orderBy: { SiteCode: "asc" }, select: { SiteCode: true, SiteName: true } }),
     prisma.refCompany.findMany({
+      where: companyScopeWhere(user),
       select: { CompanyCode: true, CompanyName: true },
       orderBy: { CompanyCode: "asc" },
     }),

@@ -5,6 +5,7 @@ import { requirePermission } from "@/lib/authorize";
 import { logAction } from "@/lib/audit-log";
 import { apiError, apiSuccess } from "@/lib/api-response";
 import { LEAVE_HOURS_PER_DAY } from "@/lib/leave";
+import { isEmployeeInScope } from "@/lib/employee-scope";
 
 export async function GET(_req: NextRequest, ctx: RouteContext<"/api/leave/requests/[id]">) {
   const user = await verifySession();
@@ -18,9 +19,10 @@ export async function GET(_req: NextRequest, ctx: RouteContext<"/api/leave/reque
 
   const req = await prisma.trnLeaveRequest.findUnique({
     where: { LeaveID: leaveId },
-    include: { Employee: { select: { FullName: true } }, LeaveType: true },
+    include: { Employee: { select: { FullName: true, CompanyCode: true, EmployeeType: true } }, LeaveType: true },
   });
   if (!req) return apiError(404, "LEAVE_REQUEST_NOT_FOUND");
+  if (!isEmployeeInScope(user, req.Employee)) return apiError(404, "LEAVE_REQUEST_NOT_FOUND");
   return apiSuccess(req);
 }
 
@@ -36,6 +38,8 @@ export async function PUT(request: NextRequest, ctx: RouteContext<"/api/leave/re
 
   const existing = await prisma.trnLeaveRequest.findUnique({ where: { LeaveID: leaveId } });
   if (!existing) return apiError(404, "LEAVE_REQUEST_NOT_FOUND");
+  const employeeScope = await prisma.mstEmployee.findUnique({ where: { EmpCode: existing.EmpCode }, select: { CompanyCode: true, EmployeeType: true } });
+  if (!employeeScope || !isEmployeeInScope(user, employeeScope)) return apiError(404, "LEAVE_REQUEST_NOT_FOUND");
   if (existing.Status !== "DRAFT") {
     return apiError(409, "LEAVE_REQUEST_LOCKED", "Only a DRAFT leave request can be edited", { status: existing.Status });
   }
@@ -103,6 +107,8 @@ export async function DELETE(_req: NextRequest, ctx: RouteContext<"/api/leave/re
 
   const existing = await prisma.trnLeaveRequest.findUnique({ where: { LeaveID: leaveId } });
   if (!existing) return apiError(404, "LEAVE_REQUEST_NOT_FOUND");
+  const employeeScope = await prisma.mstEmployee.findUnique({ where: { EmpCode: existing.EmpCode }, select: { CompanyCode: true, EmployeeType: true } });
+  if (!employeeScope || !isEmployeeInScope(user, employeeScope)) return apiError(404, "LEAVE_REQUEST_NOT_FOUND");
   if (existing.Status !== "DRAFT") {
     return apiError(409, "LEAVE_REQUEST_LOCKED", "Only a DRAFT leave request can be deleted", { status: existing.Status });
   }

@@ -4,6 +4,7 @@ import { verifySession } from "@/lib/dal";
 import { requirePermission } from "@/lib/authorize";
 import { logAction } from "@/lib/audit-log";
 import { apiError, apiSuccess } from "@/lib/api-response";
+import { isEmployeeInScope } from "@/lib/employee-scope";
 import { getStockBalance } from "@/lib/inventory";
 
 // Regular ("สินค้า") lines always price from inv_product.UnitPrice — the
@@ -22,6 +23,8 @@ export async function POST(request: NextRequest, ctx: RouteContext<"/api/invento
 
   const header = await prisma.invIssueHeader.findUnique({ where: { IssueHeaderID: issueId } });
   if (!header) return apiError(404, "STOCK_ISSUE_NOT_FOUND");
+  const employeeScope = await prisma.mstEmployee.findUnique({ where: { EmpCode: header.EmpCode }, select: { CompanyCode: true, EmployeeType: true } });
+  if (!employeeScope || !isEmployeeInScope(user, employeeScope)) return apiError(404, "STOCK_ISSUE_NOT_FOUND");
   if (header.Status === "APPROVED") {
     return apiError(409, "STOCK_ISSUE_LOCKED", "An APPROVED issue can no longer be edited", { status: header.Status });
   }

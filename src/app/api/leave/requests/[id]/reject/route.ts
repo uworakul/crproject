@@ -3,6 +3,7 @@ import { verifySession } from "@/lib/dal";
 import { requirePermission } from "@/lib/authorize";
 import { logAction } from "@/lib/audit-log";
 import { apiError, apiSuccess } from "@/lib/api-response";
+import { isEmployeeInScope } from "@/lib/employee-scope";
 
 // Reject now bounces Status back to DRAFT with a required reason (2026-09-21,
 // mirrors trn_request_header) instead of the old terminal REJECTED status —
@@ -19,6 +20,8 @@ export async function POST(request: Request, ctx: RouteContext<"/api/leave/reque
 
   const existing = await prisma.trnLeaveRequest.findUnique({ where: { LeaveID: leaveId } });
   if (!existing) return apiError(404, "LEAVE_REQUEST_NOT_FOUND");
+  const employeeScope = await prisma.mstEmployee.findUnique({ where: { EmpCode: existing.EmpCode }, select: { CompanyCode: true, EmployeeType: true } });
+  if (!employeeScope || !isEmployeeInScope(user, employeeScope)) return apiError(404, "LEAVE_REQUEST_NOT_FOUND");
   if (existing.Status !== "SUBMITTED") {
     return apiError(409, "INVALID_STATUS_TRANSITION", "Only a SUBMITTED leave request can be rejected", { currentStatus: existing.Status });
   }

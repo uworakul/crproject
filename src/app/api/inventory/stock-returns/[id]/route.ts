@@ -4,6 +4,7 @@ import { verifySession } from "@/lib/dal";
 import { requirePermission } from "@/lib/authorize";
 import { logAction } from "@/lib/audit-log";
 import { apiError, apiSuccess } from "@/lib/api-response";
+import { isEmployeeInScope } from "@/lib/employee-scope";
 
 export async function GET(_req: NextRequest, ctx: RouteContext<"/api/inventory/stock-returns/[id]">) {
   const user = await verifySession();
@@ -19,11 +20,12 @@ export async function GET(_req: NextRequest, ctx: RouteContext<"/api/inventory/s
     where: { ReturnHeaderID: returnId },
     include: {
       Warehouse: { select: { WarehouseName: true } },
-      Employee: { select: { FullName: true, Site: { select: { SiteName: true } } } },
+      Employee: { select: { FullName: true, Site: { select: { SiteName: true } }, CompanyCode: true, EmployeeType: true } },
       Details: { orderBy: { ReturnDetailID: "asc" }, include: { Product: { select: { ProductName: true, UnitOfMeasure: true } } } },
     },
   });
   if (!header) return apiError(404, "STOCK_RETURN_NOT_FOUND");
+  if (!isEmployeeInScope(user, header.Employee)) return apiError(404, "STOCK_RETURN_NOT_FOUND");
   return apiSuccess(header);
 }
 
@@ -39,6 +41,8 @@ export async function PUT(request: NextRequest, ctx: RouteContext<"/api/inventor
 
   const existing = await prisma.invReturnHeader.findUnique({ where: { ReturnHeaderID: returnId } });
   if (!existing) return apiError(404, "STOCK_RETURN_NOT_FOUND");
+  const employeeScope = await prisma.mstEmployee.findUnique({ where: { EmpCode: existing.EmpCode }, select: { CompanyCode: true, EmployeeType: true } });
+  if (!employeeScope || !isEmployeeInScope(user, employeeScope)) return apiError(404, "STOCK_RETURN_NOT_FOUND");
   if (existing.Status === "APPROVED") {
     return apiError(409, "STOCK_RETURN_LOCKED", "An APPROVED return can no longer be edited", { status: existing.Status });
   }
@@ -83,6 +87,8 @@ export async function DELETE(_req: NextRequest, ctx: RouteContext<"/api/inventor
 
   const existing = await prisma.invReturnHeader.findUnique({ where: { ReturnHeaderID: returnId } });
   if (!existing) return apiError(404, "STOCK_RETURN_NOT_FOUND");
+  const employeeScope = await prisma.mstEmployee.findUnique({ where: { EmpCode: existing.EmpCode }, select: { CompanyCode: true, EmployeeType: true } });
+  if (!employeeScope || !isEmployeeInScope(user, employeeScope)) return apiError(404, "STOCK_RETURN_NOT_FOUND");
   if (existing.Status !== "DRAFT") {
     return apiError(409, "STOCK_RETURN_LOCKED", "Only a DRAFT return can be deleted", { status: existing.Status });
   }

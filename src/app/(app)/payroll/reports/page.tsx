@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { verifySession } from "@/lib/dal";
 import { hasPermission } from "@/lib/authorize";
 import { prisma } from "@/lib/prisma";
+import { employeeScopeWhere, companyScopeWhere } from "@/lib/employee-scope";
 import ReportsView from "./reports-view";
 
 export default async function PayrollReportsPage() {
@@ -13,11 +14,11 @@ export default async function PayrollReportsPage() {
 
   const [periodsRaw, companies, departments, sites, banks, employees] = await Promise.all([
     prisma.sysPeriod.findMany({ orderBy: { PeriodID: "desc" } }),
-    prisma.refCompany.findMany({ orderBy: { CompanyCode: "asc" }, select: { CompanyCode: true, CompanyName: true } }),
+    prisma.refCompany.findMany({ where: companyScopeWhere(user), orderBy: { CompanyCode: "asc" }, select: { CompanyCode: true, CompanyName: true } }),
     prisma.refDepartment.findMany({ where: { IsActive: true }, orderBy: { DeptCode: "asc" }, select: { DeptCode: true, DeptName: true } }),
     prisma.mstSite.findMany({ where: { IsActive: true }, orderBy: { SiteCode: "asc" }, select: { SiteCode: true, SiteName: true } }),
     prisma.refBank.findMany({ where: { IsActive: true }, orderBy: { BankCode: "asc" }, select: { BankCode: true, BankNameTH: true } }),
-    prisma.mstEmployee.findMany({ orderBy: { EmpCode: "asc" }, select: { EmpCode: true, FullName: true } }),
+    prisma.mstEmployee.findMany({ where: employeeScopeWhere(user), orderBy: { EmpCode: "asc" }, select: { EmpCode: true, FullName: true } }),
   ]);
 
   const periods = JSON.parse(JSON.stringify(periodsRaw));

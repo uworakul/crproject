@@ -6,6 +6,7 @@ import { logAction } from "@/lib/audit-log";
 import { apiError, apiSuccess } from "@/lib/api-response";
 import { LEAVE_STATUS_VALUES, LEAVE_HOURS_PER_DAY, isLeaveTypeEligible } from "@/lib/leave";
 import { consumeDocumentNumber } from "@/lib/document-number";
+import { employeeScopeWhere, isEmployeeInScope } from "@/lib/employee-scope";
 
 export async function GET(request: NextRequest) {
   const user = await verifySession();
@@ -21,7 +22,7 @@ export async function GET(request: NextRequest) {
   }
 
   const requests = await prisma.trnLeaveRequest.findMany({
-    where: { ...(status ? { Status: status } : {}), ...(empCode ? { EmpCode: empCode } : {}) },
+    where: { ...(status ? { Status: status } : {}), ...(empCode ? { EmpCode: empCode } : {}), Employee: employeeScopeWhere(user) },
     include: { Employee: { select: { FullName: true } }, LeaveType: { select: { LeaveTypeName: true, RequireMedicalCert: true } } },
     orderBy: { CreatedDate: "desc" },
   });
@@ -79,6 +80,7 @@ export async function POST(request: NextRequest) {
 
   const employee = await prisma.mstEmployee.findUnique({ where: { EmpCode: empCode } });
   if (!employee) return apiError(404, "EMPLOYEE_NOT_FOUND", undefined, { empCode });
+  if (!isEmployeeInScope(user, employee)) return apiError(404, "EMPLOYEE_NOT_FOUND", undefined, { empCode });
   // Server-side mirror of the employee-picker dropdown's own filter
   // (EmployeeStatus="ACTIVE") — the dropdown hiding a resigned employee was
   // never actually enforced here, so a resigned EmpCode could still get a

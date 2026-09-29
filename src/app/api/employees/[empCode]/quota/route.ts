@@ -5,6 +5,7 @@ import { requirePermission } from "@/lib/authorize";
 import { logAction } from "@/lib/audit-log";
 import { apiError, apiSuccess } from "@/lib/api-response";
 import { QUOTA_TYPE_VALUES } from "@/lib/validation";
+import { isEmployeeInScope } from "@/lib/employee-scope";
 
 export async function GET(_req: NextRequest, ctx: RouteContext<"/api/employees/[empCode]/quota">) {
   const user = await verifySession();
@@ -13,6 +14,10 @@ export async function GET(_req: NextRequest, ctx: RouteContext<"/api/employees/[
   if (denied) return denied;
 
   const { empCode } = await ctx.params;
+  const employee = await prisma.mstEmployee.findUnique({ where: { EmpCode: empCode } });
+  if (!employee) return apiError(404, "EMPLOYEE_NOT_FOUND");
+  if (!isEmployeeInScope(user, employee)) return apiError(404, "EMPLOYEE_NOT_FOUND");
+
   const quotas = await prisma.mstEmployeeQuota.findMany({ where: { EmpCode: empCode }, orderBy: { QuotaType: "asc" } });
   return apiSuccess(quotas);
 }
@@ -30,6 +35,7 @@ export async function PUT(request: NextRequest, ctx: RouteContext<"/api/employee
   const { empCode } = await ctx.params;
   const employee = await prisma.mstEmployee.findUnique({ where: { EmpCode: empCode } });
   if (!employee) return apiError(404, "EMPLOYEE_NOT_FOUND");
+  if (!isEmployeeInScope(user, employee)) return apiError(404, "EMPLOYEE_NOT_FOUND");
 
   let body: unknown;
   try {
