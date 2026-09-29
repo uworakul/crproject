@@ -3,7 +3,15 @@ import { verifySession } from "@/lib/dal";
 import { requirePermission } from "@/lib/authorize";
 import { logAction } from "@/lib/audit-log";
 import { apiError, apiSuccess } from "@/lib/api-response";
-import { REQUEST_DOCUMENT_DOCTYPE, REQUEST_DOCUMENT_KIND, REQUEST_INCOME_CODE, COMMISSION_MIN_DAYS, type RequestDocumentCode } from "@/lib/request";
+import {
+  REQUEST_DOCUMENT_DOCTYPE,
+  REQUEST_DOCUMENT_KIND,
+  REQUEST_INCOME_CODE,
+  REQUEST_DOCUMENT_DEDUCTION_CODE,
+  REQUEST_DOCUMENT_CODE_LABELS,
+  COMMISSION_MIN_DAYS,
+  type RequestDocumentCode,
+} from "@/lib/request";
 import { findOrCreateCurrentPeriodTransaction, recomputeTransactionOtherTotals } from "@/lib/payroll";
 import { isEmployeeInScope } from "@/lib/employee-scope";
 
@@ -79,14 +87,19 @@ export async function POST(_req: Request, ctx: RouteContext<"/api/requests/[id]/
   try {
     const updated = await prisma.$transaction(async (tx) => {
       if (kind === "DEBT") {
-        // Auto-provision the ref_deduction_type row this DocumentCode maps
-        // to, so the debt rows below always have a valid DeductionCode FK —
-        // same "create it the first time it's needed" convention as
-        // ref_document_number.
+        // Maps to the company's existing numeric ref_deduction_type code for
+        // this category (see REQUEST_DOCUMENT_DEDUCTION_CODE) rather than
+        // using the request's own DocumentCode as the DeductionCode —
+        // writing DocumentCode directly used to auto-provision a same-
+        // meaning duplicate row next to the numeric one every time (fixed
+        // 2026-09-29). Still upserts (create-if-missing) purely as a
+        // defensive fallback in case that numeric row was ever deleted; on
+        // a normal tenant it's already seeded and this is a no-op.
+        const deductionCode = REQUEST_DOCUMENT_DEDUCTION_CODE[documentCode]!;
         const deductionType = await tx.refDeductionType.upsert({
-          where: { DeductionCode: existing.DocumentCode },
+          where: { DeductionCode: deductionCode },
           update: {},
-          create: { DeductionCode: existing.DocumentCode, DeductionName: existing.DocumentCode, IsInstallment: true, CreatedBy: user.userId },
+          create: { DeductionCode: deductionCode, DeductionName: REQUEST_DOCUMENT_CODE_LABELS[documentCode], IsInstallment: true, CreatedBy: user.userId },
         });
         for (const d of existing.Details) {
           await tx.invEmployeeDebt.create({

@@ -37,8 +37,15 @@ export const styles = StyleSheet.create({
   // confirmed by screenshot: "เลขที่เอกสาร" rendering on top of a wrapped
   // "หน่วยงาน" cell). A View wrapping Text lets Yoga size the row by the
   // tallest CELL rather than the tallest bare Text run.
-  thCellBox: { borderRight: "1pt solid #9ca3af", borderBottom: "1pt solid #9ca3af", backgroundColor: "#f3f4f6", padding: 3 },
-  tdCellBox: { borderRight: "1pt solid #9ca3af", borderBottom: "1pt solid #9ca3af", padding: 3 },
+  // overflow: "hidden" (2026-09-29) — belt-and-suspenders on top of the
+  // View-per-cell fix above: a long unbroken Thai compound word (no spaces
+  // to wrap at, e.g. a site name) can still render wider than its flex box
+  // and bleed into the next cell instead of wrapping. Clipping it here means
+  // a pathological name gets truncated rather than visually overlapping the
+  // adjacent column's text (confirmed by screenshot: "หน่วยงาน" bleeding
+  // into "เลขที่เอกสาร").
+  thCellBox: { borderRight: "1pt solid #9ca3af", borderBottom: "1pt solid #9ca3af", backgroundColor: "#f3f4f6", padding: 3, overflow: "hidden" },
+  tdCellBox: { borderRight: "1pt solid #9ca3af", borderBottom: "1pt solid #9ca3af", padding: 3, overflow: "hidden" },
   thText: { fontWeight: "bold" },
   totalRowBox: { backgroundColor: "#f9fafb" },
   footer: { position: "absolute", bottom: 12, left: 24, right: 24, fontSize: 7, color: "#9ca3af", flexDirection: "row", justifyContent: "space-between" },

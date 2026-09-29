@@ -374,7 +374,7 @@ export default function StockReturnDetailView({
               onClick={async () => {
                 if (
                   !(await confirmDialog(
-                    `ยืนยันอนุมัติเอกสารคืนสินค้า ${stockReturn.DocumentNo ? `#${stockReturn.DocumentNo}` : ""} จากพนักงาน ${stockReturn.EmpCode} ยอดรวม ${money(totalAmount)} บาท? (จะนำไปลดหนี้ UNIFORM ที่ค้างอยู่)`,
+                    `ยืนยันอนุมัติเอกสารคืนสินค้า ${stockReturn.DocumentNo ? `#${stockReturn.DocumentNo}` : ""} จากพนักงาน ${stockReturn.EmpCode} ยอดรวม ${money(totalAmount)} บาท? (จะนำไปลดหนี้ค่าชุด/ค่าบัตรที่ค้างอยู่)`,
                   ))
                 )
                   return;

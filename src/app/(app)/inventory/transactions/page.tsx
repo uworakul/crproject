@@ -6,6 +6,7 @@ import { employeeScopeWhere } from "@/lib/employee-scope";
 import { getStockBalancesForWarehouse } from "@/lib/inventory";
 import Tabs from "../../reference/tabs";
 import StockSummaryView, { type StockSummaryRow } from "../stock-summary-view";
+import StockCardView from "../stock-card-view";
 import StockCountListView from "./stock-count-list-view";
 import StockPurchaseListView from "./stock-purchase-list-view";
 import StockTransferListView from "./stock-transfer-list-view";
@@ -52,7 +53,7 @@ export default async function InventoryTransactionsPage() {
     hasPermission(user, "STOCK_RETURN", "delete"),
   ]);
 
-  const [warehousesRaw, suppliersRaw, employeesRaw, productsRaw, categoriesRaw, stockCountHeadersRaw, stockPurchaseHeadersRaw, stockTransferHeadersRaw, stockIssueHeadersRaw, stockReturnHeadersRaw] =
+  const [warehousesRaw, suppliersRaw, employeesRaw, productsRaw, categoriesRaw, companiesRaw, stockCountHeadersRaw, stockPurchaseHeadersRaw, stockTransferHeadersRaw, stockIssueHeadersRaw, stockReturnHeadersRaw] =
     await Promise.all([
       prisma.invWarehouse.findMany({ where: { IsActive: true }, orderBy: { WarehouseCode: "asc" } }),
       canReadPurchase ? prisma.invSupplier.findMany({ where: { IsActive: true }, orderBy: { SupplierCode: "asc" } }) : Promise.resolve([]),
@@ -61,6 +62,7 @@ export default async function InventoryTransactionsPage() {
         : Promise.resolve([]),
       prisma.invProduct.findMany({ where: { IsActive: true }, orderBy: { ProductCode: "asc" } }),
       prisma.invProductCategory.findMany({ where: { IsActive: true }, orderBy: { CategoryCode: "asc" } }),
+      canReadStockSummary ? prisma.refCompany.findMany({ orderBy: { CompanyCode: "asc" }, select: { CompanyCode: true, CompanyName: true } }) : Promise.resolve([]),
       canReadCount ? prisma.invStockCountHeader.findMany({ include: { Details: true, Warehouse: { select: { WarehouseName: true } } }, orderBy: { CreatedDate: "desc" } }) : Promise.resolve([]),
       canReadPurchase
         ? prisma.invPurchaseHeader.findMany({
@@ -95,6 +97,7 @@ export default async function InventoryTransactionsPage() {
     suppliers,
     employees,
     categories,
+    companies,
     stockCountHeaders,
     stockPurchaseHeaders,
     stockTransferHeaders,
@@ -106,6 +109,7 @@ export default async function InventoryTransactionsPage() {
       suppliersRaw,
       employeesRaw,
       categoriesRaw,
+      companiesRaw,
       stockCountHeadersRaw,
       stockPurchaseHeadersRaw,
       stockTransferHeadersRaw,
@@ -181,20 +185,6 @@ export default async function InventoryTransactionsPage() {
   }
 
   const tabs = [];
-  if (canReadCount) {
-    tabs.push({
-      label: "ตรวจนับสต๊อก",
-      content: (
-        <StockCountListView
-          key="/api/inventory/stock-counts"
-          initialRows={stockCountHeaders}
-          warehouses={warehouses}
-          canSave={canSaveCount}
-          canDelete={canDeleteCount}
-        />
-      ),
-    });
-  }
   if (canReadPurchase) {
     tabs.push({
       label: "ซื้อสินค้า",
@@ -263,6 +253,37 @@ export default async function InventoryTransactionsPage() {
           initialRows={stockSummaryRows}
           warehouses={warehouses.map((w: { WarehouseCode: string; WarehouseName: string }) => ({ code: w.WarehouseCode, label: `${w.WarehouseCode} — ${w.WarehouseName}` }))}
           categories={categories.map((c: { CategoryCode: string; CategoryName: string }) => ({ code: c.CategoryCode, label: `${c.CategoryCode} — ${c.CategoryName}` }))}
+        />
+      ),
+    });
+    tabs.push({
+      label: "ตรวจสอบการเคลื่อนไหว",
+      content: (
+        <StockCardView
+          key="/api/inventory/stock-card"
+          companies={companies.map((c: { CompanyCode: string; CompanyName: string }) => ({ code: c.CompanyCode, label: c.CompanyName }))}
+          warehouses={warehouses.map((w: { WarehouseCode: string; WarehouseName: string; CompanyCode: string | null }) => ({
+            code: w.WarehouseCode,
+            label: `${w.WarehouseCode} — ${w.WarehouseName}`,
+            companyCode: w.CompanyCode,
+          }))}
+          products={productsRaw.map((p) => ({ code: p.ProductCode, label: `${p.ProductCode} — ${p.ProductName}` }))}
+        />
+      ),
+    });
+  }
+  // ตรวจนับสต๊อก moved to the end of the tab order (2026-09-29, at the
+  // user's request) — was previously first.
+  if (canReadCount) {
+    tabs.push({
+      label: "ตรวจนับสต๊อก",
+      content: (
+        <StockCountListView
+          key="/api/inventory/stock-counts"
+          initialRows={stockCountHeaders}
+          warehouses={warehouses}
+          canSave={canSaveCount}
+          canDelete={canDeleteCount}
         />
       ),
     });

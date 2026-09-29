@@ -246,12 +246,16 @@ const deductionTypeSeed = [
   { DeductionCode: "16", DeductionName: "กยศ", IsInstallment: true, IsAutoCalculated: false },
   { DeductionCode: "17", DeductionName: "กรมบังคับคดี", IsInstallment: true, IsAutoCalculated: false },
   { DeductionCode: "18", DeductionName: "อื่นๆ", IsInstallment: false, IsAutoCalculated: false },
-  { DeductionCode: "ADVANCE", DeductionName: "เบิกล่วงหน้า", IsInstallment: true, IsAutoCalculated: false },
-  { DeductionCode: "ADVANCEN", DeductionName: "เบิกล่วงหน้าพนักงานใหม่", IsInstallment: true, IsAutoCalculated: false },
-  { DeductionCode: "ADVANCEU", DeductionName: "เบิกล่วงหน้าฉุกเฉิน", IsInstallment: true, IsAutoCalculated: false },
-  { DeductionCode: "LOAN", DeductionName: "เงินกู้", IsInstallment: true, IsAutoCalculated: false },
-  { DeductionCode: "TRAINING", DeductionName: "ค่าอบรม", IsInstallment: true, IsAutoCalculated: false },
-  { DeductionCode: "UNIFORM", DeductionName: "ค่าชุด", IsInstallment: true, IsAutoCalculated: false },
+  // ADVANCE/ADVANCEN/ADVANCEU/LOAN/TRAINING/UNIFORM deliberately NOT seeded
+  // here anymore (removed 2026-09-29) — they were same-meaning duplicates of
+  // 13/14/15/12/10/08 above (both sets meant the exact same category, e.g.
+  // "13"/"ADVANCE" were both "เงินเบิกล่วงหน้า"). The Request-approve and
+  // Inventory Issue-approve routes used to write these text codes as
+  // inv_employee_debt.DeductionCode directly, auto-provisioning a duplicate
+  // ref_deduction_type row every time one didn't exist yet — fixed to map to
+  // the numeric codes above instead (see REQUEST_DOCUMENT_DEDUCTION_CODE in
+  // src/lib/request.ts), so there's nothing left that would ever need these
+  // text-code rows again.
 ];
 
 async function seedDeductionTypes() {

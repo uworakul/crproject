@@ -420,3 +420,49 @@ export async function getAgeBySite(filters: ReportFilters): Promise<GroupedResul
 
   return { groups, series, unit: "คน" };
 }
+
+// "หนี้สูญ" (2026-09-29) — outstanding debt of employees who have already
+// RESIGNED, i.e. money that can no longer be recovered through the normal
+// payroll-deduction path since they're off payroll. Scoped to
+// EmployeeStatus="RESIGNED" specifically (not TERMINATED too) — matches
+// the user's own wording ("พนักงานที่ลาออกแล้ว"); TERMINATED employees'
+// debt would arguably qualify the same way but that's a scope call the
+// user didn't make, so it's left out rather than assumed in.
+export interface BadDebtRow {
+  empCode: string;
+  fullName: string;
+  resignDate: string;
+  deptName: string | null;
+  siteName: string | null;
+  totalRemaining: number;
+  debtCount: number;
+}
+export interface BadDebtResult {
+  rows: BadDebtRow[];
+}
+
+export async function getResignedEmployeeBadDebt(filters: ReportFilters): Promise<BadDebtResult> {
+  const employees = await prisma.mstEmployee.findMany({
+    where: { ...employeeWhere(filters), EmployeeStatus: "RESIGNED" },
+    include: {
+      Department: { select: { DeptName: true } },
+      Site: { select: { SiteName: true } },
+      Debts: { where: { Status: "OPEN", RemainingAmount: { gt: 0 } }, select: { RemainingAmount: true } },
+    },
+  });
+
+  const rows: BadDebtRow[] = employees
+    .map((e) => ({
+      empCode: e.EmpCode,
+      fullName: e.FullName,
+      resignDate: e.ResignDate ? e.ResignDate.toLocaleDateString("th-TH") : "-",
+      deptName: e.Department?.DeptName ?? null,
+      siteName: e.Site?.SiteName ?? null,
+      totalRemaining: Math.round(e.Debts.reduce((s, d) => s + Number(d.RemainingAmount), 0) * 100) / 100,
+      debtCount: e.Debts.length,
+    }))
+    .filter((r) => r.totalRemaining > 0)
+    .sort((a, b) => b.totalRemaining - a.totalRemaining);
+
+  return { rows };
+}

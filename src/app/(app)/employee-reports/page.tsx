@@ -3,6 +3,7 @@ import { verifySession } from "@/lib/dal";
 import { hasPermission } from "@/lib/authorize";
 import { prisma } from "@/lib/prisma";
 import { employeeScopeWhere, companyScopeWhere } from "@/lib/employee-scope";
+import { getPaymentHistoryDebtTypeOptions } from "@/lib/reports/payment-history";
 import EmployeeReportsView from "./employee-reports-view";
 
 // 2026-09-23 — copied from src/app/(app)/payroll/reports/page.tsx (the
@@ -18,18 +19,19 @@ export default async function EmployeeReportsPage() {
   const canRead = await hasPermission(user, "PAYROLL_REPORT", "read");
   if (!canRead) redirect("/");
 
-  const [companies, departments, sites, banks, employees] = await Promise.all([
+  const [companies, departments, sites, banks, employees, debtTypeOptions] = await Promise.all([
     prisma.refCompany.findMany({ where: companyScopeWhere(user), orderBy: { CompanyCode: "asc" }, select: { CompanyCode: true, CompanyName: true } }),
     prisma.refDepartment.findMany({ where: { IsActive: true }, orderBy: { DeptCode: "asc" }, select: { DeptCode: true, DeptName: true } }),
     prisma.mstSite.findMany({ where: { IsActive: true }, orderBy: { SiteCode: "asc" }, select: { SiteCode: true, SiteName: true } }),
     prisma.refBank.findMany({ where: { IsActive: true }, orderBy: { BankCode: "asc" }, select: { BankCode: true, BankNameTH: true } }),
     prisma.mstEmployee.findMany({ where: employeeScopeWhere(user), orderBy: { EmpCode: "asc" }, select: { EmpCode: true, FullName: true } }),
+    getPaymentHistoryDebtTypeOptions(),
   ]);
 
   return (
     <div className="w-full px-6 py-8">
       <h1 className="mb-6 text-lg font-semibold text-gray-900">รายงานพนักงาน</h1>
-      <EmployeeReportsView companies={companies} departments={departments} sites={sites} banks={banks} employees={employees} />
+      <EmployeeReportsView companies={companies} departments={departments} sites={sites} banks={banks} employees={employees} debtTypeOptions={debtTypeOptions} />
     </div>
   );
 }

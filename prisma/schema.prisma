@@ -265,6 +265,7 @@ model RefCompany {
 
   Employees MstEmployee[]
   UserScope SysUserCompany[]
+  Warehouses InvWarehouse[]
 
   @@map("ref_company")
 }
@@ -943,11 +944,21 @@ model InvSupplier {
 model InvWarehouse {
   WarehouseCode String    @id(map: "PK_inv_warehouse") @db.VarChar(10)
   WarehouseName String    @db.NVarChar(150)
+  // "บริษัท" (2026-09-29) — which company this warehouse belongs to, added
+  // for the "ตรวจสอบการเคลื่อนไหว" Stock Card tab's company filter. Inventory
+  // (inv_warehouse/inv_product) had no company linkage at all before this —
+  // unlike Payroll/Worksheet/Leave/Requests, which scope through
+  // mst_employee.CompanyCode. Nullable: an unassigned warehouse just doesn't
+  // narrow into any company's warehouse-code dropdown (same "unset = no
+  // scoping applied yet" convention as mst_employee.CompanyCode itself).
+  CompanyCode   String?   @db.VarChar(10)
   IsActive      Boolean   @default(true)
   CreatedDate   DateTime? @default(now()) @db.DateTime
   CreatedBy     String?   @db.VarChar(20)
   UpdatedDate   DateTime? @db.DateTime
   UpdatedBy     String?   @db.VarChar(20)
+
+  Company RefCompany? @relation(fields: [CompanyCode], references: [CompanyCode], map: "FK_inv_warehouse_ref_company", onUpdate: NoAction, onDelete: NoAction)
 
   MovementsFrom         InvStockMovement[]    @relation("MovementSourceWarehouse")
   MovementsTo           InvStockMovement[]    @relation("MovementTargetWarehouse")
@@ -1261,6 +1272,7 @@ model InvReturnHeader {
   Approver  SysUser?          @relation("ReturnHeaderApprovedBy", fields: [ApprovedBy], references: [UserID], map: "FK_inv_return_header_sys_user_approved", onUpdate: NoAction, onDelete: NoAction)
   Rejecter  SysUser?          @relation("ReturnHeaderRejectedBy", fields: [RejectedBy], references: [UserID], map: "FK_inv_return_header_sys_user_rejected", onUpdate: NoAction, onDelete: NoAction)
   Details   InvReturnDetail[]
+  DebtPayments InvEmployeeDebtPayment[]
 
   @@map("inv_return_header")
 }
@@ -1379,8 +1391,42 @@ model InvEmployeeDebt {
   Movement      InvStockMovement? @relation(fields: [MovementID], references: [MovementID], map: "FK_inv_employee_debt_movement", onUpdate: NoAction, onDelete: NoAction)
   DeductionType RefDeductionType? @relation(fields: [DeductionCode], references: [DeductionCode], map: "FK_inv_employee_debt_deduction_type", onUpdate: NoAction, onDelete: NoAction)
   RequestHeader TrnRequestHeader? @relation(fields: [RequestHeaderID], references: [RequestHeaderID], map: "FK_inv_employee_debt_request_header", onUpdate: NoAction, onDelete: NoAction)
+  Payments      InvEmployeeDebtPayment[]
 
   @@map("inv_employee_debt")
+}
+
+// "ประวัติการชำระเงิน" payment-event log (2026-09-29) — inv_employee_debt
+// itself only ever held a running snapshot (TotalAmount/PaidAmount/
+// RemainingAmount + a single UpdatedDate), with no record of each
+// individual reduction over time. This table is the real event log the
+// user asked for after confirming the existing schema couldn't support a
+// true "payment history with a date per payment" report. Written by every
+// place that actually reduces a debt's RemainingAmount today: Inventory
+// Return-approve (Source=INVENTORY_RETURN) and the manual "รายการหักต่องวด"
+// edit on the employee page (Source=MANUAL_EDIT) — see those routes for the
+// insert. Deliberately NOT written by Payroll Calculate: its
+// InstallmentDeduct is still only a preview that never touches
+// inv_employee_debt (see that column's own comment above) — wiring a real
+// payroll-driven deduction in here is a separate, bigger decision (what
+// commits it — Lock? Close? — and what happens on recalculation) that
+// wasn't part of this request.
+model InvEmployeeDebtPayment {
+  PaymentID      Int       @id(map: "PK_inv_employee_debt_payment") @default(autoincrement())
+  DebtID         Int
+  PaymentDate    DateTime  @default(now()) @db.DateTime
+  Amount         Decimal   @db.Decimal(12, 2)
+  RemainingAfter Decimal   @db.Decimal(12, 2) // snapshot right after this payment, so the report doesn't need to replay every prior event to show a running balance
+  Source         String    @db.VarChar(20) // CHECK: INVENTORY_RETURN | MANUAL_EDIT
+  ReturnHeaderID Int? // set only when Source = INVENTORY_RETURN
+  CreatedBy      String?   @db.VarChar(20)
+  CreatedDate    DateTime? @default(now()) @db.DateTime
+
+  Debt         InvEmployeeDebt  @relation(fields: [DebtID], references: [DebtID], map: "FK_inv_employee_debt_payment_debt", onUpdate: NoAction, onDelete: NoAction)
+  ReturnHeader InvReturnHeader? @relation(fields: [ReturnHeaderID], references: [ReturnHeaderID], map: "FK_inv_employee_debt_payment_return", onUpdate: NoAction, onDelete: NoAction)
+
+  @@index([DebtID], map: "IX_inv_employee_debt_payment_DebtID")
+  @@map("inv_employee_debt_payment")
 }
 
 // ============================================================

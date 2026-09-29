@@ -8,6 +8,7 @@ import type { ReportFilters } from "@/lib/reports/types";
 import { getPayslipRows, getBankRemittanceRows, getPaySummaryMatrix } from "@/lib/reports/payroll-reports";
 import { DEBT_REPORT_CATEGORIES, getDebtRows, type DebtReportKey } from "@/lib/reports/debt-reports";
 import { getEmployeeRegistryRows, getEmployeeCards, EMPLOYEE_CARD_SECTIONS, type EmployeeCardSection } from "@/lib/reports/employee-reports";
+import { getPaymentHistoryRows } from "@/lib/reports/payment-history";
 import { getSsoRemitMonthlyRows, getSsoRemitCheckRows, getWelfareFundRemitRows, getWithholdingTaxRows, getAnnualTaxSummaryRows } from "@/lib/reports/government-reports";
 import { buildReportWorkbook, type ReportExcelColumn } from "@/lib/reports/excel-builder";
 import { money, type ReportColumn } from "@/lib/pdf/layout";
@@ -254,19 +255,34 @@ export async function GET(request: NextRequest, ctx: RouteContext<"/api/payroll/
     const { sorted, groups } = applySortGroup(rowsRaw, sg);
     const title = DEBT_REPORT_CATEGORIES[key].label;
     const pdfColumns: ReportColumn[] = [
-      { key: "empCode", header: "รหัสพนักงาน", width: 2 },
+      { key: "empCode", header: "รหัสพนักงาน", width: 1.4 },
       { key: "fullName", header: "ชื่อ-สกุล", width: 3 },
       { key: "deptName", header: "แผนก", width: 2 },
-      { key: "siteName", header: "หน่วยงาน", width: 2 },
-      { key: "documentNo", header: "เลขที่เอกสาร", width: 2 },
-      { key: "totalAmount", header: "ยอดรวม", width: 2, align: "right" },
-      { key: "paidAmount", header: "ชำระแล้ว", width: 2, align: "right" },
-      { key: "remainingAmount", header: "คงเหลือ", width: 2, align: "right" },
+      { key: "siteName", header: "หน่วยงาน", width: 2.6 },
+      { key: "documentNo", header: "เลขที่เอกสาร", width: 1.4 },
+      { key: "documentDate", header: "วันที่เอกสาร", width: 1.4 },
+      { key: "approvedDate", header: "วันที่อนุมัติจ่าย", width: 1.6 },
+      { key: "totalAmount", header: "ยอดรวม", width: 1.5, align: "right" },
+      { key: "paidAmount", header: "ชำระแล้ว", width: 1.5, align: "right" },
+      { key: "remainingAmount", header: "คงเหลือ", width: 1.5, align: "right" },
     ];
-    const toPdfRow = (r: (typeof sorted)[number]) => [r.empCode, r.fullName, r.deptName ?? "-", r.siteName ?? "-", r.documentNo ?? "-", money(r.totalAmount), money(r.paidAmount), money(r.remainingAmount)];
+    const toPdfRow = (r: (typeof sorted)[number]) => [
+      r.empCode,
+      r.fullName,
+      r.deptName ?? "-",
+      r.siteName ?? "-",
+      r.documentNo ?? "-",
+      r.documentDate ?? "-",
+      r.approvedDate ?? "-",
+      money(r.totalAmount),
+      money(r.paidAmount),
+      money(r.remainingAmount),
+    ];
     const toSubtotalPdfRow = (label: string, g: typeof sorted) => [
       "",
       `รวม - ${label}`,
+      "",
+      "",
       "",
       "",
       "",
@@ -284,7 +300,7 @@ export async function GET(request: NextRequest, ctx: RouteContext<"/api/payroll/
           filterSummary={filterSummaryText(filters)}
           columns={pdfColumns}
           rows={pdfRows}
-          totalRow={["", "", "", "", "รวม", money(sumField(sorted, (r) => r.totalAmount)), money(sumField(sorted, (r) => r.paidAmount)), money(grandRemaining)]}
+          totalRow={["", "", "", "", "รวม", "", "", money(sumField(sorted, (r) => r.totalAmount)), money(sumField(sorted, (r) => r.paidAmount)), money(grandRemaining)]}
           orientation="landscape"
           boldRowIndices={boldRowIndices}
         />,
@@ -298,12 +314,22 @@ export async function GET(request: NextRequest, ctx: RouteContext<"/api/payroll/
       { header: "หน่วยงาน", key: "siteName", width: 16 },
       { header: "รายการ", key: "deductionName", width: 20 },
       { header: "เลขที่เอกสาร", key: "documentNo", width: 14 },
+      { header: "วันที่เอกสาร", key: "documentDate", width: 14 },
+      { header: "วันที่อนุมัติจ่าย", key: "approvedDate", width: 14 },
       { header: "ยอดรวม", key: "totalAmount", width: 12 },
       { header: "ชำระแล้ว", key: "paidAmount", width: 12 },
       { header: "คงเหลือ", key: "remainingAmount", width: 12 },
       { header: "หักงวดละ", key: "deductPerPeriod", width: 12 },
     ];
-    const toExcelRow = (r: (typeof sorted)[number]) => ({ ...r, deptName: r.deptName ?? "", siteName: r.siteName ?? "", documentNo: r.documentNo ?? "", deductPerPeriod: r.deductPerPeriod ?? "" });
+    const toExcelRow = (r: (typeof sorted)[number]) => ({
+      ...r,
+      deptName: r.deptName ?? "",
+      siteName: r.siteName ?? "",
+      documentNo: r.documentNo ?? "",
+      documentDate: r.documentDate ?? "",
+      approvedDate: r.approvedDate ?? "",
+      deductPerPeriod: r.deductPerPeriod ?? "",
+    });
     const toSubtotalExcelRow = (label: string, g: typeof sorted) => ({
       fullName: `รวม - ${label}`,
       totalAmount: sumField(g, (r) => r.totalAmount).toFixed(2),
@@ -318,6 +344,70 @@ export async function GET(request: NextRequest, ctx: RouteContext<"/api/payroll/
       { fullName: "รวม", totalAmount: sumField(sorted, (r) => r.totalAmount).toFixed(2), paidAmount: sumField(sorted, (r) => r.paidAmount).toFixed(2), remainingAmount: grandRemaining.toFixed(2) },
       excelBoldRowIndices,
     );
+    return excelResponse(buffer, reportKey);
+  }
+
+  if (reportKey === "payment-history") {
+    // "ประวัติการชำระเงิน" (2026-09-29) — one row per actual payment EVENT
+    // from inv_employee_debt_payment, not a snapshot of current debt
+    // balances (that's what the 4 debt-outstanding reports above already
+    // cover). debtType narrows to one category via the dropdown built by
+    // getPaymentHistoryDebtTypeOptions(); omitted shows every category.
+    const debtType = searchParams.get("debtType") ?? undefined;
+    const rowsRaw = await getPaymentHistoryRows(filters, debtType);
+    const { sorted, groups } = applySortGroup(rowsRaw, sg);
+    const title = "ประวัติการชำระเงิน";
+    const pdfColumns: ReportColumn[] = [
+      { key: "empCode", header: "รหัสพนักงาน", width: 1.6 },
+      { key: "fullName", header: "ชื่อ-สกุล", width: 2.5 },
+      { key: "deptName", header: "แผนก", width: 1.6 },
+      { key: "siteName", header: "หน่วยงาน", width: 2 },
+      { key: "debtTypeLabel", header: "ประเภทหนี้", width: 2 },
+      { key: "paymentDate", header: "วันที่ตัดหนี้", width: 1.4 },
+      { key: "amount", header: "ยอดที่ตัด", width: 1.5, align: "right" },
+      { key: "remainingAfter", header: "คงเหลือหลังตัด", width: 1.5, align: "right" },
+    ];
+    const toPdfRow = (r: (typeof sorted)[number]) => [
+      r.empCode,
+      r.fullName,
+      r.deptName ?? "-",
+      r.siteName ?? "-",
+      r.debtTypeLabel,
+      r.paymentDate,
+      money(r.amount),
+      money(r.remainingAfter),
+    ];
+    const toSubtotalPdfRow = (label: string, g: typeof sorted) => ["", `รวม - ${label}`, "", "", "", "", money(sumField(g, (r) => r.amount)), ""];
+    const { rows: pdfRows, boldRowIndices } = buildGroupedRows(sorted, groups, toPdfRow, toSubtotalPdfRow);
+    if (format === "pdf") {
+      const buffer = await renderToBuffer(
+        <TableReportPdf
+          companyName={companyName}
+          title={title}
+          filterSummary={filterSummaryText(filters)}
+          columns={pdfColumns}
+          rows={pdfRows}
+          totalRow={["", "", "", "", "", "รวม", money(sumField(sorted, (r) => r.amount)), ""]}
+          orientation="landscape"
+          boldRowIndices={boldRowIndices}
+        />,
+      );
+      return pdfResponse(buffer, reportKey);
+    }
+    const columns: ReportExcelColumn[] = [
+      { header: "รหัสพนักงาน", key: "empCode", width: 12 },
+      { header: "ชื่อ-สกุล", key: "fullName", width: 26 },
+      { header: "แผนก", key: "deptName", width: 16 },
+      { header: "หน่วยงาน", key: "siteName", width: 16 },
+      { header: "ประเภทหนี้", key: "debtTypeLabel", width: 22 },
+      { header: "วันที่ตัดหนี้", key: "paymentDate", width: 14 },
+      { header: "ยอดที่ตัด", key: "amount", width: 12 },
+      { header: "คงเหลือหลังตัด", key: "remainingAfter", width: 14 },
+    ];
+    const toExcelRow = (r: (typeof sorted)[number]) => ({ ...r, deptName: r.deptName ?? "", siteName: r.siteName ?? "" });
+    const toSubtotalExcelRow = (label: string, g: typeof sorted) => ({ fullName: `รวม - ${label}`, amount: sumField(g, (r) => r.amount).toFixed(2) });
+    const { rows: excelRows, boldRowIndices: excelBoldRowIndices } = buildGroupedExcelRows(sorted, groups, toExcelRow, toSubtotalExcelRow);
+    const buffer = await buildReportWorkbook(title, columns, excelRows, { fullName: "รวม", amount: sumField(sorted, (r) => r.amount).toFixed(2) }, excelBoldRowIndices);
     return excelResponse(buffer, reportKey);
   }
 

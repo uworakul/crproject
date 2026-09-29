@@ -14,8 +14,9 @@ import {
   SitePerformanceTableView,
   UniformProfitTableView,
   ScatterChartView,
+  BadDebtTableView,
 } from "./charts";
-import type { ChartDatum, GroupedResult, SitePerformanceResult, UniformProfitResult } from "@/lib/reports/dashboard-data";
+import type { ChartDatum, GroupedResult, SitePerformanceResult, UniformProfitResult, BadDebtResult } from "@/lib/reports/dashboard-data";
 import type { DrilldownResult } from "@/lib/reports/dashboard-drilldown";
 
 interface Period {
@@ -161,6 +162,25 @@ const METRICS = [
     views: ["table", "bar", "pie"] as ViewMode[],
     drillable: false,
   },
+  // "หนี้สูญ" (2026-09-29) — outstanding debt of employees who have already
+  // resigned. drillable: true, but unlike every other drillable metric the
+  // click happens per-ROW (a "ดูรายละเอียด" button in BadDebtTableView), not
+  // on a bar/slice — see the isBadDebt render branch below, which skips the
+  // usual TableView/BarChartView onSelect wiring and passes its own
+  // per-row handler instead. table-only: a per-employee debt amount list
+  // has no natural bar/pie/line/scatter reading the way a categorical
+  // breakdown does.
+  {
+    key: "bad-debt",
+    label: "หนี้สูญ (พนักงานลาออกแล้ว)",
+    needsPeriod: false,
+    needsYear: false,
+    needsMonth: false,
+    filterable: true,
+    kind: "bad-debt" as const,
+    views: ["table"] as ViewMode[],
+    drillable: true,
+  },
 ] as const;
 type MetricKey = (typeof METRICS)[number]["key"];
 
@@ -192,7 +212,7 @@ export default function DashboardView({
   const [siteCode, setSiteCode] = useState("");
   const [bankCode, setBankCode] = useState("");
   const [empCode, setEmpCode] = useState("");
-  const [result, setResult] = useState<DashboardResult | GroupedResult | SitePerformanceResult | UniformProfitResult>(initialResult);
+  const [result, setResult] = useState<DashboardResult | GroupedResult | SitePerformanceResult | UniformProfitResult | BadDebtResult>(initialResult);
   // Tracks which metric `result` actually holds data for — `result`'s shape
   // ({data,unit} vs {groups,series,unit}) depends on the metric's `kind`, and
   // `result` only changes when load() runs (the "แสดงผล" button). Switching
@@ -223,7 +243,10 @@ export default function DashboardView({
   const [resultTab, setResultTab] = useState<"view" | "drilldown">("view");
 
   const currentMetric = METRICS.find((m) => m.key === metric)!;
-  const matchingPeriods = periods.filter((p) => p.EmployeeType === employeeType);
+  // "- ทั้งหมด -" (2026-09-29) has no matching sys_period.EmployeeType of
+  // its own (every period row is DAILY or MONTHLY, never "all") — show
+  // every period unfiltered in that case rather than an empty dropdown.
+  const matchingPeriods = employeeType ? periods.filter((p) => p.EmployeeType === employeeType) : periods;
 
   function selectMetric(key: MetricKey) {
     setMetric(key);
@@ -316,6 +339,7 @@ export default function DashboardView({
   const isGrouped = loadedMetricDef.kind === "grouped";
   const isSitePerformance = loadedMetricDef.kind === "site-performance";
   const isUniformProfit = loadedMetricDef.kind === "uniform-profit";
+  const isBadDebt = loadedMetricDef.kind === "bad-debt";
   const canDrill = loadedMetricDef.drillable;
 
   // Bar/Pie for the two new "kind"s reuse the existing single-series chart
@@ -375,6 +399,7 @@ export default function DashboardView({
               }}
               className={selectCls}
             >
+              <option value="">- ทั้งหมด -</option>
               <option value="DAILY">รายวัน</option>
               <option value="MONTHLY">รายเดือน</option>
             </select>
@@ -505,7 +530,8 @@ export default function DashboardView({
                     resultTab === "drilldown" ? "border-gray-900 font-medium text-gray-900" : "border-transparent text-gray-500 hover:text-gray-800"
                   }`}
                 >
-                  รายชื่อพนักงาน{drilldown ? ` (${drilldown.rows.length.toLocaleString("th-TH")})` : ""}
+                  {isBadDebt ? "รายละเอียดหนี้" : "รายชื่อพนักงาน"}
+                  {drilldown ? ` (${drilldown.rows.length.toLocaleString("th-TH")})` : ""}
                 </button>
               </div>
             )}
@@ -550,6 +576,11 @@ export default function DashboardView({
                   {viewMode === "bar" && <BarChartView data={uniformProfitBarPieData} unit="บาท" colorFor={profitLossColorFor} />}
                   {viewMode === "pie" && <PieChartView data={uniformProfitBarPieData} unit="บาท" colorFor={profitLossColorFor} />}
                 </>
+              ) : isBadDebt ? (
+                <>
+                  <p className="mb-2 text-xs text-gray-500">แสดงเฉพาะพนักงานสถานะ &quot;ลาออก&quot; ที่ยังมีหนี้ค้างเปิดอยู่ — คลิก &quot;ดูรายละเอียด&quot; เพื่อดูหนี้แต่ละรายการของคนนั้นในแท็บ &quot;รายละเอียดหนี้&quot;</p>
+                  <BadDebtTableView result={result as BadDebtResult} onViewDetail={(code, fullName) => openDrilldown({ empCode: code }, fullName)} />
+                </>
               ) : (
                 <>
                   {canDrill && <p className="mb-2 text-xs text-gray-500">คลิกที่แถว/แท่งข้อมูล/ชิ้นส่วน เพื่อดูรายชื่อพนักงานในแท็บ &quot;รายชื่อพนักงาน&quot;</p>}
@@ -582,7 +613,11 @@ export default function DashboardView({
                   }}
                 />
               ) : (
-                <p className="text-sm text-gray-500">ยังไม่ได้เลือกรายการ — สลับไปแท็บตาราง แล้วคลิกที่แถวข้อมูลเพื่อดูรายชื่อพนักงานที่นี่</p>
+                <p className="text-sm text-gray-500">
+                  {isBadDebt
+                    ? 'ยังไม่ได้เลือกรายการ — สลับไปแท็บตาราง แล้วคลิก "ดูรายละเอียด" ที่แถวพนักงานเพื่อดูหนี้ที่นี่'
+                    : "ยังไม่ได้เลือกรายการ — สลับไปแท็บตาราง แล้วคลิกที่แถวข้อมูลเพื่อดูรายชื่อพนักงานที่นี่"}
+                </p>
               ))}
           </>
         )}

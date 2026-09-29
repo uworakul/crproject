@@ -10,6 +10,7 @@ import {
   getGenderBySiteDrilldown,
   getAgeBySiteDrilldown,
   getLeaveStatsDrilldown,
+  getBadDebtDrilldown,
 } from "@/lib/reports/dashboard-drilldown";
 
 // GET /api/employee-dashboard/drilldown?metric=...&bucket=...&group=...&series=...&...filters
@@ -68,6 +69,11 @@ export async function GET(request: NextRequest) {
     const year = searchParams.get("year");
     if (!bucket || !year) return apiError(400, "INVALID_PARAMS", "bucket and year are required");
     return apiSuccess(await getLeaveStatsDrilldown(bucket, Number(year), filters));
+  }
+  if (metric === "bad-debt") {
+    const empCode = searchParams.get("empCode");
+    if (!empCode) return apiError(400, "INVALID_PARAMS", "empCode is required");
+    return apiSuccess(await getBadDebtDrilldown(empCode));
   }
   return apiError(404, "METRIC_NOT_FOUND", "Drilldown not supported for this metric", { metric });
 }

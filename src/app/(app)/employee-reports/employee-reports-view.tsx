@@ -20,6 +20,7 @@ interface ReportDef {
 const REPORTS: ReportDef[] = [
   { key: "employee-registry", label: "ทะเบียนพนักงาน", groupable: true },
   { key: "employee-card", label: "การ์ดพนักงาน" },
+  { key: "payment-history", label: "ประวัติการชำระเงิน", groupable: true },
 ];
 
 const GROUP_BY_OPTIONS: { value: string; label: string }[] = [
@@ -47,12 +48,14 @@ export default function EmployeeReportsView({
   sites,
   banks,
   employees,
+  debtTypeOptions,
 }: {
   companies: { CompanyCode: string; CompanyName: string }[];
   departments: { DeptCode: string; DeptName: string }[];
   sites: { SiteCode: string; SiteName: string }[];
   banks: { BankCode: string; BankNameTH: string }[];
   employees: { EmpCode: string; FullName: string }[];
+  debtTypeOptions: { value: string; label: string }[];
 }) {
   const [reportKey, setReportKey] = useState("employee-registry");
   const [employeeType, setEmployeeType] = useState("DAILY");
@@ -61,6 +64,7 @@ export default function EmployeeReportsView({
   const [siteCode, setSiteCode] = useState("");
   const [bankCode, setBankCode] = useState("");
   const [empCode, setEmpCode] = useState("");
+  const [debtType, setDebtType] = useState("");
   const [sortBy, setSortBy] = useState<"empCode" | "fullName">("empCode");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
   const [groupBy, setGroupBy] = useState("");
@@ -100,6 +104,7 @@ export default function EmployeeReportsView({
       params.set("sections", [...cardSections].join(","));
       if (cardSections.has("LEAVE_HISTORY") && cardLeaveYear !== "") params.set("leaveYear", String(cardLeaveYear));
     }
+    if (reportKey === "payment-history" && debtType) params.set("debtType", debtType);
 
     const res = await fetch(`/api/payroll/reports/${reportKey}?${params.toString()}`);
     if (!res.ok) {
@@ -291,6 +296,22 @@ export default function EmployeeReportsView({
               </select>
             </div>
           )}
+        </div>
+      )}
+
+      {reportKey === "payment-history" && (
+        <div className="flex flex-wrap items-end gap-3 rounded border border-gray-200 p-3">
+          <div>
+            <label className="mb-1 block text-xs text-gray-500">ประเภทหนี้</label>
+            <select value={debtType} onChange={(e) => setDebtType(e.target.value)} className={`${selectCls} w-64`}>
+              <option value="">- ทั้งหมด -</option>
+              {debtTypeOptions.map((o) => (
+                <option key={o.value} value={o.value}>
+                  {o.label}
+                </option>
+              ))}
+            </select>
+          </div>
         </div>
       )}
 

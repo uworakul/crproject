@@ -450,7 +450,7 @@ export default function StockIssueDetailView({
               onClick={async () => {
                 if (
                   !(await confirmDialog(
-                    `ยืนยันอนุมัติเอกสารจำหน่ายสินค้า ${issue.DocumentNo ? `#${issue.DocumentNo}` : ""} ให้พนักงาน ${issue.EmpCode} ยอดรวม ${money(totalAmount)} บาท? (ยอดคงเหลือหลังหักเงินสดจะถูกตั้งเป็นหนี้ UNIFORM)`,
+                    `ยืนยันอนุมัติเอกสารจำหน่ายสินค้า ${issue.DocumentNo ? `#${issue.DocumentNo}` : ""} ให้พนักงาน ${issue.EmpCode} ยอดรวม ${money(totalAmount)} บาท? (ยอดคงเหลือหลังหักเงินสดจะถูกตั้งเป็นหนี้ค่าชุด/ค่าบัตร)`,
                   ))
                 )
                   return;

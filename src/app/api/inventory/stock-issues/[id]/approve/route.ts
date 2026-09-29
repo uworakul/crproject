@@ -107,10 +107,15 @@ export async function POST(_req: Request, ctx: RouteContext<"/api/inventory/stoc
     }
 
     if (remainingAfterCash > 0) {
+      // "08" is the company's existing numeric ref_deduction_type code for
+      // this category ("ค่าชุด/ค่าบัตร") — writing "UNIFORM" here used to
+      // auto-provision a same-meaning duplicate row next to it every time
+      // (fixed 2026-09-29, see REQUEST_DOCUMENT_DEDUCTION_CODE's comment in
+      // src/lib/request.ts for the equivalent fix on the Request side).
       const deductionType = await tx.refDeductionType.upsert({
-        where: { DeductionCode: "UNIFORM" },
+        where: { DeductionCode: "08" },
         update: {},
-        create: { DeductionCode: "UNIFORM", DeductionName: "UNIFORM", IsInstallment: true, CreatedBy: user.userId },
+        create: { DeductionCode: "08", DeductionName: "ค่าชุด/ค่าบัตร", IsInstallment: true, CreatedBy: user.userId },
       });
 
       const openDebt = await tx.invEmployeeDebt.findFirst({

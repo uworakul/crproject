@@ -12,10 +12,10 @@ const supplierFields: FieldDef[] = [
   { key: "Address", label: "ที่อยู่", type: "text" },
   { key: "ContactPhone", label: "เบอร์ติดต่อ", type: "text" },
 ];
-const warehouseFields: FieldDef[] = [
-  { key: "WarehouseCode", label: "รหัสคลัง", type: "text", isKey: true },
-  { key: "WarehouseName", label: "ชื่อคลัง", type: "text" },
-];
+// CompanyCode field defined inside the component (needs `companies`, fetched
+// from the DB) — see productFields below for the same pattern with
+// CategoryCode. Added 2026-09-29 so a warehouse can be scoped to a company
+// for the "ตรวจสอบการเคลื่อนไหว" Stock Card tab's company filter.
 const categoryFields: FieldDef[] = [
   { key: "CategoryCode", label: "รหัสหมวดหมู่", type: "text", isKey: true },
   { key: "CategoryName", label: "ชื่อหมวดหมู่", type: "text" },
@@ -43,17 +43,32 @@ export default async function InventoryMasterPage() {
 
   // Categories are gated the same as Product (PRODUCT permission) — this
   // table only exists as the "หมวดหมู่" dropdown source for inv_product.
-  const [suppliersRaw, warehousesRaw, categoriesRaw, productsRaw] = await Promise.all([
+  // Companies are fetched whenever Warehouse is readable — same gate as
+  // WAREHOUSE itself, since it's only the "บริษัท" dropdown source here.
+  const [suppliersRaw, warehousesRaw, categoriesRaw, productsRaw, companiesRaw] = await Promise.all([
     canReadSupplier ? prisma.invSupplier.findMany({ orderBy: { SupplierCode: "asc" } }) : Promise.resolve([]),
     canReadWarehouse ? prisma.invWarehouse.findMany({ orderBy: { WarehouseCode: "asc" } }) : Promise.resolve([]),
     canReadProduct ? prisma.invProductCategory.findMany({ orderBy: { CategoryCode: "asc" } }) : Promise.resolve([]),
     canReadProduct ? prisma.invProduct.findMany({ orderBy: { ProductCode: "asc" } }) : Promise.resolve([]),
+    canReadWarehouse ? prisma.refCompany.findMany({ orderBy: { CompanyCode: "asc" }, select: { CompanyCode: true, CompanyName: true } }) : Promise.resolve([]),
   ]);
 
   // UnitCost/UnitPrice are Prisma.Decimal — round-trip to plain JSON-safe values.
-  const [suppliers, warehouses, categories, products] = JSON.parse(
-    JSON.stringify([suppliersRaw, warehousesRaw, categoriesRaw, productsRaw]),
+  const [suppliers, warehouses, categories, products, companies] = JSON.parse(
+    JSON.stringify([suppliersRaw, warehousesRaw, categoriesRaw, productsRaw, companiesRaw]),
   );
+
+  const warehouseFields: FieldDef[] = [
+    { key: "WarehouseCode", label: "รหัสคลัง", type: "text", isKey: true },
+    { key: "WarehouseName", label: "ชื่อคลัง", type: "text" },
+    {
+      key: "CompanyCode",
+      label: "บริษัท",
+      type: "select",
+      searchable: false,
+      options: companies.map((c: { CompanyCode: string; CompanyName: string }) => ({ code: c.CompanyCode, label: c.CompanyName })),
+    },
+  ];
 
   const productFields: FieldDef[] = [
     { key: "ProductCode", label: "รหัสสินค้า", type: "text", isKey: true },

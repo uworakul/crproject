@@ -150,16 +150,17 @@ export async function PUT(request: NextRequest, ctx: RouteContext<"/api/employee
     const n = Number(body.dailyRate);
     if (!Number.isFinite(n) || n < 0) return apiError(400, "VALIDATION_FAILED", "dailyRate must be a non-negative number");
   }
-  // "RESIGNED" is set only by POST /api/employees/[empCode]/resign, which
-  // also stamps ResignDate consistently — blocked here to keep that the one
-  // path that can retire an employee.
-  if (body.employeeStatus !== undefined) {
-    if (!isValidEmployeeStatus(body.employeeStatus)) {
-      return apiError(400, "VALIDATION_FAILED", "employeeStatus must be one of the allowed values");
-    }
-    if (body.employeeStatus === "RESIGNED") {
-      return apiError(400, "VALIDATION_FAILED", "Use POST /api/employees/[empCode]/resign to set RESIGNED");
-    }
+  // "RESIGNED" used to be settable only via POST /api/employees/[empCode]/
+  // resign (which also stamps ResignDate) — blocked here up through
+  // 2026-09-19. That button was later repurposed into "ลบออกจากระบบ" (a
+  // hard DELETE), leaving /resign with no UI caller at all and no way left
+  // to mark someone resigned without deleting their record outright. Opened
+  // back up here (2026-09-29, "สถานะพนักงาน เพิ่ม ลาออก") — resignDate is
+  // its own independently-editable field on this same form (see dateFields
+  // below), so setting both together in one save is already supported, the
+  // same as every other field on this tab.
+  if (body.employeeStatus !== undefined && !isValidEmployeeStatus(body.employeeStatus)) {
+    return apiError(400, "VALIDATION_FAILED", "employeeStatus must be one of the allowed values");
   }
 
   const dateFields: Record<string, unknown> = {
@@ -235,8 +236,6 @@ export async function PUT(request: NextRequest, ctx: RouteContext<"/api/employee
             : undefined,
       CompanyCode: body.companyCode === null ? null : typeof body.companyCode === "string" && body.companyCode ? body.companyCode : undefined,
       EmployeeType: isValidEmployeeType(body.employeeType) ? body.employeeType : undefined,
-      // The earlier check already rejects "RESIGNED" with a 400, so by this
-      // point isValidEmployeeStatus narrows body.employeeStatus to exclude it.
       EmployeeStatus: isValidEmployeeStatus(body.employeeStatus) ? body.employeeStatus : undefined,
       BankCode: body.bankCode === null ? null : typeof body.bankCode === "string" && body.bankCode ? body.bankCode : undefined,
       BankAccountNo:

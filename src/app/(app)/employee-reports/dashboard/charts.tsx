@@ -10,7 +10,7 @@
 // and a native <title> tooltip on every mark. Light mode only — this app
 // has no dark theme.
 import { useState } from "react";
-import type { ChartDatum, GroupedResult, SitePerformanceResult, UniformProfitResult } from "@/lib/reports/dashboard-data";
+import type { ChartDatum, GroupedResult, SitePerformanceResult, UniformProfitResult, BadDebtResult } from "@/lib/reports/dashboard-data";
 import type { DrilldownResult } from "@/lib/reports/dashboard-drilldown";
 
 function formatBaht(v: number) {
@@ -423,6 +423,59 @@ export function UniformProfitTableView({ result }: { result: UniformProfitResult
             <td className="py-2 pr-4 text-right tabular-nums">{formatBaht(totals.revenue)}</td>
             <td className="py-2 pr-4 text-right tabular-nums">{formatBaht(totals.cost)}</td>
             <td className={`py-2 pr-4 text-right tabular-nums ${totals.profit < 0 ? "text-red-600" : ""}`}>{formatBaht(totals.profit)}</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+// "หนี้สูญ" (2026-09-29) — per-row "ดูรายละเอียด" opens that employee's own
+// debt breakdown via the generic drilldown mechanism (onViewDetail is
+// dashboard-view.tsx's openDrilldown({empCode}, fullName), same one every
+// other metric's bucket-click uses — this just triggers it from a button
+// instead of a bar/slice).
+export function BadDebtTableView({ result, onViewDetail }: { result: BadDebtResult; onViewDetail: (empCode: string, fullName: string) => void }) {
+  if (result.rows.length === 0) return <p className="text-sm text-gray-500">ไม่มีพนักงานลาออกที่มีหนี้ค้าง</p>;
+  const total = result.rows.reduce((s, r) => s + r.totalRemaining, 0);
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full min-w-max border-collapse text-sm">
+        <thead>
+          <tr className="border-b border-gray-300 text-left text-gray-600">
+            <th className="py-2 pr-4">รหัสพนักงาน</th>
+            <th className="py-2 pr-4">ชื่อ-นามสกุล</th>
+            <th className="py-2 pr-4">แผนก</th>
+            <th className="py-2 pr-4">หน่วยงาน</th>
+            <th className="py-2 pr-4">วันที่ลาออก</th>
+            <th className="py-2 pr-4 text-right">จำนวนรายการหนี้</th>
+            <th className="py-2 pr-4 text-right">ยอดหนี้ค้าง (บาท)</th>
+            <th className="py-2 pr-4"></th>
+          </tr>
+        </thead>
+        <tbody>
+          {result.rows.map((r) => (
+            <tr key={r.empCode} className="border-b border-gray-100 hover:bg-gray-50">
+              <td className="py-2 pr-4">{r.empCode}</td>
+              <td className="py-2 pr-4">{r.fullName}</td>
+              <td className="py-2 pr-4">{r.deptName ?? "-"}</td>
+              <td className="py-2 pr-4">{r.siteName ?? "-"}</td>
+              <td className="py-2 pr-4">{r.resignDate}</td>
+              <td className="py-2 pr-4 text-right tabular-nums">{r.debtCount.toLocaleString("th-TH")}</td>
+              <td className="py-2 pr-4 text-right tabular-nums text-red-600">{formatBaht(r.totalRemaining)}</td>
+              <td className="py-2 pr-4">
+                <button type="button" onClick={() => onViewDetail(r.empCode, r.fullName)} className="text-xs text-blue-600 hover:underline">
+                  ดูรายละเอียด
+                </button>
+              </td>
+            </tr>
+          ))}
+          <tr className="font-medium">
+            <td className="py-2 pr-4" colSpan={6}>
+              รวม
+            </td>
+            <td className="py-2 pr-4 text-right tabular-nums text-red-600">{formatBaht(total)}</td>
+            <td className="py-2 pr-4"></td>
           </tr>
         </tbody>
       </table>

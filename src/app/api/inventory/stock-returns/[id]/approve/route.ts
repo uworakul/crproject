@@ -10,12 +10,12 @@ import { decimalOf, minDecimal } from "@/lib/inventory";
 // Regular lines post as one RETURN inv_stock_movement (adds back to the
 // receiving warehouse); secondhand lines increment inv_secondhand_stock
 // directly. The full return value is then applied as a payment against the
-// employee's OPEN "UNIFORM" debt — same apply-to-RemainingAmount mechanic
-// the original ISSUE/RETURN movement-confirm flow already used for
+// employee's OPEN "08" (ค่าชุด/ค่าบัตร) debt — same apply-to-RemainingAmount
+// mechanic the original ISSUE/RETURN movement-confirm flow already used for
 // movement-linked debts (min(value, RemainingAmount), move that amount from
-// RemainingAmount into PaidAmount, close if it hits 0). If no OPEN UNIFORM
-// debt exists for this employee, there's nothing to reduce — skipped
-// silently, the stock movement still posts normally.
+// RemainingAmount into PaidAmount, close if it hits 0). If no OPEN debt
+// exists for this employee, there's nothing to reduce — skipped silently,
+// the stock movement still posts normally.
 export async function POST(_req: Request, ctx: RouteContext<"/api/inventory/stock-returns/[id]/approve">) {
   const user = await verifySession();
   if (!user) return apiError(401, "UNAUTHORIZED");
@@ -84,8 +84,12 @@ export async function POST(_req: Request, ctx: RouteContext<"/api/inventory/stoc
     }
 
     if (totalAmount > 0) {
+      // "08" is the company's existing numeric ref_deduction_type code for
+      // this category — see the matching comment in the Issue approve
+      // route (which is what actually creates/tops-up this debt) for why
+      // it's "08" and not the old "UNIFORM" text code (fixed 2026-09-29).
       const openDebt = await tx.invEmployeeDebt.findFirst({
-        where: { EmpCode: existing.EmpCode, DeductionCode: "UNIFORM", Status: "OPEN" },
+        where: { EmpCode: existing.EmpCode, DeductionCode: "08", Status: "OPEN" },
       });
       if (openDebt) {
         const applied = minDecimal(decimalOf(totalAmount), openDebt.RemainingAmount);
@@ -101,6 +105,21 @@ export async function POST(_req: Request, ctx: RouteContext<"/api/inventory/stoc
             UpdatedDate: new Date(),
           },
         });
+        // "ประวัติการชำระเงิน" event log (2026-09-29) — see
+        // InvEmployeeDebtPayment's schema comment for why this exists.
+        if (applied.gt(0)) {
+          await tx.invEmployeeDebtPayment.create({
+            data: {
+              DebtID: openDebt.DebtID,
+              PaymentDate: new Date(),
+              Amount: applied,
+              RemainingAfter: newRemaining,
+              Source: "INVENTORY_RETURN",
+              ReturnHeaderID: returnId,
+              CreatedBy: user.userId,
+            },
+          });
+        }
       }
     }
 

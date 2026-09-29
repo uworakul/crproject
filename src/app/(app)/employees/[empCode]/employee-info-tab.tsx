@@ -159,7 +159,7 @@ export default function EmployeeInfoTab({
             onChange={(e) => setForm({ ...form, employeeStatus: e.target.value })}
             className={inputCls}
           >
-            {EMPLOYEE_STATUS_VALUES.filter((s) => s !== "RESIGNED" || isResigned).map((s) => (
+            {EMPLOYEE_STATUS_VALUES.map((s) => (
               <option key={s} value={s}>
                 {EMPLOYEE_STATUS_LABELS[s]}
               </option>

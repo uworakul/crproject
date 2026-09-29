@@ -152,6 +152,39 @@ export async function getAgeBySiteDrilldown(group: string, series: string, filte
   };
 }
 
+// "หนี้สูญ" drilldown (2026-09-29) — unlike every other drilldown here
+// (click a bucket -> see the employees in it), this one is triggered by a
+// "ดูรายละเอียด" button on a specific ROW of getResignedEmployeeBadDebt's
+// table (see BadDebtTableView in charts.tsx), keyed by empCode rather than
+// a bucket/group+series label. Shows that one employee's individual OPEN
+// debt lines (not merged by category — a resigned employee rarely has more
+// than a couple, so there's no need for the ADVANCE-group merge
+// payment-history.ts uses for its filter dropdown).
+export async function getBadDebtDrilldown(empCode: string): Promise<DrilldownResult> {
+  const debts = await prisma.invEmployeeDebt.findMany({
+    where: { EmpCode: empCode, Status: "OPEN", RemainingAmount: { gt: 0 } },
+    include: { DeductionType: { select: { DeductionName: true } } },
+    orderBy: { RemainingAmount: "desc" },
+  });
+  const rows = debts.map((d) => ({
+    debtType: d.DeductionType?.DeductionName ?? d.DeductionCode ?? "-",
+    totalAmount: Number(d.TotalAmount),
+    paidAmount: Number(d.PaidAmount),
+    remainingAmount: Number(d.RemainingAmount),
+    description: d.Description ?? "-",
+  }));
+  return {
+    columns: [
+      { key: "debtType", label: "ประเภทหนี้" },
+      { key: "totalAmount", label: "ยอดเต็ม (บาท)", align: "right" },
+      { key: "paidAmount", label: "ชำระแล้ว (บาท)", align: "right" },
+      { key: "remainingAmount", label: "คงเหลือ (บาท)", align: "right" },
+      { key: "description", label: "หมายเหตุ" },
+    ],
+    rows,
+  };
+}
+
 export async function getLeaveStatsDrilldown(leaveTypeName: string, year: number, filters: ReportFilters): Promise<DrilldownResult> {
   const yearStart = new Date(Date.UTC(year, 0, 1));
   const yearEnd = new Date(Date.UTC(year + 1, 0, 1));

@@ -201,8 +201,8 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       label: "ทะเบียนพนักงาน",
       icon: "employee" as const,
       items: [
-        ...(canViewPayrollReport ? [{ href: "/employee-reports", label: "รายงาน" }] : []),
-        ...(canViewDashboard ? [{ href: "/employee-reports/dashboard", label: "Dashboard" }] : []),
+        ...(canViewPayrollReport ? [{ href: "/employee-reports", label: "รายงาน", icon: "report" as const }] : []),
+        ...(canViewDashboard ? [{ href: "/employee-reports/dashboard", label: "Dashboard", icon: "dashboard" as const }] : []),
       ],
     },
   ].filter((g) => g.items.length > 0);

@@ -27,7 +27,7 @@ export async function PUT(request: NextRequest, ctx: RouteContext<"/api/inventor
   const existing = await prisma.invWarehouse.findUnique({ where: { WarehouseCode: warehouseCode } });
   if (!existing) return apiError(404, "WAREHOUSE_NOT_FOUND");
 
-  let body: { warehouseName?: unknown; isActive?: unknown };
+  let body: { warehouseName?: unknown; companyCode?: unknown; isActive?: unknown };
   try {
     body = await request.json();
   } catch {
@@ -37,10 +37,17 @@ export async function PUT(request: NextRequest, ctx: RouteContext<"/api/inventor
   const warehouseName = typeof body.warehouseName === "string" ? body.warehouseName.trim() : "";
   if (!warehouseName) return apiError(400, "INVALID_PARAMS", "warehouseName is required");
 
+  const companyCode = typeof body.companyCode === "string" && body.companyCode.trim() ? body.companyCode.trim() : null;
+  if (companyCode) {
+    const company = await prisma.refCompany.findUnique({ where: { CompanyCode: companyCode } });
+    if (!company) return apiError(404, "COMPANY_NOT_FOUND", undefined, { companyCode });
+  }
+
   const updated = await prisma.invWarehouse.update({
     where: { WarehouseCode: warehouseCode },
     data: {
       WarehouseName: warehouseName,
+      CompanyCode: companyCode,
       IsActive: typeof body.isActive === "boolean" ? body.isActive : existing.IsActive,
       UpdatedBy: user.userId,
       UpdatedDate: new Date(),

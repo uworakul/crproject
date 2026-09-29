@@ -127,6 +127,66 @@ export async function getStockBalancesForWarehouse(warehouseCode: string): Promi
   return balances;
 }
 
+// "ตรวจสอบการเคลื่อนไหว" Stock Card (2026-09-29) — one line per CONFIRMED
+// movement-detail row that touched this (productCode, warehouseCode) pair,
+// signed relative to that one warehouse the exact same way
+// getStockBalance()/getStockBalancesForWarehouse() above do (PURCHASE/
+// ADJUST/RETURN add, ISSUE subtracts, TRANSFER adds or subtracts depending
+// on which side of it this warehouse was on) — qty/amount here are always
+// reported as positive MAGNITUDES with an explicit direction, since a stock
+// card's job is showing "how much moved which way," not a signed delta.
+// ADJUST can itself carry a negative Qty (a downward count correction) —
+// that still nets out correctly through the same add-the-signed-value path
+// before direction/magnitude are derived from the result.
+export interface StockCardEntry {
+  movementId: number;
+  movementDate: Date;
+  movementType: MovementType;
+  direction: "IN" | "OUT";
+  qty: Prisma.Decimal;
+  unitPrice: Prisma.Decimal;
+  amount: Prisma.Decimal;
+  counterWarehouseCode: string | null; // TRANSFER only — the "other side"
+}
+
+export async function getStockCardEntries(productCode: string, warehouseCode: string, upToDate: Date): Promise<StockCardEntry[]> {
+  const details = await prisma.invStockMovementDetail.findMany({
+    where: {
+      ProductCode: productCode,
+      Movement: { Status: "CONFIRMED", MovementDate: { lte: upToDate }, OR: [{ WarehouseCode: warehouseCode }, { TargetWarehouseCode: warehouseCode }] },
+    },
+    include: { Movement: { select: { MovementID: true, MovementType: true, WarehouseCode: true, TargetWarehouseCode: true, MovementDate: true } } },
+    orderBy: [{ Movement: { MovementDate: "asc" } }, { DetailID: "asc" }],
+  });
+
+  const entries: StockCardEntry[] = [];
+  const push = (d: (typeof details)[number], signedQty: Prisma.Decimal, signedAmount: Prisma.Decimal, counterWarehouseCode: string | null) => {
+    entries.push({
+      movementId: d.Movement.MovementID,
+      movementDate: d.Movement.MovementDate,
+      movementType: d.Movement.MovementType as MovementType,
+      direction: signedQty.isNegative() ? "OUT" : "IN",
+      qty: signedQty.abs(),
+      unitPrice: d.UnitPrice,
+      amount: signedAmount.abs(),
+      counterWarehouseCode,
+    });
+  };
+
+  for (const d of details) {
+    const type = d.Movement.MovementType as MovementType;
+    if (type === "PURCHASE" || type === "ADJUST" || type === "RETURN") {
+      if (d.Movement.WarehouseCode === warehouseCode) push(d, d.Qty, d.Amount, null);
+    } else if (type === "ISSUE") {
+      if (d.Movement.WarehouseCode === warehouseCode) push(d, d.Qty.neg(), d.Amount.neg(), null);
+    } else if (type === "TRANSFER") {
+      if (d.Movement.WarehouseCode === warehouseCode) push(d, d.Qty.neg(), d.Amount.neg(), d.Movement.TargetWarehouseCode);
+      if (d.Movement.TargetWarehouseCode === warehouseCode) push(d, d.Qty, d.Amount, d.Movement.WarehouseCode);
+    }
+  }
+  return entries;
+}
+
 // Company-wide on-hand qty for one product, across every warehouse combined
 // — used for the weighted-average UnitCost recalculation on Purchase
 // approval (inv_product.UnitCost isn't warehouse-scoped, so the cost basis

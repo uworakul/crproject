@@ -7,6 +7,12 @@ import { usePathname } from "next/navigation";
 interface NavItem {
   href: string;
   label: string;
+  // Optional per-ITEM icon (2026-09-29) — every group already got an icon
+  // (shown at the group header / collapsed-rail button); individual items
+  // inside a group had none until now. Only set where asked (รายงาน/
+  // Dashboard under "ทะเบียนพนักงาน") — every other item still renders with
+  // no icon, same as before.
+  icon?: IconKey;
 }
 interface NavGroup {
   label: string;
@@ -18,7 +24,7 @@ function isGroupActive(group: NavGroup, pathname: string) {
   return group.items.some((item) => pathname === item.href || pathname.startsWith(item.href + "/"));
 }
 
-export type IconKey = "users" | "settings" | "employee" | "approve" | "inventory" | "worksheet" | "payroll" | "leave";
+export type IconKey = "users" | "settings" | "employee" | "approve" | "inventory" | "worksheet" | "payroll" | "leave" | "report" | "dashboard";
 
 // Simple line icons built from basic shapes (rect/circle/line/polygon) only —
 // no bezier path data — one per top-level menu group, shown alongside the
@@ -96,6 +102,24 @@ function GroupIcon({ icon, className }: { icon: IconKey | undefined; className?:
           <line x1="16" y1="3" x2="16" y2="7" />
           <line x1="9" y1="14" x2="15" y2="18" />
           <line x1="15" y1="14" x2="9" y2="18" />
+        </svg>
+      );
+    case "report":
+      return (
+        <svg {...common}>
+          <rect x="4" y="3" width="16" height="18" rx="2" />
+          <line x1="8" y1="8" x2="16" y2="8" />
+          <line x1="8" y1="12" x2="16" y2="12" />
+          <line x1="8" y1="16" x2="13" y2="16" />
+        </svg>
+      );
+    case "dashboard":
+      return (
+        <svg {...common}>
+          <rect x="3" y="3" width="8" height="8" rx="1" />
+          <rect x="13" y="3" width="8" height="5" rx="1" />
+          <rect x="13" y="10" width="8" height="11" rx="1" />
+          <rect x="3" y="13" width="8" height="8" rx="1" />
         </svg>
       );
     default:
@@ -222,10 +246,11 @@ export default function Sidebar({ groups, companyShortName }: { groups: NavGroup
                         <Link
                           key={item.href}
                           href={item.href}
-                          className={`rounded-md px-2.5 py-1.5 text-sm ${
+                          className={`flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-sm ${
                             active ? "bg-gray-100 font-medium text-gray-900" : "text-gray-600 hover:bg-gray-50 hover:text-gray-900"
                           }`}
                         >
+                          {item.icon && <GroupIcon icon={item.icon} className="h-3.5 w-3.5 shrink-0" />}
                           {item.label}
                         </Link>
                       );

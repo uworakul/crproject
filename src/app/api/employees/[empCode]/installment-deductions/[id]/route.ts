@@ -53,16 +53,39 @@ export async function PUT(request: NextRequest, ctx: RouteContext<"/api/employee
     }
   }
 
-  const updated = await prisma.invEmployeeDebt.update({
-    where: { DebtID: debtId },
-    data: {
-      Description: body.description === null ? null : typeof body.description === "string" ? body.description.trim() || null : undefined,
-      DeductPerPeriod: deductPerPeriod,
-      RemainingAmount: remainingAmount,
-      Status: remainingAmount !== undefined ? (remainingAmount <= 0 ? "CLOSED" : "OPEN") : undefined,
-      UpdatedBy: user.userId,
-      UpdatedDate: new Date(),
-    },
+  // "ประวัติการชำระเงิน" event log (2026-09-29) — a manual RemainingAmount
+  // edit that lowers the balance IS a real payment event (the other place
+  // debts get reduced, Inventory Return-approve, already logs one — see
+  // InvEmployeeDebtPayment's schema comment). Only logged when the edit
+  // actually decreases the balance; raising it back up (correcting a
+  // mistake) isn't a "payment" and isn't logged.
+  const paidThisEdit = remainingAmount !== undefined ? Number(existing.RemainingAmount) - remainingAmount : 0;
+
+  const updated = await prisma.$transaction(async (tx) => {
+    const row = await tx.invEmployeeDebt.update({
+      where: { DebtID: debtId },
+      data: {
+        Description: body.description === null ? null : typeof body.description === "string" ? body.description.trim() || null : undefined,
+        DeductPerPeriod: deductPerPeriod,
+        RemainingAmount: remainingAmount,
+        Status: remainingAmount !== undefined ? (remainingAmount <= 0 ? "CLOSED" : "OPEN") : undefined,
+        UpdatedBy: user.userId,
+        UpdatedDate: new Date(),
+      },
+    });
+    if (paidThisEdit > 0) {
+      await tx.invEmployeeDebtPayment.create({
+        data: {
+          DebtID: debtId,
+          PaymentDate: new Date(),
+          Amount: paidThisEdit,
+          RemainingAfter: remainingAmount!,
+          Source: "MANUAL_EDIT",
+          CreatedBy: user.userId,
+        },
+      });
+    }
+    return row;
   });
 
   await logAction(user.userId, "UPDATE_INSTALLMENT_DEDUCTION", { targetTable: "inv_employee_debt", targetId: id });

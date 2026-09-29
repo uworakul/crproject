@@ -3,21 +3,26 @@ import { prisma } from "@/lib/prisma";
 import { employeeWhere, type ReportFilters } from "./types";
 import type { GroupableRow } from "./group-sort";
 
-// Real ref_deduction_type data (checked 2026-09-22) has two overlapping code
-// sets for the same debt categories — legacy numeric codes seeded from an
-// early Excel import (06-18) and newer text codes the Request & Approve /
-// Inventory modules create on demand (ADVANCE/ADVANCEN/ADVANCEU/LOAN/
-// TRAINING/UNIFORM). Each of these 4 payroll debt reports merges BOTH sets
-// for its category rather than picking one, so a debt created through
-// either path shows up. "ค่าชุด" (UNIFORM/"08") is deliberately NOT included
-// here — it's grouped with the Inventory reports batch instead (the
-// original request lists "หนี้ค้างค่าชุด" under the stock-report group, not
-// this one), matching how the user's own list was organized.
+// Until 2026-09-29, ref_deduction_type had two overlapping code sets for the
+// same debt categories — legacy numeric codes seeded from an early Excel
+// import (06-18) and newer text codes the Request & Approve / Inventory
+// modules auto-provisioned on demand (ADVANCE/ADVANCEN/ADVANCEU/LOAN/
+// TRAINING/UNIFORM), each of these 4 reports merging both sets so a debt
+// created through either path would show up. That duplication is now fixed
+// at the source (see REQUEST_DOCUMENT_DEDUCTION_CODE in src/lib/request.ts
+// and the matching fix in the Inventory Issue-approve route) — every debt
+// gets written under the numeric code only, and the 13 pre-existing rows
+// that had accumulated under the text codes were migrated. Codes lists below
+// only need the numeric side now. "ค่าชุด" (now exclusively "08") is
+// deliberately NOT included here — it's grouped with the Inventory reports
+// batch instead (the original request lists "หนี้ค้างค่าชุด" under the
+// stock-report group, not this one), matching how the user's own list was
+// organized.
 export const DEBT_REPORT_CATEGORIES = {
-  ADVANCE: { label: "รายงานหนี้ค้างเงินเบิกต่างๆ", codes: ["ADVANCE", "ADVANCEN", "ADVANCEU", "13", "14", "15"] },
-  TRAINING: { label: "รายงานหนี้ค้างค่าอบรม", codes: ["TRAINING", "10"] },
+  ADVANCE: { label: "รายงานหนี้ค้างเงินเบิกต่างๆ", codes: ["13", "14", "15"] },
+  TRAINING: { label: "รายงานหนี้ค้างค่าอบรม", codes: ["10"] },
   INSURANCE: { label: "รายงานหนี้ค้างเงินประกัน", codes: ["09"] },
-  LOAN: { label: "รายงานหนี้ค้างเงินกู้", codes: ["LOAN", "12"] },
+  LOAN: { label: "รายงานหนี้ค้างเงินกู้", codes: ["12"] },
 } as const;
 
 export type DebtReportKey = keyof typeof DEBT_REPORT_CATEGORIES;
@@ -25,6 +30,8 @@ export type DebtReportKey = keyof typeof DEBT_REPORT_CATEGORIES;
 export interface DebtReportRow extends GroupableRow {
   deductionName: string;
   documentNo: string | null;
+  documentDate: string | null;
+  approvedDate: string | null;
   totalAmount: string;
   paidAmount: string;
   remainingAmount: string;
@@ -46,7 +53,7 @@ export async function getDebtRows(key: DebtReportKey, filters: ReportFilters): P
     },
     include: {
       Employee: { include: { Department: true, Site: true, Bank: true } },
-      RequestHeader: { select: { DocumentNo: true } },
+      RequestHeader: { select: { DocumentNo: true, RequestDate: true, ApprovedDate: true } },
     },
     orderBy: { EmpCode: "asc" },
   });
@@ -63,6 +70,8 @@ export async function getDebtRows(key: DebtReportKey, filters: ReportFilters): P
     employeeType: d.Employee.EmployeeType,
     deductionName: d.Description ?? DEBT_REPORT_CATEGORIES[key].label,
     documentNo: d.RequestHeader?.DocumentNo ?? null,
+    documentDate: d.RequestHeader?.RequestDate.toLocaleDateString("th-TH") ?? null,
+    approvedDate: d.RequestHeader?.ApprovedDate?.toLocaleDateString("th-TH") ?? null,
     totalAmount: d.TotalAmount.toFixed(2),
     paidAmount: d.PaidAmount.toFixed(2),
     remainingAmount: d.RemainingAmount.toFixed(2),

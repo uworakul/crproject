@@ -114,3 +114,28 @@ export const REQUEST_INCOME_CODE: Partial<Record<RequestDocumentCode, string>> =
   BONUS: "18",
   COMMISSION: "19",
 };
+
+// ref_deduction_type codes used when a DEBT-kind request gets approved and
+// creates an inv_employee_debt row (see approve/route.ts). Until 2026-09-29
+// approval wrote DeductionCode = the request's own DocumentCode string
+// (ADVANCE/ADVANCEN/ADVANCEU/LOAN/TRAINING) directly, auto-provisioning a
+// ref_deduction_type row for it if missing — but ref_deduction_type already
+// had these exact 5 categories under the company's own legacy numeric codes
+// (13/14/15/12/10, seeded from an early Excel import), so every approval
+// kept re-creating a same-meaning duplicate row next to the numeric one
+// ("เงินเบิกล่วงหน้า" appearing twice: once as "13", once as "ADVANCE"). Fixed
+// by mapping to the existing numeric code instead of using DocumentCode
+// as-is; the 13 real debt rows that had already accumulated under the text
+// codes were migrated to the numeric ones in the same pass, and the
+// now-unreferenced ADVANCE/ADVANCEN/ADVANCEU/LOAN/TRAINING rows were
+// deleted from ref_deduction_type (see git history for the one-off
+// migration script). UNIFORM/"08" has the identical duplication, fixed the
+// same way, but isn't part of this map — that one's written directly by
+// the Inventory Issue/Return approve routes, not through a Request.
+export const REQUEST_DOCUMENT_DEDUCTION_CODE: Partial<Record<RequestDocumentCode, string>> = {
+  ADVANCE: "13",
+  ADVANCEN: "14",
+  ADVANCEU: "15",
+  LOAN: "12",
+  TRAINING: "10",
+};
