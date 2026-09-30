@@ -5,6 +5,7 @@ import { requirePermission } from "@/lib/authorize";
 import { logAction } from "@/lib/audit-log";
 import { apiError, apiSuccess } from "@/lib/api-response";
 import { isEmployeeInScope } from "@/lib/employee-scope";
+import { getEmployeeProductReturnLimit, decimalOf } from "@/lib/inventory";
 
 // Unlike Issue, unitPrice is always manually entered here ("ใส่ยอดรับคืน
 // ต่อหน่วยสินค้า") — a return's value doesn't have to match the original
@@ -44,6 +45,23 @@ export async function POST(request: NextRequest, ctx: RouteContext<"/api/invento
 
   const product = await prisma.invProduct.findUnique({ where: { ProductCode: productCode } });
   if (!product) return apiError(404, "PRODUCT_NOT_FOUND", undefined, { productCode });
+
+  // "ตรวจสอบว่าเป็นรายการที่ขายไปให้คนนั้น และยอดเงินไม่เกินที่ขายไป" — see
+  // getEmployeeProductReturnLimit's own comment in src/lib/inventory.ts.
+  const { soldAmount, remaining } = await getEmployeeProductReturnLimit(header.EmpCode, productCode, isSecondHand);
+  if (soldAmount.isZero()) {
+    return apiError(422, "PRODUCT_NOT_SOLD_TO_EMPLOYEE", `ไม่พบประวัติการขายสินค้านี้ให้กับพนักงาน ${header.EmpCode}`, { productCode, empCode: header.EmpCode });
+  }
+  const requestedAmount = decimalOf(qty).mul(decimalOf(unitPrice));
+  if (requestedAmount.gt(remaining)) {
+    return apiError(422, "RETURN_AMOUNT_EXCEEDS_SOLD", `ยอดรับคืนเกินยอดที่ขายไป (รับคืนได้ไม่เกิน ${remaining.toFixed(2)} บาท)`, {
+      productCode,
+      empCode: header.EmpCode,
+      soldAmount: soldAmount.toFixed(2),
+      remaining: remaining.toFixed(2),
+      requested: requestedAmount.toFixed(2),
+    });
+  }
 
   const existingDetails = await prisma.invReturnDetail.findMany({
     where: { ReturnHeaderID: returnId },

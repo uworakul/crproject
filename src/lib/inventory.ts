@@ -68,6 +68,42 @@ export function minDecimal(a: Prisma.Decimal, b: Prisma.Decimal): Prisma.Decimal
   return Prisma.Decimal.min(a, b);
 }
 
+// "ตรวจสอบการรับคืนสินค้า ด้วยว่าเป็นรายการที่ขายไปให้คนนั้น และยอดเงินไม่
+// เกิน ที่ขายไป" (2026-09-29) — a Return line for (EmpCode, ProductCode,
+// IsSecondHand) must correspond to stock actually SOLD (an APPROVED Issue)
+// to that same employee, and its cumulative return Amount — across EVERY
+// Return document for this employee+product, not just this one, and
+// regardless of status (DRAFT/SUBMITTED count too, so two pending returns
+// can't each look fine individually but together overrun what was sold) —
+// must not exceed what was sold. `excludeReturnDetailId` lets an edit
+// exclude the line's own prior value from the "already returned" sum
+// before re-checking the new one.
+export async function getEmployeeProductReturnLimit(
+  empCode: string,
+  productCode: string,
+  isSecondHand: boolean,
+  excludeReturnDetailId?: number,
+): Promise<{ soldAmount: Prisma.Decimal; returnedAmount: Prisma.Decimal; remaining: Prisma.Decimal }> {
+  const [soldRows, returnedRows] = await Promise.all([
+    prisma.invIssueDetail.findMany({
+      where: { ProductCode: productCode, IsSecondHand: isSecondHand, Header: { EmpCode: empCode, Status: "APPROVED" } },
+      select: { Amount: true },
+    }),
+    prisma.invReturnDetail.findMany({
+      where: {
+        ProductCode: productCode,
+        IsSecondHand: isSecondHand,
+        Header: { EmpCode: empCode },
+        ...(excludeReturnDetailId ? { ReturnDetailID: { not: excludeReturnDetailId } } : {}),
+      },
+      select: { Amount: true },
+    }),
+  ]);
+  const soldAmount = sumAmounts(soldRows);
+  const returnedAmount = sumAmounts(returnedRows);
+  return { soldAmount, returnedAmount, remaining: soldAmount.sub(returnedAmount) };
+}
+
 export function toMovementDetailData(entries: { productCode: string; qty: number; unitPrice: number }[]) {
   return entries.map((e) => {
     const qty = new Prisma.Decimal(e.qty);

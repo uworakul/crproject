@@ -5,6 +5,7 @@ import { requirePermission } from "@/lib/authorize";
 import { logAction } from "@/lib/audit-log";
 import { apiError, apiSuccess } from "@/lib/api-response";
 import { isEmployeeInScope } from "@/lib/employee-scope";
+import { getEmployeeProductReturnLimit, decimalOf } from "@/lib/inventory";
 
 // Flat endpoint — see stock-count-details/[detailId]/route.ts.
 export async function PUT(request: NextRequest, ctx: RouteContext<"/api/inventory/stock-return-details/[detailId]">) {
@@ -46,6 +47,23 @@ export async function PUT(request: NextRequest, ctx: RouteContext<"/api/inventor
 
   const qty = body.qty !== undefined ? Number(body.qty) : Number(existing.Qty);
   const unitPrice = body.unitPrice !== undefined ? Number(body.unitPrice) : Number(existing.UnitPrice);
+
+  // "ยอดเงินไม่เกินที่ขายไป" — same check as POST .../details, excluding
+  // this line's own prior value from the "already returned" sum first (see
+  // getEmployeeProductReturnLimit's comment in src/lib/inventory.ts). No
+  // separate "was this ever sold to them" check needed here — ProductCode/
+  // IsSecondHand aren't editable via this endpoint, so that was already
+  // enforced when the line was first created.
+  const { remaining } = await getEmployeeProductReturnLimit(header.EmpCode, existing.ProductCode, existing.IsSecondHand, detailIdNum);
+  const requestedAmount = decimalOf(qty).mul(decimalOf(unitPrice));
+  if (requestedAmount.gt(remaining)) {
+    return apiError(422, "RETURN_AMOUNT_EXCEEDS_SOLD", `ยอดรับคืนเกินยอดที่ขายไป (รับคืนได้ไม่เกิน ${remaining.toFixed(2)} บาท)`, {
+      productCode: existing.ProductCode,
+      empCode: header.EmpCode,
+      remaining: remaining.toFixed(2),
+      requested: requestedAmount.toFixed(2),
+    });
+  }
 
   const updated = await prisma.invReturnDetail.update({
     where: { ReturnDetailID: detailIdNum },
