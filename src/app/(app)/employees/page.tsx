@@ -30,6 +30,7 @@ export default async function EmployeesPage() {
         DefaultSiteCode: true,
         Site: { select: { SiteName: true } },
         IsActive: true,
+        _count: { select: { RequestDetails: true, StockMovements: true, Debts: true, WorksheetDetails: true, PayrollTransactions: true, LeaveRequests: true, LeaveBalances: true, IssueHeaders: true, ReturnHeaders: true } },
       },
       orderBy: { EmpCode: "asc" },
     }),
@@ -60,6 +61,8 @@ export default async function EmployeesPage() {
     SiteCode: e.DefaultSiteCode,
     SiteName: e.Site?.SiteName ?? null,
     IsActive: e.IsActive,
+    // Any business record referencing this employee (same set of FKs that make DELETE fail with EMPLOYEE_IN_USE) — hides the ลบ button.
+    HasTransactions: Object.values(e._count).some((n) => n > 0),
   }));
 
   return (

@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { confirmDeleteEmployee } from "./confirm-delete-employee";
-import { EMPLOYEE_STATUS_LABELS, type EmployeeStatus } from "@/lib/validation";
+import { EMPLOYEE_STATUS_LABELS, EMPLOYEE_TYPE_LABELS, EMPLOYEE_TYPE_VALUES, type EmployeeStatus, type EmployeeType } from "@/lib/validation";
 
 function fmtDate(v: Date | string | null) {
   return v ? new Date(v).toLocaleDateString("th-TH") : "-";
@@ -24,6 +24,7 @@ interface EmployeeRow {
   SiteCode: string | null;
   SiteName: string | null;
   IsActive: boolean;
+  HasTransactions: boolean;
 }
 
 const inputCls = "rounded border border-gray-300 px-3 py-2 text-sm";
@@ -45,6 +46,7 @@ export default function EmployeesTable({
   const [companyCode, setCompanyCode] = useState("");
   const [deptCode, setDeptCode] = useState("");
   const [siteCode, setSiteCode] = useState("");
+  const [employeeType, setEmployeeType] = useState("");
   const [nameQuery, setNameQuery] = useState("");
   const [message, setMessage] = useState<string | null>(null);
 
@@ -52,6 +54,7 @@ export default function EmployeesTable({
     if (companyCode && e.CompanyCode !== companyCode) return false;
     if (deptCode && e.DeptCode !== deptCode) return false;
     if (siteCode && e.SiteCode !== siteCode) return false;
+    if (employeeType && e.EmployeeType !== employeeType) return false;
     if (nameQuery && !e.FullName.toLowerCase().includes(nameQuery.toLowerCase()) && !e.EmpCode.toLowerCase().includes(nameQuery.toLowerCase())) return false;
     return true;
   });
@@ -100,6 +103,14 @@ export default function EmployeesTable({
             </option>
           ))}
         </select>
+        <select aria-label="ประเภทพนักงาน" value={employeeType} onChange={(e) => setEmployeeType(e.target.value)} className={inputCls}>
+          <option value="">- ทุกประเภท -</option>
+          {EMPLOYEE_TYPE_VALUES.map((t) => (
+            <option key={t} value={t}>
+              {EMPLOYEE_TYPE_LABELS[t]}
+            </option>
+          ))}
+        </select>
         <input
           value={nameQuery}
           onChange={(e) => setNameQuery(e.target.value)}
@@ -118,6 +129,7 @@ export default function EmployeesTable({
             <th className="px-3 py-2 font-medium">ชื่อ-นามสกุล</th>
             <th className="px-3 py-2 font-medium">แผนก</th>
             <th className="px-3 py-2 font-medium">ตำแหน่ง</th>
+            <th className="px-3 py-2 font-medium">ประเภท</th>
             <th className="px-3 py-2 font-medium">หน่วยงาน</th>
             <th className="px-3 py-2 font-medium">วันเริ่มงาน</th>
             <th className="px-3 py-2 font-medium">สถานะ</th>
@@ -136,22 +148,25 @@ export default function EmployeesTable({
               <td className="px-3 py-2">{e.FullName}</td>
               <td className="px-3 py-2 text-gray-500">{e.DeptName ?? "-"}</td>
               <td className="px-3 py-2 text-gray-500">{e.PositionName ?? "-"}</td>
+              <td className="px-3 py-2 text-gray-500">{EMPLOYEE_TYPE_LABELS[e.EmployeeType as EmployeeType] ?? e.EmployeeType}</td>
               <td className="px-3 py-2 text-gray-500">{e.SiteName ?? "-"}</td>
               <td className="px-3 py-2 text-gray-500">{fmtDate(e.StartDate)}</td>
               <td className="px-3 py-2 text-gray-500">{EMPLOYEE_STATUS_LABELS[e.EmployeeStatus as EmployeeStatus] ?? e.EmployeeStatus}</td>
               <td className="px-3 py-2 text-gray-500">{fmtDate(e.ResignDate)}</td>
               {canDelete && (
                 <td className="whitespace-nowrap px-3 py-2 text-right">
-                  <button onClick={() => handleDelete(e)} className="text-red-500 hover:underline">
-                    ลบ
-                  </button>
+                  {!e.HasTransactions && (
+                    <button onClick={() => handleDelete(e)} className="text-red-500 hover:underline">
+                      ลบ
+                    </button>
+                  )}
                 </td>
               )}
             </tr>
           ))}
           {filtered.length === 0 && (
             <tr>
-              <td colSpan={canDelete ? 9 : 8} className="px-3 py-6 text-center text-gray-400">
+              <td colSpan={canDelete ? 10 : 9} className="px-3 py-6 text-center text-gray-400">
                 ไม่พบพนักงานตามเงื่อนไขที่เลือก
               </td>
             </tr>
