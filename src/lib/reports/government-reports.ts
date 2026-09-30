@@ -231,11 +231,103 @@ export async function getWithholdingTaxRows(year: number, month: number, filters
     .map((acc) => ({ ...acc, income: acc.income.toFixed(2), taxWithheld: acc.taxWithheld.toFixed(2) }));
 }
 
+export interface WithholdingTaxFormRow {
+  idCardNo: string;
+  firstName: string; // includes the title (นาย/นาง/นางสาว), as the form asks
+  lastName: string;
+  payDate: Date | null;
+  income: string;
+  taxWithheld: string;
+}
+
+// ใบแนบ ภ.ง.ด.1 — same monthly totals as getWithholdingTaxRows(), plus the
+// per-employee ชื่อ/ชื่อสกุล split and "วัน เดือน ปี ที่จ่าย". A month can
+// span several sys_period rows (semi-monthly DAILY payroll), so the pay date
+// shown is the LATEST PayDate among the periods in which that employee had
+// tax withheld — the form has a single date column per person per filing.
+export async function getWithholdingTaxFormRows(year: number, month: number, filters: ReportFilters): Promise<WithholdingTaxFormRow[]> {
+  const rows = await getWithholdingTaxRows(year, month, filters);
+  if (rows.length === 0) return [];
+  const periods = await prisma.sysPeriod.findMany({ where: { PeriodYear: year, PeriodMonth: month } });
+  const [employees, transactions] = await Promise.all([
+    prisma.mstEmployee.findMany({
+      where: { EmpCode: { in: rows.map((r) => r.empCode) } },
+      select: { EmpCode: true, Title: true, FirstName: true, LastName: true, FullName: true },
+    }),
+    prisma.trnPayrollTransaction.findMany({
+      where: { PeriodID: { in: periods.map((p) => p.PeriodID) }, EmpCode: { in: rows.map((r) => r.empCode) }, TaxWithheld: { gt: 0 } },
+      select: { EmpCode: true, PeriodID: true },
+    }),
+  ]);
+  const payDateByPeriod = new Map(periods.map((p) => [p.PeriodID, p.PayDate]));
+  const latestPayDate = new Map<string, Date>();
+  for (const t of transactions) {
+    const d = payDateByPeriod.get(t.PeriodID);
+    if (!d) continue;
+    const cur = latestPayDate.get(t.EmpCode);
+    if (!cur || d > cur) latestPayDate.set(t.EmpCode, d);
+  }
+  const empByCode = new Map(employees.map((e) => [e.EmpCode, e]));
+  return rows.map((r) => {
+    const e = empByCode.get(r.empCode);
+    let firstName: string;
+    let lastName: string;
+    if (e?.FirstName || e?.LastName) {
+      firstName = `${e.Title ?? ""}${e.FirstName ?? ""}`;
+      lastName = e.LastName ?? "";
+    } else {
+      // No split name on file — fall back to splitting FullName at the first space.
+      const full = e?.FullName ?? r.fullName;
+      const idx = full.indexOf(" ");
+      firstName = idx === -1 ? full : full.slice(0, idx);
+      lastName = idx === -1 ? "" : full.slice(idx + 1);
+    }
+    return { idCardNo: r.idCardNo, firstName, lastName, payDate: latestPayDate.get(r.empCode) ?? null, income: r.income, taxWithheld: r.taxWithheld };
+  });
+}
+
 export interface AnnualTaxSummaryRow extends GroupableRow {
   idCardNo: string;
   address: string | null;
   totalIncome: string;
   totalTaxWithheld: string;
+  totalSso: string; // employee's own annual SSO contribution (50ทวิ "กองทุนประกันสังคม" box)
+}
+
+export interface AnnualTaxFormRow {
+  idCardNo: string;
+  firstName: string; // includes title (นาย/นาง/นางสาว)
+  lastName: string;
+  address: string;
+  totalIncome: string;
+  totalTaxWithheld: string;
+}
+
+// ใบแนบ ภ.ง.ด.1ก — annual totals per employee (same aggregation as
+// getAnnualTaxSummaryRows) plus the form's ชื่อ / ชื่อสกุล split.
+export async function getAnnualTaxFormRows(year: number, filters: ReportFilters): Promise<AnnualTaxFormRow[]> {
+  const rows = await getAnnualTaxSummaryRows(year, filters);
+  if (rows.length === 0) return [];
+  const employees = await prisma.mstEmployee.findMany({
+    where: { EmpCode: { in: rows.map((r) => r.empCode) } },
+    select: { EmpCode: true, Title: true, FirstName: true, LastName: true, FullName: true },
+  });
+  const byCode = new Map(employees.map((e) => [e.EmpCode, e]));
+  return rows.map((r) => {
+    const e = byCode.get(r.empCode);
+    let firstName: string;
+    let lastName: string;
+    if (e?.FirstName || e?.LastName) {
+      firstName = `${e.Title ?? ""}${e.FirstName ?? ""}`;
+      lastName = e.LastName ?? "";
+    } else {
+      const full = e?.FullName ?? r.fullName;
+      const idx = full.indexOf(" ");
+      firstName = idx === -1 ? full : full.slice(0, idx);
+      lastName = idx === -1 ? "" : full.slice(idx + 1);
+    }
+    return { idCardNo: r.idCardNo, firstName, lastName, address: r.address ?? "", totalIncome: r.totalIncome, totalTaxWithheld: r.totalTaxWithheld };
+  });
 }
 
 // ภงด.1 ก / หนังสือรับรองการหักภาษี 50ทวิ — both are per-employee annual
@@ -258,6 +350,7 @@ export async function getAnnualTaxSummaryRows(year: number, filters: ReportFilte
     groupFields: ReturnType<typeof groupFieldsOf>;
     totalIncome: Prisma.Decimal;
     totalTaxWithheld: Prisma.Decimal;
+    totalSso: Prisma.Decimal;
   }
   const byEmployee = new Map<string, Acc>();
   for (const t of transactions) {
@@ -266,6 +359,7 @@ export async function getAnnualTaxSummaryRows(year: number, filters: ReportFilte
     if (existing) {
       existing.totalIncome = existing.totalIncome.add(income);
       existing.totalTaxWithheld = existing.totalTaxWithheld.add(t.TaxWithheld);
+      existing.totalSso = existing.totalSso.add(t.SSOAmount);
       continue;
     }
     byEmployee.set(t.EmpCode, {
@@ -275,6 +369,7 @@ export async function getAnnualTaxSummaryRows(year: number, filters: ReportFilte
       groupFields: groupFieldsOf(t.Employee),
       totalIncome: income,
       totalTaxWithheld: t.TaxWithheld,
+      totalSso: t.SSOAmount,
     });
   }
 
@@ -288,5 +383,6 @@ export async function getAnnualTaxSummaryRows(year: number, filters: ReportFilte
       ...acc.groupFields,
       totalIncome: acc.totalIncome.toFixed(2),
       totalTaxWithheld: acc.totalTaxWithheld.toFixed(2),
+      totalSso: acc.totalSso.toFixed(2),
     }));
 }

@@ -9,7 +9,7 @@ import { getPayslipRows, getBankRemittanceRows, getPaySummaryMatrix } from "@/li
 import { DEBT_REPORT_CATEGORIES, getDebtRows, type DebtReportKey } from "@/lib/reports/debt-reports";
 import { getEmployeeRegistryRows, getEmployeeCards, EMPLOYEE_CARD_SECTIONS, type EmployeeCardSection, getEmployeeProfiles, getNdaContracts, getTbor6Forms } from "@/lib/reports/employee-reports";
 import { getPaymentHistoryRows } from "@/lib/reports/payment-history";
-import { getSsoRemitMonthlyRows, getSsoRemitCheckRows, getWelfareFundRemitRows, getWithholdingTaxRows, getAnnualTaxSummaryRows } from "@/lib/reports/government-reports";
+import { getAnnualTaxFormRows, getWithholdingTaxFormRows, getSsoRemitMonthlyRows, getSsoRemitCheckRows, getWelfareFundRemitRows, getWithholdingTaxRows, getAnnualTaxSummaryRows } from "@/lib/reports/government-reports";
 import { buildReportWorkbook, type ReportExcelColumn } from "@/lib/reports/excel-builder";
 import { money, type ReportColumn } from "@/lib/pdf/layout";
 import TableReportPdf from "@/lib/reports/pdf/table-report-pdf";
@@ -19,6 +19,10 @@ import EmployeeProfilePdf from "@/lib/reports/pdf/employee-profile-pdf";
 import NdaPdf from "@/lib/reports/pdf/nda-pdf";
 import PdpaPdf from "@/lib/reports/pdf/pdpa-pdf";
 import Tbor6Pdf from "@/lib/reports/pdf/tbor6-pdf";
+import SsoFormPdf from "@/lib/reports/pdf/sso-form-pdf";
+import Pnd1FormPdf from "@/lib/reports/pdf/pnd1-form-pdf";
+import TaxCertFormPdf from "@/lib/reports/pdf/tax-cert-form-pdf";
+import Pnd1kFormPdf from "@/lib/reports/pdf/pnd1k-form-pdf";
 import { parseGroupBy, parseSortBy, parseSortDir, sortRows, groupRows, buildGroupedRows, buildGroupedExcelRows, sumField, type GroupByField, type SortByField, type SortDir, type GroupableRow, type RowGroup } from "@/lib/reports/group-sort";
 
 // Single dispatcher for every /payroll/reports report (2026-09-22) —
@@ -130,11 +134,11 @@ export async function GET(request: NextRequest, ctx: RouteContext<"/api/payroll/
   // สปส 1-10 and ภงด.1 are filed MONTHLY even though DAILY payroll can run
   // semi-monthly (2 sys_period rows per calendar month) — see
   // src/lib/reports/government-reports.ts.
-  const monthScoped = ["sso-remit", "withholding-tax"].includes(reportKey);
+  const monthScoped = ["sso-remit", "sso-form", "withholding-tax", "pnd1-form"].includes(reportKey);
   if (monthScoped && (!filters.year || !filters.month)) {
     return apiError(400, "INVALID_PARAMS", "year and month are required for this report");
   }
-  const yearScoped = ["withholding-tax-annual", "tax-certificate-50bis"].includes(reportKey);
+  const yearScoped = ["withholding-tax-annual", "tax-certificate-50bis", "tax-cert-form", "pnd1k-form"].includes(reportKey);
   if (yearScoped && !filters.year) {
     return apiError(400, "INVALID_PARAMS", "year is required for this report");
   }
@@ -656,6 +660,36 @@ export async function GET(request: NextRequest, ctx: RouteContext<"/api/payroll/
     return excelResponse(buffer, "employee-profile");
   }
 
+  // สปส 1-10 ส่วนที่ 2 (แบบฟอร์ม) — same monthly figures as "sso-remit", laid
+  // out like the official form's sheet (10 rows/sheet). "ค่าจ้างที่จ่ายจริง"
+  // uses the same wage figure as the sso-remit report's "ค่าจ้าง" column.
+  if (reportKey === "sso-form") {
+    const rows = await getSsoRemitMonthlyRows(filters.year!, filters.month!, filters);
+    const formRows = rows.map((r) => ({ idCardNo: r.idCardNo, fullName: r.fullName, wage: r.wageBase, contribution: r.employeeAmount }));
+    if (format === "pdf") {
+      const company = filters.companyCode
+        ? await prisma.refCompany.findUnique({ where: { CompanyCode: filters.companyCode } })
+        : await prisma.refCompany.findFirst({ orderBy: { CompanyCode: "asc" } });
+      const thaiMonths = ["มกราคม", "กุมภาพันธ์", "มีนาคม", "เมษายน", "พฤษภาคม", "มิถุนายน", "กรกฎาคม", "สิงหาคม", "กันยายน", "ตุลาคม", "พฤศจิกายน", "ธันวาคม"];
+      const buffer = await renderToBuffer(
+        <SsoFormPdf monthLabel={`${thaiMonths[filters.month! - 1]} พ.ศ. ${filters.year! + 543}`} companyName={companyName} accountNo={company?.SSORegistNo ?? ""} rows={formRows} />,
+      );
+      return pdfResponse(buffer, "sso-form");
+    }
+    const columns: ReportExcelColumn[] = [
+      { header: "ลำดับที่", key: "no", width: 8 },
+      { header: "เลขประจำตัวประชาชน", key: "idCardNo", width: 20 },
+      { header: "คำนำหน้านาม-ชื่อ-ชื่อสกุล", key: "fullName", width: 30 },
+      { header: "ค่าจ้างที่จ่ายจริง", key: "wage", width: 16 },
+      { header: "เงินสมทบผู้ประกันตน", key: "contribution", width: 18 },
+    ];
+    const excelRows = formRows.map((r, i) => ({ no: i + 1, ...r }));
+    const wageTotal = formRows.reduce((s, r) => s + Number(r.wage), 0);
+    const contribTotal = formRows.reduce((s, r) => s + Number(r.contribution), 0);
+    const buffer = await buildReportWorkbook("สปส 1-10 ส่วนที่ 2", columns, excelRows, { fullName: "รวม", wage: wageTotal.toFixed(2), contribution: contribTotal.toFixed(2) });
+    return excelResponse(buffer, "sso-form");
+  }
+
   if (reportKey === "sso-remit" || reportKey === "sso-remit-check" || reportKey === "welfare-fund-remit") {
     const rowsRaw =
       reportKey === "sso-remit"
@@ -744,6 +778,91 @@ export async function GET(request: NextRequest, ctx: RouteContext<"/api/payroll/
       excelBoldRowIndices,
     );
     return excelResponse(buffer, reportKey);
+  }
+
+  // ใบแนบ ภ.ง.ด.1 (แบบฟอร์ม) — same monthly figures as "withholding-tax",
+  // laid out like the Revenue Department's attachment sheet.
+  if (reportKey === "pnd1-form") {
+    const rows = await getWithholdingTaxFormRows(filters.year!, filters.month!, filters);
+    const fmtDate = (d: Date | null) => (d ? `${d.getUTCDate()}/${d.getUTCMonth() + 1}/${d.getUTCFullYear() + 543}` : "");
+    const formRows = rows.map((r) => ({ idCardNo: r.idCardNo, firstName: r.firstName, lastName: r.lastName, payDate: fmtDate(r.payDate), income: r.income, taxWithheld: r.taxWithheld }));
+    if (format === "pdf") {
+      const company = filters.companyCode
+        ? await prisma.refCompany.findUnique({ where: { CompanyCode: filters.companyCode } })
+        : await prisma.refCompany.findFirst({ orderBy: { CompanyCode: "asc" } });
+      const buffer = await renderToBuffer(<Pnd1FormPdf employerTaxId={company?.TaxID ?? ""} rows={formRows} />);
+      return pdfResponse(buffer, "pnd1-form");
+    }
+    const columns: ReportExcelColumn[] = [
+      { header: "ลำดับที่", key: "no", width: 8 },
+      { header: "เลขประจำตัวผู้เสียภาษีอากร (ของผู้มีเงินได้)", key: "idCardNo", width: 26 },
+      { header: "ชื่อผู้มีเงินได้", key: "firstName", width: 22 },
+      { header: "ชื่อสกุล", key: "lastName", width: 22 },
+      { header: "วัน เดือน ปี ที่จ่าย", key: "payDate", width: 16 },
+      { header: "จำนวนเงินได้ที่จ่ายในครั้งนี้", key: "income", width: 20 },
+      { header: "จำนวนเงินภาษีที่หักและนำส่งในครั้งนี้", key: "taxWithheld", width: 24 },
+      { header: "เงื่อนไข", key: "condition", width: 10 },
+    ];
+    const excelRows = formRows.map((r, i) => ({ no: i + 1, ...r, condition: "1" }));
+    const incomeTotal = formRows.reduce((s, r) => s + Number(r.income), 0);
+    const taxTotal = formRows.reduce((s, r) => s + Number(r.taxWithheld), 0);
+    const buffer = await buildReportWorkbook("ใบแนบ ภงด.1", columns, excelRows, { firstName: "รวม", income: incomeTotal.toFixed(2), taxWithheld: taxTotal.toFixed(2) });
+    return excelResponse(buffer, "pnd1-form");
+  }
+
+  // ใบแนบ ภ.ง.ด.1ก (แบบฟอร์ม) — annual totals, 7 people per sheet.
+  if (reportKey === "pnd1k-form") {
+    const rows = await getAnnualTaxFormRows(filters.year!, filters);
+    if (format === "pdf") {
+      const company = filters.companyCode
+        ? await prisma.refCompany.findUnique({ where: { CompanyCode: filters.companyCode } })
+        : await prisma.refCompany.findFirst({ orderBy: { CompanyCode: "asc" } });
+      const buffer = await renderToBuffer(<Pnd1kFormPdf employerTaxId={company?.TaxID ?? ""} rows={rows} />);
+      return pdfResponse(buffer, "pnd1k-form");
+    }
+    const columns: ReportExcelColumn[] = [
+      { header: "ลำดับที่", key: "no", width: 8 },
+      { header: "เลขประจำตัวผู้เสียภาษีอากร (ของผู้มีเงินได้)", key: "idCardNo", width: 26 },
+      { header: "ชื่อผู้มีเงินได้", key: "firstName", width: 22 },
+      { header: "ชื่อสกุล", key: "lastName", width: 22 },
+      { header: "ที่อยู่ของผู้มีเงินได้", key: "address", width: 40 },
+      { header: "จำนวนเงินได้ที่จ่ายทั้งปี", key: "totalIncome", width: 20 },
+      { header: "จำนวนเงินภาษีที่หักและนำส่งทั้งปี", key: "totalTaxWithheld", width: 24 },
+      { header: "เงื่อนไข", key: "condition", width: 10 },
+    ];
+    const excelRows = rows.map((r, i) => ({ no: i + 1, ...r, condition: "1" }));
+    const incomeTotal = rows.reduce((s, r) => s + Number(r.totalIncome), 0);
+    const taxTotal = rows.reduce((s, r) => s + Number(r.totalTaxWithheld), 0);
+    const buffer = await buildReportWorkbook("ใบแนบ ภงด.1ก", columns, excelRows, { firstName: "รวม", totalIncome: incomeTotal.toFixed(2), totalTaxWithheld: taxTotal.toFixed(2) });
+    return excelResponse(buffer, "pnd1k-form");
+  }
+
+  // หนังสือรับรองการหักภาษี ณ ที่จ่าย 50ทวิ (แบบฟอร์ม) — one page per
+  // employee, same annual totals as "tax-certificate-50bis".
+  if (reportKey === "tax-cert-form") {
+    const rows = await getAnnualTaxSummaryRows(filters.year!, filters);
+    const certRows = rows.map((r, i) => ({ seq: i + 1, idCardNo: r.idCardNo, fullName: r.fullName, address: r.address ?? "", totalIncome: r.totalIncome, totalTaxWithheld: r.totalTaxWithheld, totalSso: r.totalSso }));
+    if (format === "pdf") {
+      if (certRows.length === 0) return apiError(404, "NO_DATA", "ไม่พบข้อมูลสำหรับปีภาษีที่เลือก");
+      const company = filters.companyCode
+        ? await prisma.refCompany.findUnique({ where: { CompanyCode: filters.companyCode } })
+        : await prisma.refCompany.findFirst({ orderBy: { CompanyCode: "asc" } });
+      const buffer = await renderToBuffer(
+        <TaxCertFormPdf companyName={companyName} companyAddress={company?.Address ?? ""} companyTaxId={company?.TaxID ?? ""} taxYearBE={filters.year! + 543} rows={certRows} />,
+      );
+      return pdfResponse(buffer, "tax-cert-form");
+    }
+    const columns: ReportExcelColumn[] = [
+      { header: "ลำดับที่", key: "seq", width: 8 },
+      { header: "เลขประจำตัวผู้เสียภาษีอากร", key: "idCardNo", width: 22 },
+      { header: "ชื่อผู้ถูกหักภาษี", key: "fullName", width: 28 },
+      { header: "ที่อยู่", key: "address", width: 40 },
+      { header: "จำนวนเงินที่จ่าย", key: "totalIncome", width: 18 },
+      { header: "ภาษีที่หักและนำส่ง", key: "totalTaxWithheld", width: 18 },
+      { header: "เงินสมทบประกันสังคม", key: "totalSso", width: 18 },
+    ];
+    const buffer = await buildReportWorkbook("50ทวิ", columns, certRows);
+    return excelResponse(buffer, "tax-cert-form");
   }
 
   if (reportKey === "withholding-tax") {

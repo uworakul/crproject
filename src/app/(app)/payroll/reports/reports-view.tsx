@@ -58,9 +58,13 @@ const REPORT_GROUPS: { label: string; reports: ReportDef[] }[] = [
     label: "หน่วยงานภาครัฐ",
     reports: [
       { key: "sso-remit", label: "รายงาน สปส 1-10", scope: "month", groupable: true },
+      { key: "sso-form", label: "รายงาน สปส 1-10 ส่วนที่ 2 (แบบฟอร์ม)", scope: "month" },
       { key: "sso-remit-check", label: "รายงาน สปส 1-10 (ตรวจสอบ)", scope: "period", groupable: true },
       { key: "withholding-tax", label: "รายงาน ภงด 1", scope: "month", groupable: true },
+      { key: "pnd1-form", label: "รายงาน ภงด 1 ใบแนบ (แบบฟอร์ม)", scope: "month" },
       { key: "withholding-tax-annual", label: "รายงาน ภงด 1 ก", scope: "year", groupable: true },
+      { key: "pnd1k-form", label: "รายงาน ภงด 1 ก ใบแนบ (แบบฟอร์ม)", scope: "year" },
+      { key: "tax-cert-form", label: "รายงาน หนังสือรับรองภาษี 50ทวิ (แบบฟอร์ม)", scope: "year" },
       { key: "tax-certificate-50bis", label: "รายงาน หนังสือรับรองการหักภาษี 50ทวิ", scope: "year", groupable: true },
       { key: "welfare-fund-remit", label: "รายงาน สรุปยอดสงเคราะห์พนักงาน", scope: "period", groupable: true },
     ],
