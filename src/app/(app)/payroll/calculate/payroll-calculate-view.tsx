@@ -120,6 +120,16 @@ export default function PayrollCalculateView({
 
   const period = periods.find((p) => p.EmployeeType === employeeType && p.IsCurrent);
 
+  // MONTHLY + a full-period day count (whole month worked) is the normal
+  // case, so only a partial period shows its day count (same rule as Payslip).
+  function dayHoursLabel(d: DetailRow): string {
+    if (d.Days !== null) {
+      const fullPeriod = period && period.EmployeeType === "MONTHLY" && Number(d.Days) >= Math.round((new Date(period.EndDate).getTime() - new Date(period.StartDate).getTime()) / 86400000) + 1;
+      return fullPeriod ? "" : `${d.Days} วัน`;
+    }
+    return d.Hours !== null ? `${d.Hours} ชม.` : "-";
+  }
+
   async function refreshRows(periodId: number) {
     const params = new URLSearchParams({ periodId: String(periodId) });
     if (companyCode) params.set("companyCode", companyCode);
@@ -127,6 +137,20 @@ export default function PayrollCalculateView({
     if (empCode) params.set("empCode", empCode);
     const res = await fetch(`/api/payroll/transactions?${params}`);
     if (res.ok) setRows(await res.json());
+    // The per-row breakdown caches (income/deduction lines, installment
+    // debts) go stale whenever Calculate/Cancel rewrites the lines — drop
+    // them all, and re-load the row that's currently expanded so it doesn't
+    // keep showing pre-calculation data (e.g. a newly added ค่าตำแหน่ง line).
+    setDetailsById({});
+    setInstallmentsById({});
+    if (expandedId !== null) {
+      const [detailsRes, installmentsRes] = await Promise.all([
+        fetch(`/api/payroll/transaction-details?transactionId=${expandedId}`),
+        fetch(`/api/payroll/installment-deductions?transactionId=${expandedId}`),
+      ]);
+      if (detailsRes.ok) setDetailsById({ [expandedId]: await detailsRes.json() });
+      if (installmentsRes.ok) setInstallmentsById({ [expandedId]: await installmentsRes.json() });
+    }
   }
 
   async function refreshLock(periodId: number) {
@@ -195,6 +219,13 @@ export default function PayrollCalculateView({
       }
       setLastResult({ documentNo: body.documentNo, employeeCount: body.employeeCount, totalAmount: body.totalAmount });
       await refreshRows(period.PeriodID);
+      await Swal.fire({
+        icon: "success",
+        title: "ประมวลผลเสร็จสิ้น",
+        text: `คำนวณเงินได้ประจำงวดเรียบร้อย (เลขที่เอกสาร ${body.documentNo ?? "-"}, ${body.employeeCount ?? 0} คน)`,
+        confirmButtonText: "ตกลง",
+        confirmButtonColor: "#16a34a",
+      });
     } finally {
       setPending(false);
     }
@@ -478,7 +509,7 @@ export default function PayrollCalculateView({
                                         .map((d) => (
                                           <tr key={d.DetailID}>
                                             <td className="py-0.5 text-gray-500">{d.Description}</td>
-                                            <td className="py-0.5 text-right text-gray-400">{d.Days !== null ? `${d.Days} วัน` : d.Hours !== null ? `${d.Hours} ชม.` : "-"}</td>
+                                            <td className="py-0.5 text-right text-gray-400">{dayHoursLabel(d)}</td>
                                             <td className="py-0.5 text-right">{money(Number(d.Amount))}</td>
                                           </tr>
                                         ))}

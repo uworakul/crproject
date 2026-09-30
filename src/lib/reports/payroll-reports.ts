@@ -108,6 +108,7 @@ export async function getPayslipRows(periodId: number, filters: ReportFilters): 
 
   const periodLabel = `งวด ${period.PeriodMonth}/${period.PeriodYear + 543} (${period.StartDate.toLocaleDateString("th-TH")} - ${period.EndDate.toLocaleDateString("th-TH")}) จ่าย ${period.PayDate.toLocaleDateString("th-TH")}`;
 
+  const periodTotalDays = Math.round((period.EndDate.getTime() - period.StartDate.getTime()) / 86400000) + 1;
   const rows: PayslipData[] = [];
   for (const t of transactions) {
     const rawIncomeItems: RawPayslipItem[] = [];
@@ -116,7 +117,11 @@ export async function getPayslipRows(periodId: number, filters: ReportFilters): 
     if (t.PositionAllowance.gt(0)) rawIncomeItems.push({ code: "LEGACY_POSITION", label: "เงินประจำตำแหน่ง", amount: t.PositionAllowance, days: null, hours: null });
     if (t.ShiftAllowance.gt(0)) rawIncomeItems.push({ code: "LEGACY_SHIFT", label: "เบี้ยกะ", amount: t.ShiftAllowance, days: null, hours: null });
     for (const d of t.Details.filter((d) => d.LineType === "INCOME" && !d.Amount.equals(0))) {
-      rawIncomeItems.push({ code: d.Code, label: d.Description, amount: d.Amount, days: d.Days, hours: d.Hours });
+      // MONTHLY + a full-period day count (the whole month worked) is the
+      // normal case — the day count adds nothing on the slip, so it's only
+      // shown when it's a partial period (joined/resigned mid-month).
+      const showDays = !(period.EmployeeType === "MONTHLY" && d.Days && d.Days.gte(periodTotalDays));
+      rawIncomeItems.push({ code: d.Code, label: d.Description, amount: d.Amount, days: showDays ? d.Days : null, hours: d.Hours });
     }
     const incomeItems = mergePayslipItems(rawIncomeItems);
 

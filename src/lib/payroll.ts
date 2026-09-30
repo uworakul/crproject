@@ -423,7 +423,7 @@ export async function runPayrollCalculate(
         CreatedBy: calculatedBy,
       },
     });
-  });
+  }, { timeout: 120000, maxWait: 15000 });
 
   return { employeeCount: transactions.length, totalAmount };
 }
@@ -474,7 +474,7 @@ export async function cancelPayrollCalculate(
         CreatedBy: calculatedBy,
       },
     });
-  });
+  }, { timeout: 120000, maxWait: 15000 });
 
   return { employeeCount: transactions.length, totalAmount };
 }
@@ -898,6 +898,7 @@ export interface PullMonthlyResult {
 }
 
 const MONTHLY_SALARY_INCOME_CODE = "02"; // ref_income_type: "เงินเดือน"
+const POSITION_ALLOWANCE_INCOME_CODE = "15"; // ref_income_type: "ค่าตำแหน่ง"
 
 function daysBetweenInclusive(a: Date, b: Date): number {
   return Math.round((b.getTime() - a.getTime()) / 86400000) + 1;
@@ -1015,8 +1016,37 @@ export async function pullPayrollForMonthlyEmployees(periodId: number, userId: s
         linesCreated++;
       }
 
+      // ค่าตำแหน่ง (ref_income_type "15") — the employee's own fixed monthly
+      // allowance from the ทะเบียนพนักงาน "รายได้" tab, prorated over the
+      // days actually worked exactly like the salary line above. Skipped
+      // when the employee has none (unless a line already exists, which is
+      // then zeroed so a removed allowance doesn't linger).
+      const allowance = employee.EmployeePositionAllowance;
+      const hasAllowance = allowance !== null && !allowance.isZero();
+      const allowanceExisting = await tx.trnPayrollTransactionDetail.findFirst({
+        where: { TransactionID: transaction.TransactionID, LineType: "INCOME", Code: POSITION_ALLOWANCE_INCOME_CODE, SiteCode: null },
+      });
+      if (hasAllowance || allowanceExisting) {
+        const allowanceAmount =
+          !hasAllowance || workDays <= 0
+            ? new Prisma.Decimal(0)
+            : isFullPeriod
+              ? allowance!
+              : new Prisma.Decimal(workDays).div(totalDaysInPeriod).mul(allowance!).toDecimalPlaces(2);
+        if (allowanceExisting) {
+          await tx.trnPayrollTransactionDetail.update({
+            where: { DetailID: allowanceExisting.DetailID },
+            data: { Days: workDays, Amount: allowanceAmount, UpdatedBy: userId, UpdatedDate: new Date() },
+          });
+        } else {
+          await tx.trnPayrollTransactionDetail.create({
+            data: { TransactionID: transaction.TransactionID, LineType: "INCOME", Code: POSITION_ALLOWANCE_INCOME_CODE, Description: "ค่าตำแหน่ง", Days: workDays, Amount: allowanceAmount, CreatedBy: userId },
+          });
+        }
+      }
+
       await recomputeTransactionOtherTotals(tx, transaction.TransactionID, userId);
-    });
+    }, { timeout: 30000, maxWait: 10000 });
   }
 
   return { employeeCount, linesCreated, linesUpdated };
