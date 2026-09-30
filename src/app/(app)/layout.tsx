@@ -151,6 +151,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       items: [
         ...(canViewInventoryMaster ? [{ href: "/inventory", label: "ข้อมูลหลัก" }] : []),
         ...(canViewTransactions ? [{ href: "/inventory/transactions", label: "บันทึกรายการสต๊อก" }] : []),
+        ...(canViewProduct && canViewWarehouse ? [{ href: "/inventory/reports", label: "รายงาน" }] : []),
         ...(canApproveAnyStock ? [{ href: "/inventory/stock-count-approvals", label: "รายการรออนุมัติ" }] : []),
       ],
     },

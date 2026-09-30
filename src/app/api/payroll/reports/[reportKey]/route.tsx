@@ -32,7 +32,7 @@ import { parseGroupBy, parseSortBy, parseSortDir, sortRows, groupRows, buildGrou
 // hand it to the matching PDF component or a plain columns+rows table for
 // Excel. Every report key shares the same PAYROLL_REPORT read permission
 // (this screen is a single unit, not gated per-button).
-const DEBT_KEYS: Record<string, DebtReportKey> = { "debt-advance": "ADVANCE", "debt-training": "TRAINING", "debt-insurance": "INSURANCE", "debt-loan": "LOAN" };
+const DEBT_KEYS: Record<string, DebtReportKey> = { "debt-advance": "ADVANCE", "debt-training": "TRAINING", "debt-insurance": "INSURANCE", "debt-loan": "LOAN", "debt-uniform": "UNIFORM" };
 
 function parseFilters(searchParams: URLSearchParams): ReportFilters {
   const periodIdRaw = searchParams.get("periodId");
@@ -117,10 +117,12 @@ function excelResponse(buffer: Buffer | ArrayBuffer, filename: string) {
 export async function GET(request: NextRequest, ctx: RouteContext<"/api/payroll/reports/[reportKey]">) {
   const user = await verifySession();
   if (!user) return apiError(401, "UNAUTHORIZED");
-  const denied = await requirePermission(user, "PAYROLL_REPORT", "read");
+  const { reportKey } = await ctx.params;
+  // หนี้ค้างค่าชุด is opened from the Inventory reports menu, so it's gated by
+  // the inventory permission (PRODUCT read) instead of PAYROLL_REPORT.
+  const denied = reportKey === "debt-uniform" ? await requirePermission(user, "PRODUCT", "read") : await requirePermission(user, "PAYROLL_REPORT", "read");
   if (denied) return denied;
 
-  const { reportKey } = await ctx.params;
   const { searchParams } = new URL(request.url);
   const format = searchParams.get("format") === "excel" ? "excel" : "pdf";
   const filters = { ...parseFilters(searchParams), allowedCompanyCodes: user.allowedCompanyCodes, allowedEmployeeTypes: user.allowedEmployeeTypes };
@@ -300,15 +302,21 @@ export async function GET(request: NextRequest, ctx: RouteContext<"/api/payroll/
     ];
     const { rows: pdfRows, boldRowIndices } = buildGroupedRows(sorted, groups, toPdfRow, toSubtotalPdfRow);
     const grandRemaining = sumField(sorted, (r) => r.remainingAmount);
+    // หนี้ค้างค่าชุด has no source request/approval document (the debt comes
+    // from an Issue), so the เลขที่เอกสาร / วันที่เอกสาร / วันที่อนุมัติจ่าย
+    // columns would always be blank — dropped for that report only.
+    const dropKeys = new Set(key === "UNIFORM" ? ["documentNo", "documentDate", "approvedDate"] : []);
+    const keepIdx = pdfColumns.map((c, i) => (dropKeys.has(c.key) ? -1 : i)).filter((i) => i >= 0);
+    const pick = <T,>(arr: T[]) => keepIdx.map((i) => arr[i]);
     if (format === "pdf") {
       const buffer = await renderToBuffer(
         <TableReportPdf
           companyName={companyName}
           title={title}
           filterSummary={filterSummaryText(filters)}
-          columns={pdfColumns}
-          rows={pdfRows}
-          totalRow={["", "", "", "", "รวม", "", "", money(sumField(sorted, (r) => r.totalAmount)), money(sumField(sorted, (r) => r.paidAmount)), money(grandRemaining)]}
+          columns={pick(pdfColumns)}
+          rows={pdfRows.map((r) => pick(r))}
+          totalRow={pick(["", "", "", "", "รวม", "", "", money(sumField(sorted, (r) => r.totalAmount)), money(sumField(sorted, (r) => r.paidAmount)), money(grandRemaining)])}
           orientation="landscape"
           boldRowIndices={boldRowIndices}
         />,
@@ -347,7 +355,7 @@ export async function GET(request: NextRequest, ctx: RouteContext<"/api/payroll/
     const { rows: excelRows, boldRowIndices: excelBoldRowIndices } = buildGroupedExcelRows(sorted, groups, toExcelRow, toSubtotalExcelRow);
     const buffer = await buildReportWorkbook(
       title,
-      columns,
+      columns.filter((c) => !dropKeys.has(c.key)),
       excelRows,
       { fullName: "รวม", totalAmount: sumField(sorted, (r) => r.totalAmount).toFixed(2), paidAmount: sumField(sorted, (r) => r.paidAmount).toFixed(2), remainingAmount: grandRemaining.toFixed(2) },
       excelBoldRowIndices,

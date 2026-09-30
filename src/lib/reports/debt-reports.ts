@@ -23,6 +23,8 @@ export const DEBT_REPORT_CATEGORIES = {
   TRAINING: { label: "รายงานหนี้ค้างค่าอบรม", codes: ["10"] },
   INSURANCE: { label: "รายงานหนี้ค้างเงินประกัน", codes: ["09"] },
   LOAN: { label: "รายงานหนี้ค้างเงินกู้", codes: ["12"] },
+  // Listed under the Inventory reports menu (/inventory/reports), not the payroll one.
+  UNIFORM: { label: "รายงานหนี้ค้างค่าชุด", codes: ["08"] },
 } as const;
 
 export type DebtReportKey = keyof typeof DEBT_REPORT_CATEGORIES;
