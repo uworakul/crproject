@@ -11,6 +11,8 @@ import { apiError, apiSuccess } from "@/lib/api-response";
 export async function GET() {
   const user = await verifySession();
   if (!user) return apiError(401, "UNAUTHORIZED");
+  // Pass Checking off => system locked for everyone except System Configuration.
+  if (user.systemLocked) return apiError(403, "SYSTEM_LOCKED", "ระบบถูกล็อกจนกว่าจะผ่านการตรวจสอบ (Pass Checking) ที่หน้า System Configuration");
 
   const sites = await prisma.mstSite.findMany({
     where: { IsActive: true },

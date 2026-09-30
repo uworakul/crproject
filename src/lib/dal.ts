@@ -24,6 +24,11 @@ export interface CurrentUser {
   // site — see src/lib/employee-scope.ts for how these get applied.
   allowedCompanyCodes: string[] | null;
   allowedEmployeeTypes: string[] | null;
+  // 2026-09-30 — true while sys_config.PassChecking is off (or the row is
+  // missing): the whole system is locked for EVERY user, ADMIN included,
+  // except the System Configuration screen where the registration is fixed.
+  // Enforced centrally in hasPermission() (src/lib/authorize.ts).
+  systemLocked: boolean;
 }
 
 /**
@@ -49,6 +54,7 @@ export const verifySession = cache(async (): Promise<CurrentUser | null> => {
 
   const { record } = result;
   const isAdmin = record.User.Role === "ADMIN";
+  const passChecking = await prisma.sysConfig.findUnique({ where: { SysConfigID: 1 }, select: { PassChecking: true } });
   const [companyRows, employeeTypeRows] = isAdmin
     ? [[], []]
     : await Promise.all([
@@ -64,5 +70,6 @@ export const verifySession = cache(async (): Promise<CurrentUser | null> => {
     tenantCode: result.tenantCode,
     allowedCompanyCodes: isAdmin || companyRows.length === 0 ? null : companyRows.map((r) => r.CompanyCode),
     allowedEmployeeTypes: isAdmin || employeeTypeRows.length === 0 ? null : employeeTypeRows.map((r) => r.EmployeeType),
+    systemLocked: !passChecking?.PassChecking,
   };
 });

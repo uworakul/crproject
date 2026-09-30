@@ -29,6 +29,9 @@ export async function hasPermission(
   action: PermissionAction,
   siteCode?: string | null,
 ): Promise<boolean> {
+  // Pass Checking off => everything except System Configuration is closed to
+  // everyone (ADMIN too) until the registration is corrected there.
+  if (user.systemLocked && documentType !== "SYS_CONFIG") return false;
   if (user.role === "ADMIN") return true;
 
   const rows = await prisma.sysUserPermission.findMany({

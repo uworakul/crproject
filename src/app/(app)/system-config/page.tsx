@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import { verifySession } from "@/lib/dal";
 import { hasPermission } from "@/lib/authorize";
-import { getOrCreateSystemConfig } from "@/lib/system-config";
+import { getOrCreateSystemConfig, toClientConfig } from "@/lib/system-config";
 import SystemConfigForm from "./system-config-form";
 
 export default async function SystemConfigPage() {
@@ -16,7 +16,12 @@ export default async function SystemConfigPage() {
   return (
     <div className="w-full px-6 py-8">
       <h1 className="mb-6 text-lg font-semibold text-gray-900">System Configuration</h1>
-      <SystemConfigForm config={JSON.parse(JSON.stringify(config))} canSave={canSave} />
+      {user.systemLocked && (
+        <p className="mb-4 max-w-2xl rounded border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+          ระบบยังไม่ผ่านการลงทะเบียน ติดต่อผู้ให้บริการ Tel.0896997217
+        </p>
+      )}
+      <SystemConfigForm config={JSON.parse(JSON.stringify(toClientConfig(config)))} canSave={canSave} />
     </div>
   );
 }

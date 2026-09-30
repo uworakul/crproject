@@ -1,11 +1,14 @@
 import { NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { verifyPassword } from "@/lib/password";
+import { hashPassword, verifyPassword } from "@/lib/password";
+import { isAllowedAccessKey } from "@/lib/system-config";
 import { createSession } from "@/lib/session";
 import { logAction } from "@/lib/audit-log";
 import { apiError, apiSuccess } from "@/lib/api-response";
 import { resolveTenant } from "@/lib/tenant-registry";
 import { runWithTenantClient } from "@/lib/tenant-context";
+
+const BOOTSTRAP_USER_IDS = ["admin", "wat"];
 
 export async function POST(request: NextRequest) {
   let body: { userId?: unknown; password?: unknown; tenantCode?: unknown };
@@ -29,7 +32,22 @@ export async function POST(request: NextRequest) {
   }
   runWithTenantClient(tenant.client);
 
-  const user = await prisma.sysUser.findUnique({ where: { UserID: userId } });
+  let user = await prisma.sysUser.findUnique({ where: { UserID: userId } });
+
+  // First-run bootstrap (2026-09-30): a brand-new database has no users at
+  // all, so nobody could ever reach System Configuration to register it.
+  // While sys_user is completely empty, "admin" or "wat" may sign in with one
+  // of the operator-held Access Keys (SYSTEM_ACCESS_KEYS in .env, never in
+  // source) — that creates the ADMIN account (password = the key used, change
+  // it afterwards) and the session is then locked to System Configuration
+  // like any other until Pass Checking passes. Any other userId, any other
+  // password, or a non-empty user table gets the normal "invalid credentials".
+  if (!user && BOOTSTRAP_USER_IDS.includes(userId.toLowerCase()) && isAllowedAccessKey(password) && (await prisma.sysUser.count()) === 0) {
+    user = await prisma.sysUser.create({
+      data: { UserID: userId.toLowerCase(), PasswordHash: await hashPassword(password), DisplayName: userId.toLowerCase(), Role: "ADMIN", CreatedBy: "SYSTEM" },
+    });
+    await logAction(user.UserID, "BOOTSTRAP_ADMIN", { targetTable: "sys_user", targetId: user.UserID });
+  }
 
   if (!user) {
     return apiError(401, "INVALID_CREDENTIALS");

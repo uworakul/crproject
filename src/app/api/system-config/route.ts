@@ -4,7 +4,7 @@ import { verifySession } from "@/lib/dal";
 import { requirePermission } from "@/lib/authorize";
 import { apiError, apiSuccess } from "@/lib/api-response";
 import { logAction } from "@/lib/audit-log";
-import { getOrCreateSystemConfig } from "@/lib/system-config";
+import { getDatabaseName, getOrCreateSystemConfig, hashAccessKey, isAllowedAccessKey, storedAccessKeyIsAllowed, toClientConfig } from "@/lib/system-config";
 
 export async function GET() {
   const user = await verifySession();
@@ -13,7 +13,7 @@ export async function GET() {
   if (denied) return denied;
 
   const config = await getOrCreateSystemConfig();
-  return apiSuccess(config);
+  return apiSuccess(toClientConfig(config));
 }
 
 export async function PUT(request: NextRequest) {
@@ -28,7 +28,6 @@ export async function PUT(request: NextRequest) {
     passChecking?: unknown;
     contactPerson?: unknown;
     tel?: unknown;
-    fileFolder?: unknown;
   };
   try {
     body = await request.json();
@@ -46,17 +45,33 @@ export async function PUT(request: NextRequest) {
     }
   }
 
-  await getOrCreateSystemConfig();
+  const current = await getOrCreateSystemConfig();
+
+  // "Pass Checking" is only ever true while: every text field is filled,
+  // Registration Code == the real database name, and the Access Key is one of
+  // the operator-held keys. Evaluated on the values as they will be after
+  // this save (an omitted Access Key falls back to the stored hash), and the
+  // flag is forced back to false whenever any condition stops holding.
+  const nextRegistrationCode = typeof body.registrationCode === "string" ? body.registrationCode.trim() : (current.RegistrationCode ?? "");
+  const nextContactPerson = typeof body.contactPerson === "string" ? body.contactPerson.trim() : (current.ContactPerson ?? "");
+  const nextTel = typeof body.tel === "string" ? body.tel.trim() : (current.Tel ?? "");
+  const incomingAccessKey = typeof body.accessKey === "string" ? body.accessKey : "";
+  const accessKeyOk = incomingAccessKey ? isAllowedAccessKey(incomingAccessKey) : await storedAccessKeyIsAllowed(current.AccessKey);
+  const passCheckingAllowed =
+    nextRegistrationCode !== "" && nextContactPerson !== "" && nextTel !== "" && nextRegistrationCode === (await getDatabaseName()) && accessKeyOk;
+  if (body.passChecking === true && !passCheckingAllowed) {
+    return apiError(400, "PASS_CHECKING_NOT_ALLOWED", "ไม่สามารถเปิด Pass Checking ได้ — ข้อมูลไม่ครบหรือ Registration Code / Access Key ไม่ถูกต้อง");
+  }
 
   const updated = await prisma.sysConfig.update({
     where: { SysConfigID: 1 },
     data: {
       RegistrationCode: typeof body.registrationCode === "string" ? body.registrationCode || null : undefined,
-      AccessKey: typeof body.accessKey === "string" ? body.accessKey || null : undefined,
-      PassChecking: typeof body.passChecking === "boolean" ? body.passChecking : undefined,
+      // Blank = leave the stored key untouched (the form never receives it back). Only a bcrypt hash is stored.
+      AccessKey: incomingAccessKey ? await hashAccessKey(incomingAccessKey) : undefined,
+      PassChecking: passCheckingAllowed ? (typeof body.passChecking === "boolean" ? body.passChecking : undefined) : false,
       ContactPerson: typeof body.contactPerson === "string" ? body.contactPerson || null : undefined,
       Tel: typeof body.tel === "string" ? body.tel || null : undefined,
-      FileFolder: typeof body.fileFolder === "string" ? body.fileFolder || null : undefined,
       UpdatedBy: user.userId,
       UpdatedDate: new Date(),
     },
@@ -64,5 +79,5 @@ export async function PUT(request: NextRequest) {
 
   await logAction(user.userId, "UPDATE_SYSTEM_CONFIG", { targetTable: "sys_config", targetId: "1" });
 
-  return apiSuccess(updated);
+  return apiSuccess(toClientConfig(updated));
 }

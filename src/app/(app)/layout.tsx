@@ -117,7 +117,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       icon: "users" as const,
       items: [
         ...(canViewUsers ? [{ href: "/users", label: "ผู้ใช้งาน" }] : []),
-        { href: "/change-password", label: "เปลี่ยนรหัสผ่าน" },
+        ...(user.systemLocked ? [] : [{ href: "/change-password", label: "เปลี่ยนรหัสผ่าน" }]),
         ...(canViewAuditLog ? [{ href: "/audit-log", label: "Audit Log" }] : []),
       ],
     },
