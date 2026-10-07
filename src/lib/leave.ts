@@ -60,3 +60,24 @@ export function wholeYearsOfService(baseDate: Date, asOf: Date): number {
   if (asOfMonthDay < baseMonthDay) years -= 1;
   return Math.max(0, years);
 }
+
+// Computes TotalDays server-side — never trusts a client-supplied value.
+// isFullDay=true: TotalDays = inclusive calendar days between start/end.
+// isFullDay=false (hourly): single day only (endDate forced = startDate),
+// TotalDays = hoursRequested / LEAVE_HOURS_PER_DAY.
+export function computeSpan(
+  startDate: Date,
+  endDateInput: Date,
+  isFullDay: boolean,
+  hoursRequested: number | undefined,
+): { endDate: Date; totalDays: number; hoursRequested: number | null } | { error: string; message: string } {
+  if (isFullDay) {
+    if (endDateInput < startDate) return { error: "VALIDATION_FAILED", message: "endDate must be on or after startDate" };
+    const spanDays = Math.floor((endDateInput.getTime() - startDate.getTime()) / 86400000) + 1;
+    return { endDate: endDateInput, totalDays: spanDays, hoursRequested: null };
+  }
+  if (!Number.isFinite(hoursRequested) || hoursRequested === undefined || hoursRequested <= 0 || hoursRequested > 24) {
+    return { error: "VALIDATION_FAILED", message: "hoursRequested must be a number between 0 and 24 when isFullDay is false" };
+  }
+  return { endDate: startDate, totalDays: hoursRequested / LEAVE_HOURS_PER_DAY, hoursRequested };
+}

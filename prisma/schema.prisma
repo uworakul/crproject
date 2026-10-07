@@ -53,10 +53,10 @@ model MstSite {
   // the company pays employees, not what it invoices customers).
   MonthlyServiceFee Decimal?  @db.Decimal(12, 2)
   IsActive          Boolean   @default(true)
-  CreatedDate DateTime? @default(now()) @db.DateTime
-  CreatedBy   String?   @db.VarChar(20)
-  UpdatedDate DateTime? @db.DateTime
-  UpdatedBy   String?   @db.VarChar(20)
+  CreatedDate       DateTime? @default(now()) @db.DateTime
+  CreatedBy         String?   @db.VarChar(20)
+  UpdatedDate       DateTime? @db.DateTime
+  UpdatedBy         String?   @db.VarChar(20)
 
   Users                     SysUser[]
   Permissions               SysUserPermission[]
@@ -65,6 +65,8 @@ model MstSite {
   PayrollTransactions       TrnPayrollTransaction[]
   RequiredPositions         MstSitePosition[]
   PayrollTransactionDetails TrnPayrollTransactionDetail[]
+  Location                  MstSiteLocation?
+  AttendanceLogs            TrnAttendanceLog[]
 
   @@map("mst_site")
 }
@@ -172,8 +174,8 @@ model RefPosition {
   BaseIncomes               MstPositionIncome[]
   WorksheetDetails          TrnWorksheetDetail[]
   PayrollTransactionDetails TrnPayrollTransactionDetail[]
-  RequestDetailsOldPosition TrnRequestDetail[]             @relation("RequestDetailOldPosition")
-  RequestDetailsNewPosition TrnRequestDetail[]             @relation("RequestDetailNewPosition")
+  RequestDetailsOldPosition TrnRequestDetail[]            @relation("RequestDetailOldPosition")
+  RequestDetailsNewPosition TrnRequestDetail[]            @relation("RequestDetailNewPosition")
 
   @@map("ref_position")
 }
@@ -258,13 +260,13 @@ model RefCompany {
   AddressMoo                String?   @db.NVarChar(10)
   AddressSoi                String?   @db.NVarChar(50)
   AddressRoad               String?   @db.NVarChar(50)
-  AddressTambon              String?   @db.NVarChar(50)
+  AddressTambon             String?   @db.NVarChar(50)
   AddressAmphoe             String?   @db.NVarChar(50)
   AddressProvince           String?   @db.NVarChar(50)
   AddressZipCode            String?   @db.VarChar(10)
 
-  Employees MstEmployee[]
-  UserScope SysUserCompany[]
+  Employees  MstEmployee[]
+  UserScope  SysUserCompany[]
   Warehouses InvWarehouse[]
 
   @@map("ref_company")
@@ -397,7 +399,7 @@ model SysUser {
   PasswordHash    String    @db.VarChar(255)
   DisplayName     String    @db.NVarChar(100)
   Email           String?   @db.NVarChar(100)
-  Role            String    @db.VarChar(20) // CHECK: SITE_HEAD | APPROVER | ADMIN | PAYROLL | HR | STORE
+  Role            String    @db.VarChar(20) // CHECK: SITE_HEAD | APPROVER | ADMIN | PAYROLL | HR | STORE | EMPLOYEE
   DefaultSiteCode String?   @db.VarChar(10)
   IsActive        Boolean   @default(true)
   CreatedDate     DateTime  @default(now()) @db.DateTime
@@ -751,6 +753,7 @@ model MstEmployee {
   WorksheetDetails    TrnWorksheetDetail[]
   PayrollTransactions TrnPayrollTransaction[]
   LeaveRequests       TrnLeaveRequest[]
+  AttendanceLogs      TrnAttendanceLog[]
   LeaveBalances       MstEmployeeLeaveBalance[]
   WorkExperiences     MstEmployeeWorkExperience[]
   TrainingExperiences MstEmployeeTrainingExperience[]
@@ -878,23 +881,23 @@ model TrnRequestHeader {
 }
 
 model TrnRequestDetail {
-  RequestDetailID Int       @id(map: "PK_trn_request_detail") @default(autoincrement())
-  RequestHeaderID Int
-  EmpCode         String    @db.VarChar(15)
+  RequestDetailID     Int       @id(map: "PK_trn_request_detail") @default(autoincrement())
+  RequestHeaderID     Int
+  EmpCode             String    @db.VarChar(15)
   // Amount/DeductPerPeriod stay NOT NULL (0 written explicitly) for
   // POSITION_CHANGE/RESIGN rows, which don't use them at all — avoids
   // widening every existing money-shaped read path to handle null.
-  Amount          Decimal   @db.Decimal(12, 2)
-  DeductPerPeriod Decimal   @db.Decimal(12, 2)
+  Amount              Decimal   @db.Decimal(12, 2)
+  DeductPerPeriod     Decimal   @db.Decimal(12, 2)
   // POSITION_CHANGE only (2026-09-28) — OldPositionCode/OldIncome are a
   // snapshot taken when the row is added (same "freeze what was true at
   // request time" reasoning as Worksheet's DailyRate snapshot), so the
   // approver sees what the employee's record looked like when this was
   // requested even if it changes again before approval. NewPositionCode is
   // what HR picked; approving writes it to mst_employee.PositionCode.
-  OldPositionCode String?   @db.VarChar(10)
-  NewPositionCode String?   @db.VarChar(10)
-  OldIncome       Decimal?  @db.Decimal(12, 2)
+  OldPositionCode     String?   @db.VarChar(10)
+  NewPositionCode     String?   @db.VarChar(10)
+  OldIncome           Decimal?  @db.Decimal(12, 2)
   // RESIGN only (2026-09-28). BlacklistCode picks an EXISTING ref_black_list
   // row (a reason/category code, per the user — e.g. "01"=คดีความ,
   // "02"=ยาเสพติด — not a boolean "add them" toggle) the same way
@@ -902,13 +905,13 @@ model TrnRequestDetail {
   // "{IDCardNo} — {FullName}") — no FK, "cross-referenced manually" same as
   // that field. Approving copies it onto mst_employee.BlacklistCode
   // directly instead of creating a new ref_black_list row.
-  ResignReason         String?   @db.NVarChar(300)
-  RequestedResignDate  DateTime? @db.Date
-  BlacklistCode        String?   @db.VarChar(20)
-  CreatedDate     DateTime? @default(now()) @db.DateTime
-  CreatedBy       String?   @db.VarChar(20)
-  UpdatedDate     DateTime? @db.DateTime
-  UpdatedBy       String?   @db.VarChar(20)
+  ResignReason        String?   @db.NVarChar(300)
+  RequestedResignDate DateTime? @db.Date
+  BlacklistCode       String?   @db.VarChar(20)
+  CreatedDate         DateTime? @default(now()) @db.DateTime
+  CreatedBy           String?   @db.VarChar(20)
+  UpdatedDate         DateTime? @db.DateTime
+  UpdatedBy           String?   @db.VarChar(20)
 
   Header      TrnRequestHeader @relation(fields: [RequestHeaderID], references: [RequestHeaderID], map: "FK_trn_request_detail_header", onUpdate: NoAction, onDelete: NoAction)
   Employee    MstEmployee      @relation(fields: [EmpCode], references: [EmpCode], map: "FK_trn_request_detail_mst_employee", onUpdate: NoAction, onDelete: NoAction)
@@ -1266,12 +1269,12 @@ model InvReturnHeader {
   UpdatedDate    DateTime? @db.DateTime
   UpdatedBy      String?   @db.VarChar(20)
 
-  Warehouse InvWarehouse      @relation(fields: [WarehouseCode], references: [WarehouseCode], map: "FK_inv_return_header_warehouse", onUpdate: NoAction, onDelete: NoAction)
-  Employee  MstEmployee       @relation(fields: [EmpCode], references: [EmpCode], map: "FK_inv_return_header_employee", onUpdate: NoAction, onDelete: NoAction)
-  Creator   SysUser           @relation("ReturnHeaderCreatedBy", fields: [CreatedBy], references: [UserID], map: "FK_inv_return_header_sys_user_created", onUpdate: NoAction, onDelete: NoAction)
-  Approver  SysUser?          @relation("ReturnHeaderApprovedBy", fields: [ApprovedBy], references: [UserID], map: "FK_inv_return_header_sys_user_approved", onUpdate: NoAction, onDelete: NoAction)
-  Rejecter  SysUser?          @relation("ReturnHeaderRejectedBy", fields: [RejectedBy], references: [UserID], map: "FK_inv_return_header_sys_user_rejected", onUpdate: NoAction, onDelete: NoAction)
-  Details   InvReturnDetail[]
+  Warehouse    InvWarehouse             @relation(fields: [WarehouseCode], references: [WarehouseCode], map: "FK_inv_return_header_warehouse", onUpdate: NoAction, onDelete: NoAction)
+  Employee     MstEmployee              @relation(fields: [EmpCode], references: [EmpCode], map: "FK_inv_return_header_employee", onUpdate: NoAction, onDelete: NoAction)
+  Creator      SysUser                  @relation("ReturnHeaderCreatedBy", fields: [CreatedBy], references: [UserID], map: "FK_inv_return_header_sys_user_created", onUpdate: NoAction, onDelete: NoAction)
+  Approver     SysUser?                 @relation("ReturnHeaderApprovedBy", fields: [ApprovedBy], references: [UserID], map: "FK_inv_return_header_sys_user_approved", onUpdate: NoAction, onDelete: NoAction)
+  Rejecter     SysUser?                 @relation("ReturnHeaderRejectedBy", fields: [RejectedBy], references: [UserID], map: "FK_inv_return_header_sys_user_rejected", onUpdate: NoAction, onDelete: NoAction)
+  Details      InvReturnDetail[]
   DebtPayments InvEmployeeDebtPayment[]
 
   @@map("inv_return_header")
@@ -1387,10 +1390,10 @@ model InvEmployeeDebt {
   UpdatedDate     DateTime? @db.DateTime
   UpdatedBy       String?   @db.VarChar(20)
 
-  Employee      MstEmployee       @relation(fields: [EmpCode], references: [EmpCode], map: "FK_inv_employee_debt_employee", onUpdate: NoAction, onDelete: NoAction)
-  Movement      InvStockMovement? @relation(fields: [MovementID], references: [MovementID], map: "FK_inv_employee_debt_movement", onUpdate: NoAction, onDelete: NoAction)
-  DeductionType RefDeductionType? @relation(fields: [DeductionCode], references: [DeductionCode], map: "FK_inv_employee_debt_deduction_type", onUpdate: NoAction, onDelete: NoAction)
-  RequestHeader TrnRequestHeader? @relation(fields: [RequestHeaderID], references: [RequestHeaderID], map: "FK_inv_employee_debt_request_header", onUpdate: NoAction, onDelete: NoAction)
+  Employee      MstEmployee              @relation(fields: [EmpCode], references: [EmpCode], map: "FK_inv_employee_debt_employee", onUpdate: NoAction, onDelete: NoAction)
+  Movement      InvStockMovement?        @relation(fields: [MovementID], references: [MovementID], map: "FK_inv_employee_debt_movement", onUpdate: NoAction, onDelete: NoAction)
+  DeductionType RefDeductionType?        @relation(fields: [DeductionCode], references: [DeductionCode], map: "FK_inv_employee_debt_deduction_type", onUpdate: NoAction, onDelete: NoAction)
+  RequestHeader TrnRequestHeader?        @relation(fields: [RequestHeaderID], references: [RequestHeaderID], map: "FK_inv_employee_debt_request_header", onUpdate: NoAction, onDelete: NoAction)
   Payments      InvEmployeeDebtPayment[]
 
   @@map("inv_employee_debt")
@@ -1575,9 +1578,9 @@ model TrnPayrollTransaction {
   UpdatedDate       DateTime? @db.DateTime
   UpdatedBy         String?   @db.VarChar(20)
 
-  Employee        MstEmployee                  @relation(fields: [EmpCode], references: [EmpCode], map: "FK_trn_payroll_transaction_employee", onUpdate: NoAction, onDelete: NoAction)
-  Period          SysPeriod                    @relation(fields: [PeriodID], references: [PeriodID], map: "FK_trn_payroll_transaction_period", onUpdate: NoAction, onDelete: NoAction)
-  Site            MstSite                      @relation(fields: [SiteCode], references: [SiteCode], map: "FK_trn_payroll_transaction_site", onUpdate: NoAction, onDelete: NoAction)
+  Employee        MstEmployee                   @relation(fields: [EmpCode], references: [EmpCode], map: "FK_trn_payroll_transaction_employee", onUpdate: NoAction, onDelete: NoAction)
+  Period          SysPeriod                     @relation(fields: [PeriodID], references: [PeriodID], map: "FK_trn_payroll_transaction_period", onUpdate: NoAction, onDelete: NoAction)
+  Site            MstSite                       @relation(fields: [SiteCode], references: [SiteCode], map: "FK_trn_payroll_transaction_site", onUpdate: NoAction, onDelete: NoAction)
   SourceWorksheet TrnWorksheetHeader?           @relation(fields: [SourceWorksheetID], references: [WorksheetID], map: "FK_trn_payroll_transaction_worksheet", onUpdate: NoAction, onDelete: NoAction)
   Details         TrnPayrollTransactionDetail[]
 
@@ -1663,11 +1666,11 @@ model TrnPayrollCalculateLog {
 }
 
 model TrnPayrollLock {
-  LockID      Int       @id(map: "PK_trn_payroll_lock") @default(autoincrement())
-  PeriodID    Int
-  IsLocked    Boolean   @default(false)
-  LockedBy    String?   @db.VarChar(20)
-  LockedDate  DateTime? @db.DateTime
+  LockID       Int       @id(map: "PK_trn_payroll_lock") @default(autoincrement())
+  PeriodID     Int
+  IsLocked     Boolean   @default(false)
+  LockedBy     String?   @db.VarChar(20)
+  LockedDate   DateTime? @db.DateTime
   // 2026-09-24 — split "ส่งขออนุมัติ" (Lock, existing) from a genuine second
   // "อนุมัติ" (Approve) step per the user's explicit choice ("เพิ่มสถานะใหม่ 2
   // ขั้น: ส่งขออนุมัติ (Lock) → อนุมัติ (Approve) แยกกัน"). closePeriod() now
@@ -1677,10 +1680,10 @@ model TrnPayrollLock {
   IsApproved   Boolean   @default(false)
   ApprovedBy   String?   @db.VarChar(20)
   ApprovedDate DateTime? @db.DateTime
-  CreatedDate DateTime? @default(now()) @db.DateTime
-  CreatedBy   String?   @db.VarChar(20)
-  UpdatedDate DateTime? @db.DateTime
-  UpdatedBy   String?   @db.VarChar(20)
+  CreatedDate  DateTime? @default(now()) @db.DateTime
+  CreatedBy    String?   @db.VarChar(20)
+  UpdatedDate  DateTime? @db.DateTime
+  UpdatedBy    String?   @db.VarChar(20)
 
   Period   SysPeriod @relation(fields: [PeriodID], references: [PeriodID], map: "FK_trn_payroll_lock_period", onUpdate: NoAction, onDelete: NoAction)
   Locker   SysUser?  @relation("PayrollLockLockedBy", fields: [LockedBy], references: [UserID], map: "FK_trn_payroll_lock_user", onUpdate: NoAction, onDelete: NoAction)
@@ -1756,10 +1759,10 @@ model TrnLeaveRequest {
   // derived as HoursRequested/8 — the approved 8h=1day conversion); TotalDays
   // is always the canonical day-equivalent value balance checks compare
   // against, regardless of entry mode.
-  DocumentNo      String?   @db.VarChar(20)
-  StartDate       DateTime  @db.Date
-  EndDate         DateTime  @db.Date
-  IsFullDay       Boolean   @default(true)
+  DocumentNo     String?   @db.VarChar(20)
+  StartDate      DateTime  @db.Date
+  EndDate        DateTime  @db.Date
+  IsFullDay      Boolean   @default(true)
   // Decimal(5,2), not (4,1) like every other day-count column in this
   // project (e.g. mst_employee_leave_balance) — found via testing 2026-09-21
   // that HoursRequested/8 for ordinary whole-hour inputs (1h,2h,3h,5h,6h,7h)
@@ -1767,23 +1770,23 @@ model TrnLeaveRequest {
   // rounding it (0.25 -> 0.3), corrupting the balance math. Only these two
   // columns needed widening — MstLeaveTenureTier.EntitledDays stays (4,1)
   // since tenure tiers are configured in whole/half days, not hours.
-  HoursRequested  Decimal?  @db.Decimal(5, 2)
-  TotalDays       Decimal   @db.Decimal(5, 2)
-  HasMedicalCert  Boolean   @default(false)
-  Status          String    @default("DRAFT") @db.VarChar(15) // CHECK: DRAFT | SUBMITTED | APPROVED | REJECTED
-  CreatedBy       String    @db.VarChar(20)
-  CreatedDate     DateTime  @default(now()) @db.DateTime
-  ApprovedBy      String?   @db.VarChar(20)
-  ApprovedDate    DateTime? @db.DateTime
+  HoursRequested Decimal?  @db.Decimal(5, 2)
+  TotalDays      Decimal   @db.Decimal(5, 2)
+  HasMedicalCert Boolean   @default(false)
+  Status         String    @default("DRAFT") @db.VarChar(15) // CHECK: DRAFT | SUBMITTED | APPROVED | REJECTED
+  CreatedBy      String    @db.VarChar(20)
+  CreatedDate    DateTime  @default(now()) @db.DateTime
+  ApprovedBy     String?   @db.VarChar(20)
+  ApprovedDate   DateTime? @db.DateTime
   // Reject now bounces Status back to DRAFT (like trn_request) instead of a
   // terminal REJECTED value — RejectReason/RejectedBy/RejectedDate persist as
   // audit trail even after a later resubmission, same convention as
   // trn_request_header.
-  RejectReason    String?   @db.NVarChar(500)
-  RejectedBy      String?   @db.VarChar(20)
-  RejectedDate    DateTime? @db.DateTime
-  UpdatedDate     DateTime? @db.DateTime
-  UpdatedBy       String?   @db.VarChar(20)
+  RejectReason   String?   @db.NVarChar(500)
+  RejectedBy     String?   @db.VarChar(20)
+  RejectedDate   DateTime? @db.DateTime
+  UpdatedDate    DateTime? @db.DateTime
+  UpdatedBy      String?   @db.VarChar(20)
 
   Employee  MstEmployee  @relation(fields: [EmpCode], references: [EmpCode], map: "FK_trn_leave_request_employee", onUpdate: NoAction, onDelete: NoAction)
   LeaveType MstLeaveType @relation(fields: [LeaveTypeCode], references: [LeaveTypeCode], map: "FK_trn_leave_request_type", onUpdate: NoAction, onDelete: NoAction)
@@ -1811,4 +1814,54 @@ model MstEmployeeLeaveBalance {
 
   @@unique([EmpCode, LeaveTypeCode, Year], map: "UQ_mst_employee_leave_balance")
   @@map("mst_employee_leave_balance")
+}
+
+// MOBILE module (2026-10-02) — GPS geofence per site. One row per site
+// (SiteCode is the PK); RadiusMeters is the max allowed distance between the
+// employee's phone and this point for check-in/out to be accepted.
+model MstSiteLocation {
+  SiteCode     String    @id(map: "PK_mst_site_location") @db.VarChar(10)
+  Latitude     Decimal   @db.Decimal(9, 6)
+  Longitude    Decimal   @db.Decimal(9, 6)
+  LocationName String?   @db.NVarChar(200)
+  RadiusMeters Int
+  CreatedDate  DateTime? @default(now()) @db.DateTime
+  CreatedBy    String?   @db.VarChar(20)
+  UpdatedDate  DateTime? @db.DateTime
+  UpdatedBy    String?   @db.VarChar(20)
+
+  Site MstSite @relation(fields: [SiteCode], references: [SiteCode], map: "FK_mst_site_location_site", onUpdate: NoAction, onDelete: NoAction)
+
+  @@map("mst_site_location")
+}
+
+// One row per shift: check-in inserts it, check-out fills the CheckOut*
+// columns on the employee's still-open row (CheckOutTime IS NULL). Distances
+// are computed server-side (Haversine) at the moment of the tap and stored
+// as evidence.
+model TrnAttendanceLog {
+  AttendanceID     Int       @id(map: "PK_trn_attendance_log") @default(autoincrement())
+  EmpCode          String    @db.VarChar(15)
+  SiteCode         String    @db.VarChar(10)
+  CheckInTime      DateTime  @db.DateTime
+  CheckInLat       Decimal   @db.Decimal(9, 6)
+  CheckInLng       Decimal   @db.Decimal(9, 6)
+  CheckInDistance  Int
+  // R2 object key of the camera photo taken at check-in/out (2026-10-07).
+  CheckInPhoto     String?   @db.VarChar(255)
+  CheckOutTime     DateTime? @db.DateTime
+  CheckOutLat      Decimal?  @db.Decimal(9, 6)
+  CheckOutLng      Decimal?  @db.Decimal(9, 6)
+  CheckOutDistance Int?
+  CheckOutPhoto    String?   @db.VarChar(255)
+  CreatedDate      DateTime? @default(now()) @db.DateTime
+  CreatedBy        String?   @db.VarChar(20)
+  UpdatedDate      DateTime? @db.DateTime
+  UpdatedBy        String?   @db.VarChar(20)
+
+  Employee MstEmployee @relation(fields: [EmpCode], references: [EmpCode], map: "FK_trn_attendance_log_employee", onUpdate: NoAction, onDelete: NoAction)
+  Site     MstSite     @relation(fields: [SiteCode], references: [SiteCode], map: "FK_trn_attendance_log_site", onUpdate: NoAction, onDelete: NoAction)
+
+  @@index([EmpCode, CheckInTime], map: "IX_trn_attendance_log_emp_time")
+  @@map("trn_attendance_log")
 }

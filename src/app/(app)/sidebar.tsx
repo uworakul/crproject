@@ -24,7 +24,7 @@ function isGroupActive(group: NavGroup, pathname: string) {
   return group.items.some((item) => pathname === item.href || pathname.startsWith(item.href + "/"));
 }
 
-export type IconKey = "users" | "settings" | "employee" | "approve" | "inventory" | "worksheet" | "payroll" | "leave" | "report" | "dashboard";
+export type IconKey = "users" | "settings" | "employee" | "approve" | "inventory" | "worksheet" | "payroll" | "leave" | "report" | "dashboard" | "mobile";
 
 // Simple line icons built from basic shapes (rect/circle/line/polygon) only —
 // no bezier path data — one per top-level menu group, shown alongside the
@@ -120,6 +120,13 @@ function GroupIcon({ icon, className }: { icon: IconKey | undefined; className?:
           <rect x="13" y="3" width="8" height="5" rx="1" />
           <rect x="13" y="10" width="8" height="11" rx="1" />
           <rect x="3" y="13" width="8" height="8" rx="1" />
+        </svg>
+      );
+    case "mobile":
+      return (
+        <svg {...common}>
+          <rect x="7" y="2" width="10" height="20" rx="2" />
+          <line x1="11" y1="18" x2="13" y2="18" />
         </svg>
       );
     default:

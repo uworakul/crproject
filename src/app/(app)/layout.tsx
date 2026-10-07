@@ -3,6 +3,7 @@ import { verifySession } from "@/lib/dal";
 import { hasPermission } from "@/lib/authorize";
 import { prisma } from "@/lib/prisma";
 import { REQUEST_PERMISSION_GROUPS } from "@/lib/request";
+import { canManageSiteLocation } from "@/lib/mobile-auth";
 import Sidebar from "./sidebar";
 import LogoutButton from "./logout-button";
 
@@ -171,6 +172,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       icon: "worksheet" as const,
       items: [
         ...(canViewSite ? [{ href: "/payroll/sites", label: "หน่วยงาน (Site)" }] : []),
+        ...(canViewWorksheet ? [{ href: "/worksheet/attendance-report", label: "รายงานการลงเวลางาน" }] : []),
         ...(canViewWorksheet ? [{ href: "/worksheet", label: "Worksheet" }] : []),
         ...(canApproveWorksheet ? [{ href: "/worksheet/pending-approval", label: "รายการรออนุมัติ" }] : []),
       ],
@@ -205,6 +207,27 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         ...(canViewPayrollReport ? [{ href: "/employee-reports", label: "รายงาน", icon: "report" as const }] : []),
         ...(canViewDashboard ? [{ href: "/employee-reports/dashboard", label: "Dashboard", icon: "dashboard" as const }] : []),
       ],
+    },
+    {
+      // MOBILE (2026-10-02) — phone/tablet screens, last group in the menu.
+      // Gated by Role rather than sys_user_permission: site coordinates for
+      // SITE_HEAD/ADMIN/APPROVER, the four self-service screens for EMPLOYEE
+      // (whose UserID = EmpCode). Hidden entirely while the system is locked.
+      label: "MOBILE",
+      icon: "mobile" as const,
+      items: user.systemLocked
+        ? []
+        : [
+            ...(canManageSiteLocation(user) ? [{ href: "/mobile/site-location", label: "พิกัดหน่วยงาน" }] : []),
+            ...(user.role === "EMPLOYEE"
+              ? [
+                  { href: "/mobile/check-in", label: "เข้างาน" },
+                  { href: "/mobile/check-out", label: "เลิกงาน" },
+                  { href: "/mobile/leave", label: "ใบลา" },
+                  { href: "/mobile/payslip", label: "Payslip" },
+                ]
+              : []),
+          ],
     },
   ].filter((g) => g.items.length > 0);
 

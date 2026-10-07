@@ -4,7 +4,7 @@ import { verifySession } from "@/lib/dal";
 import { requirePermission } from "@/lib/authorize";
 import { logAction } from "@/lib/audit-log";
 import { apiError, apiSuccess } from "@/lib/api-response";
-import { LEAVE_STATUS_VALUES, LEAVE_HOURS_PER_DAY, isLeaveTypeEligible } from "@/lib/leave";
+import { LEAVE_STATUS_VALUES, isLeaveTypeEligible, computeSpan } from "@/lib/leave";
 import { consumeDocumentNumber } from "@/lib/document-number";
 import { employeeScopeWhere, isEmployeeInScope } from "@/lib/employee-scope";
 
@@ -27,27 +27,6 @@ export async function GET(request: NextRequest) {
     orderBy: { CreatedDate: "desc" },
   });
   return apiSuccess(requests);
-}
-
-// Computes TotalDays server-side — never trusts a client-supplied value.
-// isFullDay=true: TotalDays = inclusive calendar days between start/end.
-// isFullDay=false (hourly): single day only (endDate forced = startDate),
-// TotalDays = hoursRequested / LEAVE_HOURS_PER_DAY.
-function computeSpan(
-  startDate: Date,
-  endDateInput: Date,
-  isFullDay: boolean,
-  hoursRequested: number | undefined,
-): { endDate: Date; totalDays: number; hoursRequested: number | null } | { error: string; message: string } {
-  if (isFullDay) {
-    if (endDateInput < startDate) return { error: "VALIDATION_FAILED", message: "endDate must be on or after startDate" };
-    const spanDays = Math.floor((endDateInput.getTime() - startDate.getTime()) / 86400000) + 1;
-    return { endDate: endDateInput, totalDays: spanDays, hoursRequested: null };
-  }
-  if (!Number.isFinite(hoursRequested) || hoursRequested === undefined || hoursRequested <= 0 || hoursRequested > 24) {
-    return { error: "VALIDATION_FAILED", message: "hoursRequested must be a number between 0 and 24 when isFullDay is false" };
-  }
-  return { endDate: startDate, totalDays: hoursRequested / LEAVE_HOURS_PER_DAY, hoursRequested };
 }
 
 export async function POST(request: NextRequest) {
