@@ -30,3 +30,6 @@ Thumbs.db
 
 /generated/prisma
 *.tsbuildinfo
+
+# VPS access notes/credentials — never commit
+vps/
