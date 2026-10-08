@@ -14,6 +14,7 @@ const companyFields: FieldDef[] = [
   { key: "TaxID", label: "เลขประจำตัวภาษี", type: "text" },
   { key: "SSORegistNo", label: "เลขประจำตัวปกส", type: "text" },
   { key: "ContactPhone", label: "เบอร์ติดต่อ", type: "text" },
+  { key: "AutoTimeToWorksheet", label: "Auto เวลาเข้า-ออกลง Worksheet", type: "checkbox" },
 ];
 const bankFields: FieldDef[] = [
   { key: "BankCode", label: "รหัสธนาคาร", type: "text", isKey: true },

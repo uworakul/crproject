@@ -1,6 +1,6 @@
 # One-command deploy to the VPS (27.254.173.60) over SSH key auth.
 #   powershell -ExecutionPolicy Bypass -File scripts\deploy-vps.ps1
-# Builds locally, uploads a tarball (NOT .env / tenants.json — those already
+# Builds locally, uploads a tarball (NOT .env / tenants.json - those already
 # live on the VPS and are never overwritten), reinstalls deps only when
 # package-lock.json changed, runs tenant migrations, restarts PM2 "crpayroll".
 # Touches only C:\crpayroll and the PM2 process "crpayroll" on the VPS.
@@ -10,9 +10,9 @@ $h = "Administrator@27.254.173.60"
 $root = Split-Path -Parent $PSScriptRoot
 Set-Location $root
 
-# next build and next dev share .next — stop a running dev server first.
+# next build and next dev share .next - stop a running dev server first.
 if (Get-NetTCPConnection -LocalPort 3000 -State Listen -ErrorAction SilentlyContinue) {
-  throw "Port 3000 is in use locally (dev server?). Stop it before deploying — it shares the .next folder with the build."
+  throw "Port 3000 is in use locally (dev server?). Stop it before deploying - it shares the .next folder with the build."
 }
 
 npx next build

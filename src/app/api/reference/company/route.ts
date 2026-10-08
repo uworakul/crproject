@@ -43,6 +43,7 @@ export async function POST(request: NextRequest) {
     addressAmphoe?: unknown;
     addressProvince?: unknown;
     addressZipCode?: unknown;
+    autoTimeToWorksheet?: unknown;
   };
   try {
     body = await request.json();
@@ -88,6 +89,7 @@ export async function POST(request: NextRequest) {
       AddressAmphoe: s(body.addressAmphoe),
       AddressProvince: s(body.addressProvince),
       AddressZipCode: s(body.addressZipCode),
+      AutoTimeToWorksheet: body.autoTimeToWorksheet === true,
       CreatedBy: user.userId,
     },
   });

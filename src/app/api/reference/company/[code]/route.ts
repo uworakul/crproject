@@ -36,6 +36,7 @@ export async function PUT(request: NextRequest, ctx: RouteContext<"/api/referenc
     addressAmphoe?: unknown;
     addressProvince?: unknown;
     addressZipCode?: unknown;
+    autoTimeToWorksheet?: unknown;
   };
   try {
     body = await request.json();
@@ -76,6 +77,7 @@ export async function PUT(request: NextRequest, ctx: RouteContext<"/api/referenc
       AddressAmphoe: os(body.addressAmphoe),
       AddressProvince: os(body.addressProvince),
       AddressZipCode: os(body.addressZipCode),
+      AutoTimeToWorksheet: typeof body.autoTimeToWorksheet === "boolean" ? body.autoTimeToWorksheet : undefined,
       UpdatedBy: user.userId,
       UpdatedDate: new Date(),
     },

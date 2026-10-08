@@ -237,6 +237,9 @@ model RefCompany {
   CompanyCode  String    @id(map: "PK_ref_company") @db.VarChar(10)
   CompanyName  String    @db.NVarChar(150)
   ShortName    String?   @db.NVarChar(50) // ชื่อย่อ — shown in the app brand footer/title in place of the hardcoded "ABC CO., LTD."
+  // 2026-10-08 — when true, MOBILE check-in/out of this company's employees is
+  // auto-posted to the site's DRAFT Worksheet (see src/lib/attendance-worksheet.ts)
+  AutoTimeToWorksheet Boolean @default(false)
   Address      String?   @db.NVarChar(300)
   TaxID        String?   @db.VarChar(20)
   SSORegistNo  String?   @db.VarChar(20)

@@ -71,6 +71,16 @@ export default async function AttendanceReportPage({ searchParams }: { searchPar
         <button type="submit" className="rounded bg-blue-600 px-4 py-1.5 text-sm font-medium text-white">
           ค้นหา
         </button>
+        {user.role !== "EMPLOYEE" &&
+          (["pdf", "excel"] as const).map((f) => (
+            <a
+              key={f}
+              href={`/api/attendance-report/export?format=${f}&from=${from}&to=${to}${siteCode ? `&site=${encodeURIComponent(siteCode)}` : ""}${empCode ? `&emp=${encodeURIComponent(empCode)}` : ""}`}
+              className="rounded border border-gray-300 px-4 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50"
+            >
+              Export {f === "pdf" ? "PDF" : "Excel"}
+            </a>
+          ))}
       </form>
 
       <div className="overflow-x-auto rounded-lg border border-gray-200 bg-white">

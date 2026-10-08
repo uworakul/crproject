@@ -15,3 +15,21 @@ export function distanceMeters(lat1: number, lng1: number, lat2: number, lng2: n
 export function isValidLatLng(lat: unknown, lng: unknown): lat is number {
   return typeof lat === "number" && typeof lng === "number" && Number.isFinite(lat) && Number.isFinite(lng) && Math.abs(lat) <= 90 && Math.abs(lng) <= 180;
 }
+
+export interface SiteWithLocation {
+  SiteCode: string;
+  SiteName: string;
+  Location: { Latitude: unknown; Longitude: unknown; RadiusMeters: number } | null;
+}
+
+// Nearest site whose geofence contains the point, or null.
+export function findSiteByLocation<T extends SiteWithLocation>(lat: number, lng: number, sites: T[]): { site: T; distance: number; radius: number } | null {
+  let best: { site: T; distance: number; radius: number } | null = null;
+  for (const site of sites) {
+    if (!site.Location) continue;
+    const distance = distanceMeters(lat, lng, Number(site.Location.Latitude), Number(site.Location.Longitude));
+    if (distance > site.Location.RadiusMeters) continue;
+    if (!best || distance < best.distance) best = { site, distance, radius: site.Location.RadiusMeters };
+  }
+  return best;
+}

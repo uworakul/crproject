@@ -60,6 +60,7 @@ const CODE_COLORS: Record<string, string> = {
   D: "bg-amber-100 text-amber-800 border-amber-300",
   N: "bg-indigo-100 text-indigo-800 border-indigo-300",
   "D-N": "bg-purple-100 text-purple-800 border-purple-300",
+  "N-D": "bg-fuchsia-100 text-fuchsia-800 border-fuchsia-300",
   F: "bg-gray-100 text-gray-500 border-gray-300",
 };
 

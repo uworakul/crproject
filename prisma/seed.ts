@@ -32,6 +32,7 @@ const attendanceCodeSeed = [
   { Code: "N", CodeNameTH: "กะกลางคืน", CodeNameEN: "Night Shift", PayMultiplier: "1.0", SortOrder: 2 },
   { Code: "D-N", CodeNameTH: "ควบ 2 กะ", CodeNameEN: "Double Shift", PayMultiplier: "2.0", SortOrder: 3 },
   { Code: "F", CodeNameTH: "วันหยุด", CodeNameEN: "Off/Holiday", PayMultiplier: "0.0", SortOrder: 4 },
+  { Code: "N-D", CodeNameTH: "ควบ 2 กะ (ดึก-เช้า)", CodeNameEN: "Night-Day Double Shift", PayMultiplier: "2.0", SortOrder: 5 },
 ];
 
 async function seedAttendanceCodes() {

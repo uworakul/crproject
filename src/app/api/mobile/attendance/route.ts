@@ -5,7 +5,8 @@ import { logAction } from "@/lib/audit-log";
 import { apiError, apiSuccess } from "@/lib/api-response";
 import { requireSelfEmployee } from "@/lib/mobile-auth";
 import { getAttendanceState } from "@/lib/mobile-attendance";
-import { distanceMeters, isValidLatLng } from "@/lib/geo";
+import { distanceMeters, findSiteByLocation, isValidLatLng } from "@/lib/geo";
+import { syncAttendanceToWorksheet } from "@/lib/attendance-worksheet";
 import { uploadFileToR2, deleteFileFromR2, R2NotConfiguredError } from "@/lib/r2";
 
 // Every check-in/out must carry a photo taken live with the device camera
@@ -77,9 +78,12 @@ export async function POST(request: NextRequest) {
     if (open) {
       return apiError(422, "ALREADY_CHECKED_IN", "คุณ Check-in อยู่แล้ว ต้อง Check-out ก่อนจึงจะ Check-in ใหม่ได้", { checkInTime: open.CheckInTime });
     }
-    const siteRaw = form.get("siteCode");
-    siteCode = typeof siteRaw === "string" ? siteRaw.trim() : "";
-    if (!siteCode) return apiError(400, "INVALID_PARAMS", "siteCode is required for CHECK_IN");
+    // Site is auto-detected from the phone's GPS (nearest geofence containing
+    // the point) — the client never picks or sends a site.
+    const allSites = await prisma.mstSite.findMany({ where: { IsActive: true }, include: { Location: true } });
+    const found = findSiteByLocation(lat, lng, allSites);
+    if (!found) return apiError(422, "SITE_NOT_DETECTED", "ยังไม่ได้ตั้งพิกัดสถานที่นี้ในระบบ (ไม่พบหน่วยงานในรัศมีตำแหน่งปัจจุบัน)");
+    siteCode = found.site.SiteCode;
   } else {
     if (!open) return apiError(422, "NOT_CHECKED_IN", "ยังไม่ได้ Check-in จึงไม่สามารถ Check-out ได้");
     // Check-out is always measured against the site the shift was opened at.
@@ -128,6 +132,7 @@ export async function POST(request: NextRequest) {
       throw err;
     }
     await logAction(user.userId, "CHECK_IN", { targetTable: "trn_attendance_log", targetId: String(created.AttendanceID) });
+    await syncAttendanceToWorksheet(user.userId, empCode, siteCode, now);
     return apiSuccess({ action, siteCode, siteName: site.SiteName, time: now, distanceMeters: distance }, 201);
   }
 
@@ -142,5 +147,6 @@ export async function POST(request: NextRequest) {
     return apiError(422, "NOT_CHECKED_IN", "ยังไม่ได้ Check-in จึงไม่สามารถ Check-out ได้");
   }
   await logAction(user.userId, "CHECK_OUT", { targetTable: "trn_attendance_log", targetId: String(open!.AttendanceID) });
+  await syncAttendanceToWorksheet(user.userId, empCode, siteCode, open!.CheckInTime);
   return apiSuccess({ action, siteCode, siteName: site.SiteName, time: now, distanceMeters: distance });
 }

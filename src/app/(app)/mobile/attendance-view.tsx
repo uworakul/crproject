@@ -2,7 +2,6 @@
 
 import { useEffect, useRef, useState } from "react";
 import Swal from "sweetalert2";
-import SearchableSelect from "../searchable-select";
 import { getCurrentPosition, geolocationIsAllowedHere, thaiDateTime } from "./gps";
 import type { AttendanceState } from "@/lib/mobile-attendance";
 
@@ -12,7 +11,9 @@ type Result = { ok: true; time: string; siteName: string; distanceMeters: number
 // and mode "OUT" (เลิกงาน, CHECK-OUT against the site the open shift started at).
 export default function AttendanceView({ mode, initial }: { mode: "IN" | "OUT"; initial: AttendanceState }) {
   const [state, setState] = useState(initial);
-  const [siteCode, setSiteCode] = useState(initial.defaultSiteCode ?? "");
+  // Site is auto-detected from GPS (check-in only); the server re-detects on submit.
+  const [detected, setDetected] = useState<{ found: true; siteName: string; distanceMeters: number } | { found: false; message: string } | null>(null);
+  const [detecting, setDetecting] = useState(false);
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<Result | null>(null);
 
@@ -33,6 +34,7 @@ export default function AttendanceView({ mode, initial }: { mode: "IN" | "OUT"; 
   useEffect(() => () => streamRef.current?.getTracks().forEach((t) => t.stop()), []);
 
   async function openCamera() {
+    if (isIn) void detectSite();
     setCameraError(null);
     setResult(null);
     if (photo) URL.revokeObjectURL(photo.url);
@@ -83,11 +85,26 @@ export default function AttendanceView({ mode, initial }: { mode: "IN" | "OUT"; 
   const isIn = mode === "IN";
   const label = isIn ? "CHECK-IN" : "CHECK-OUT";
   const color = isIn ? "bg-green-600" : "bg-red-600";
-  const selectedSite = state.sites.find((s) => s.siteCode === siteCode);
+
+  async function detectSite() {
+    setDetecting(true);
+    setDetected(null);
+    try {
+      const fix = await getCurrentPosition();
+      const res = await fetch(`/api/mobile/detect-site?lat=${fix.latitude}&lng=${fix.longitude}`);
+      const body = await res.json();
+      if (!res.ok) setDetected({ found: false, message: body.message || body.error || "ตรวจหาหน่วยงานไม่สำเร็จ" });
+      else setDetected(body.found ? { found: true, siteName: body.siteName, distanceMeters: body.distanceMeters } : { found: false, message: body.message });
+    } catch (err) {
+      setDetected({ found: false, message: err instanceof Error ? err.message : "อ่าน GPS ไม่สำเร็จ" });
+    } finally {
+      setDetecting(false);
+    }
+  }
 
   async function submit() {
     setResult(null);
-    const target = isIn ? selectedSite?.siteName : state.open?.siteName;
+    const target = isIn ? (detected?.found ? detected.siteName : undefined) : state.open?.siteName;
     const confirm = await Swal.fire({
       icon: "question",
       title: `ยืนยัน ${label}?`,
@@ -110,7 +127,6 @@ export default function AttendanceView({ mode, initial }: { mode: "IN" | "OUT"; 
       }
       const form = new FormData();
       form.append("action", isIn ? "CHECK_IN" : "CHECK_OUT");
-      if (isIn) form.append("siteCode", siteCode);
       form.append("latitude", String(fix.latitude));
       form.append("longitude", String(fix.longitude));
       form.append("photo", photo!.blob, "photo.jpg");
@@ -149,17 +165,19 @@ export default function AttendanceView({ mode, initial }: { mode: "IN" | "OUT"; 
       )}
 
       {isIn ? (
-        <label className="block text-sm text-gray-700">
-          หน่วยงาน
-          <div className="mt-1">
-            <SearchableSelect
-              value={siteCode}
-              onChange={setSiteCode}
-              options={state.sites.map((s) => ({ code: s.siteCode, label: `${s.siteCode} — ${s.siteName}${s.hasLocation ? "" : " (ยังไม่ตั้งพิกัด)"}` }))}
-              placeholder="เลือกหน่วยงาน"
-            />
-          </div>
-        </label>
+        <div className="space-y-2 rounded bg-gray-50 p-3 text-sm text-gray-700">
+          <div className="font-medium">หน่วยงาน (ตรวจจากตำแหน่ง GPS อัตโนมัติ)</div>
+          {detecting && <div>กำลังตรวจหาหน่วยงาน...</div>}
+          {detected?.found && (
+            <div className="text-green-800">
+              📍 {detected.siteName} (ห่าง {detected.distanceMeters} เมตร)
+            </div>
+          )}
+          {detected && !detected.found && <div className="text-red-700">{detected.message}</div>}
+          <button type="button" onClick={detectSite} disabled={detecting || busy} className="rounded border border-blue-600 px-3 py-2 text-sm font-medium text-blue-700 disabled:opacity-50">
+            📍 ตรวจหาหน่วยงาน
+          </button>
+        </div>
       ) : (
         state.open && (
           <div className="rounded bg-gray-50 p-3 text-sm text-gray-700">
@@ -200,7 +218,7 @@ export default function AttendanceView({ mode, initial }: { mode: "IN" | "OUT"; 
       <button
         type="button"
         onClick={submit}
-        disabled={busy || !!blockedReason || (isIn && !siteCode) || !photo}
+        disabled={busy || !!blockedReason || (isIn && detected?.found === false) || !photo}
         className={`w-full rounded px-4 py-5 text-xl font-semibold text-white disabled:opacity-40 ${color}`}
       >
         {busy ? "กำลังบันทึก..." : !photo && !blockedReason ? `ถ่ายรูปก่อน ${label}` : label}

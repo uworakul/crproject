@@ -223,6 +223,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
               ? [
                   { href: "/mobile/check-in", label: "เข้างาน" },
                   { href: "/mobile/check-out", label: "เลิกงาน" },
+                  { href: "/mobile/attendance-list", label: "รายการลงเวลางาน" },
                   { href: "/mobile/leave", label: "ใบลา" },
                   { href: "/mobile/payslip", label: "Payslip" },
                 ]
