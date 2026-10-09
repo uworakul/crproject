@@ -13,7 +13,6 @@ export default function MobileAdvanceView({ initial }: { initial: MobileAdvance[
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
   const [amount, setAmount] = useState("");
-  const [deductPerPeriod, setDeductPerPeriod] = useState("");
   const [remark, setRemark] = useState("");
 
   async function reload() {
@@ -26,7 +25,7 @@ export default function MobileAdvanceView({ initial }: { initial: MobileAdvance[
     const confirm = await Swal.fire({
       icon: "question",
       title: "ส่งขอเบิกล่วงหน้า?",
-      text: `ยอด ${baht(Number(amount))} บาท · หักงวดละ ${baht(Number(deductPerPeriod || amount))} บาท`,
+      text: `ยอด ${baht(Number(amount))} บาท (หักทั้งหมดในงวดเดียว)`,
       showCancelButton: true,
       confirmButtonText: "ส่งขออนุมัติ",
       cancelButtonText: "ปิด",
@@ -39,7 +38,7 @@ export default function MobileAdvanceView({ initial }: { initial: MobileAdvance[
       const res = await fetch("/api/mobile/advance", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ amount: Number(amount), deductPerPeriod: deductPerPeriod === "" ? undefined : Number(deductPerPeriod), remark }),
+        body: JSON.stringify({ amount: Number(amount), remark }),
       });
       const body = await res.json();
       if (!res.ok) {
@@ -48,7 +47,6 @@ export default function MobileAdvanceView({ initial }: { initial: MobileAdvance[
       }
       setMessage({ ok: true, text: `ส่งขออนุมัติแล้ว (เลขที่ ${body.documentNo}) — รอผู้อนุมัติพิจารณา` });
       setAmount("");
-      setDeductPerPeriod("");
       setRemark("");
       await reload();
     } finally {
@@ -84,8 +82,7 @@ export default function MobileAdvanceView({ initial }: { initial: MobileAdvance[
   }
 
   const amountNum = Number(amount);
-  const deductNum = deductPerPeriod === "" ? amountNum : Number(deductPerPeriod);
-  const canCreate = amountNum > 0 && deductNum > 0 && deductNum <= amountNum;
+  const canCreate = amountNum > 0;
 
   return (
     <div className="mt-5 space-y-5">
@@ -96,11 +93,6 @@ export default function MobileAdvanceView({ initial }: { initial: MobileAdvance[
             ยอดที่ขอเบิก (บาท)
             <input type="number" inputMode="decimal" min="0" step="0.01" className={`${inputCls} mt-1`} value={amount} onChange={(e) => setAmount(e.target.value)} />
           </label>
-          <label className="block text-sm text-gray-700">
-            หักงวดละ (บาท) — เว้นว่าง = หักทั้งก้อนในงวดเดียว
-            <input type="number" inputMode="decimal" min="0" step="0.01" className={`${inputCls} mt-1`} value={deductPerPeriod} onChange={(e) => setDeductPerPeriod(e.target.value)} />
-          </label>
-          {amountNum > 0 && deductNum > amountNum && <p className="text-sm text-red-600">ยอดหักงวดละต้องไม่เกินยอดที่ขอเบิก</p>}
           <label className="block text-sm text-gray-700">
             หมายเหตุ (ถ้ามี)
             <input className={`${inputCls} mt-1`} value={remark} maxLength={300} onChange={(e) => setRemark(e.target.value)} />
@@ -125,7 +117,7 @@ export default function MobileAdvanceView({ initial }: { initial: MobileAdvance[
                 <div className="flex items-start justify-between gap-2">
                   <div>
                     <div className="font-medium text-gray-900">{baht(r.amount)} บาท</div>
-                    <div className="text-gray-600">หักงวดละ {baht(r.deductPerPeriod)} บาท · {fmtDate(r.requestDate)}</div>
+                    <div className="text-gray-600">{fmtDate(r.requestDate)}</div>
                     {r.documentNo && <div className="text-xs text-gray-400">เลขที่ {r.documentNo}</div>}
                     {r.remark && <div className="text-xs text-gray-500">{r.remark}</div>}
                   </div>
