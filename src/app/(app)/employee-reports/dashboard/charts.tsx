@@ -213,7 +213,12 @@ export function PieChartView({
       const y2 = cy + r * Math.sin(end);
       const largeArc = sweep > 180 ? 1 : 0;
       const color = d.synthetic ? INK.muted : colorFor ? colorFor(d) : CATEGORICAL[i % CATEGORICAL.length];
-      const path = `M ${cx} ${cy} L ${x1} ${y1} A ${r} ${r} 0 ${largeArc} 1 ${x2} ${y2} Z`;
+      // A single slice covering 100% has identical start/end points, so one
+      // arc draws nothing — use two half-circle arcs instead.
+      const path =
+        sweep >= 359.99
+          ? `M ${cx} ${cy - r} A ${r} ${r} 0 1 1 ${cx} ${cy + r} A ${r} ${r} 0 1 1 ${cx} ${cy - r} Z`
+          : `M ${cx} ${cy} L ${x1} ${y1} A ${r} ${r} 0 ${largeArc} 1 ${x2} ${y2} Z`;
       return { cumulative: nextCumulative, items: [...acc.items, { d: path, color, label: d.label, value: d.value, synthetic: d.synthetic }] };
     },
     { cumulative: -90, items: [] },
