@@ -24,10 +24,10 @@ export default function MobileAdvanceView({ initial }: { initial: MobileAdvance[
   async function createRequest() {
     const confirm = await Swal.fire({
       icon: "question",
-      title: "ส่งขอเบิกล่วงหน้า?",
+      title: "ขอเบิกล่วงหน้า?",
       text: `ยอด ${baht(Number(amount))} บาท (หักทั้งหมดในงวดเดียว)`,
       showCancelButton: true,
-      confirmButtonText: "ส่งขออนุมัติ",
+      confirmButtonText: "ขอเบิก",
       cancelButtonText: "ปิด",
       confirmButtonColor: "#16a34a",
     });
@@ -45,7 +45,7 @@ export default function MobileAdvanceView({ initial }: { initial: MobileAdvance[
         setMessage({ ok: false, text: body.message || body.error || "ส่งคำขอไม่สำเร็จ" });
         return;
       }
-      setMessage({ ok: true, text: `ส่งขออนุมัติแล้ว (เลขที่ ${body.documentNo}) — รอผู้อนุมัติพิจารณา` });
+      setMessage({ ok: true, text: `ขอเบิกแล้ว (เลขที่ ${body.documentNo}) — รอผู้อนุมัติพิจารณา` });
       setAmount("");
       setRemark("");
       await reload();
@@ -57,10 +57,10 @@ export default function MobileAdvanceView({ initial }: { initial: MobileAdvance[
   async function act(id: number, action: "SUBMIT" | "CANCEL", docNo: string | null) {
     const confirm = await Swal.fire({
       icon: action === "SUBMIT" ? "question" : "warning",
-      title: action === "SUBMIT" ? "ส่งขออนุมัติอีกครั้ง?" : "ยกเลิกคำขอนี้?",
+      title: action === "SUBMIT" ? "ขอเบิกอีกครั้ง?" : "ยกเลิกคำขอนี้?",
       text: docNo ? `เลขที่เอกสาร ${docNo}` : undefined,
       showCancelButton: true,
-      confirmButtonText: action === "SUBMIT" ? "ส่งขออนุมัติ" : "ยกเลิกคำขอ",
+      confirmButtonText: action === "SUBMIT" ? "ขอเบิก" : "ยกเลิกคำขอ",
       cancelButtonText: "ปิด",
       confirmButtonColor: action === "SUBMIT" ? "#16a34a" : "#dc2626",
     });
@@ -74,7 +74,7 @@ export default function MobileAdvanceView({ initial }: { initial: MobileAdvance[
         setMessage({ ok: false, text: body.message || body.error || "ทำรายการไม่สำเร็จ" });
         return;
       }
-      setMessage({ ok: true, text: action === "SUBMIT" ? "ส่งขออนุมัติแล้ว" : "ยกเลิกคำขอแล้ว" });
+      setMessage({ ok: true, text: action === "SUBMIT" ? "ขอเบิกแล้ว" : "ยกเลิกคำขอแล้ว" });
       await reload();
     } finally {
       setBusy(false);
@@ -98,7 +98,7 @@ export default function MobileAdvanceView({ initial }: { initial: MobileAdvance[
             <input className={`${inputCls} mt-1`} value={remark} maxLength={300} onChange={(e) => setRemark(e.target.value)} />
           </label>
           <button type="button" onClick={createRequest} disabled={busy || !canCreate} className="w-full rounded bg-blue-600 px-4 py-3 text-base font-medium text-white disabled:opacity-50">
-            ส่งขออนุมัติ
+            ขอเบิก
           </button>
         </div>
       </section>
@@ -129,7 +129,7 @@ export default function MobileAdvanceView({ initial }: { initial: MobileAdvance[
                 <div className="mt-2 flex gap-2">
                   {r.status === "DRAFT" && (
                     <button type="button" disabled={busy} onClick={() => act(r.requestHeaderId, "SUBMIT", r.documentNo)} className="rounded bg-green-600 px-3 py-1.5 text-white disabled:opacity-50">
-                      ส่งขออนุมัติอีกครั้ง
+                      ขอเบิกอีกครั้ง
                     </button>
                   )}
                   {(r.status === "DRAFT" || r.status === "SUBMITTED") && (
