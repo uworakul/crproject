@@ -40,7 +40,7 @@ export async function POST(_req: Request, ctx: RouteContext<"/api/inventory/stoc
     if (Number(line.Qty) > 0) {
       const balance = await getStockBalance(existing.SourceWarehouseCode, line.ProductCode);
       if (balance.lt(line.Qty)) {
-        return apiError(422, "INSUFFICIENT_STOCK", undefined, {
+        return apiError(422, "INSUFFICIENT_STOCK", `สินค้า ${line.ProductCode} คงเหลือไม่พอ (คงเหลือ ${balance.toString()}, ต้องการ ${line.Qty.toString()})`, {
           productCode: line.ProductCode,
           warehouseCode: existing.SourceWarehouseCode,
           available: balance.toString(),
@@ -54,7 +54,7 @@ export async function POST(_req: Request, ctx: RouteContext<"/api/inventory/stoc
       });
       const available = secondhand?.Qty ?? line.SecondHandQty.sub(line.SecondHandQty); // 0 with matching precision when no row exists
       if (available.lt(line.SecondHandQty)) {
-        return apiError(422, "INSUFFICIENT_SECONDHAND_STOCK", undefined, {
+        return apiError(422, "INSUFFICIENT_SECONDHAND_STOCK", `สินค้ามือสอง ${line.ProductCode} คงเหลือไม่พอ (คงเหลือ ${available.toString()}, ต้องการ ${line.SecondHandQty.toString()})`, {
           productCode: line.ProductCode,
           warehouseCode: existing.SourceWarehouseCode,
           available: available.toString(),

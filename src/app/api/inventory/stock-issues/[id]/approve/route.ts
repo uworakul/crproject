@@ -60,7 +60,7 @@ export async function POST(_req: Request, ctx: RouteContext<"/api/inventory/stoc
   for (const [productCode, qty] of regularQtyByProduct) {
     const balance = await getStockBalance(warehouseCode, productCode);
     if (balance.lt(qty)) {
-      return apiError(422, "INSUFFICIENT_STOCK", undefined, { productCode, warehouseCode: warehouseCode, available: balance.toString(), requested: qty });
+      return apiError(422, "INSUFFICIENT_STOCK", `สินค้า ${productCode} คงเหลือไม่พอ (คงเหลือ ${balance.toString()}, ต้องการ ${qty})`, { productCode, warehouseCode: warehouseCode, available: balance.toString(), requested: qty });
     }
   }
   for (const line of secondHandLines) {
@@ -69,7 +69,7 @@ export async function POST(_req: Request, ctx: RouteContext<"/api/inventory/stoc
     });
     const available = secondhand?.Qty ?? line.Qty.sub(line.Qty);
     if (available.lt(line.Qty)) {
-      return apiError(422, "INSUFFICIENT_SECONDHAND_STOCK", undefined, {
+      return apiError(422, "INSUFFICIENT_SECONDHAND_STOCK", `สินค้ามือสอง ${line.ProductCode} คงเหลือไม่พอ (คงเหลือ ${available.toString()}, ต้องการ ${line.Qty.toString()})`, {
         productCode: line.ProductCode,
         warehouseCode,
         available: available.toString(),

@@ -43,7 +43,7 @@ export async function POST(request: NextRequest, ctx: RouteContext<"/api/invento
   for (const [productCode, qtyOut] of outboundByProduct) {
     const balance = await getStockBalance(movement.WarehouseCode, productCode);
     if (balance.lt(qtyOut)) {
-      return apiError(422, "INSUFFICIENT_STOCK", undefined, { productCode, warehouseCode: movement.WarehouseCode, available: balance.toString(), requested: qtyOut.toString() });
+      return apiError(422, "INSUFFICIENT_STOCK", `สินค้า ${productCode} คงเหลือไม่พอ (คงเหลือ ${balance.toString()}, ต้องการ ${qtyOut.toString()})`, { productCode, warehouseCode: movement.WarehouseCode, available: balance.toString(), requested: qtyOut.toString() });
     }
   }
 
