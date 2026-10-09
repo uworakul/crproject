@@ -2,7 +2,7 @@ import "server-only";
 import { prisma } from "@/lib/prisma";
 import { EMPLOYEE_TYPE_LABELS, GENDER_LABELS, type EmployeeType, type Gender } from "@/lib/validation";
 import { employeeWhere, type ReportFilters } from "./types";
-import { calculateAge, AGE_BUCKETS, INVALID_AGE_LABEL, OTHER_SITE_LABEL, topSitesOf } from "./dashboard-data";
+import { calculateAge, AGE_BUCKETS, INVALID_AGE_LABEL, OTHER_SITE_LABEL, topSitesOf, buildDamageRows, damagePeriodRange, fmtDateBE as fmtBE, type DamageCategory } from "./dashboard-data";
 
 // Drill-down (2026-09-28) — clicking any bucket/bar/slice/row on the
 // Dashboard shows the underlying employees (or, for leave stats, the
@@ -152,37 +152,92 @@ export async function getAgeBySiteDrilldown(group: string, series: string, filte
   };
 }
 
-// "หนี้สูญ" drilldown (2026-09-29) — unlike every other drilldown here
-// (click a bucket -> see the employees in it), this one is triggered by a
-// "ดูรายละเอียด" button on a specific ROW of getResignedEmployeeBadDebt's
-// table (see BadDebtTableView in charts.tsx), keyed by empCode rather than
-// a bucket/group+series label. Shows that one employee's individual OPEN
-// debt lines (not merged by category — a resigned employee rarely has more
-// than a couple, so there's no need for the ADVANCE-group merge
-// payment-history.ts uses for its filter dropdown).
-export async function getBadDebtDrilldown(empCode: string): Promise<DrilldownResult> {
-  const debts = await prisma.invEmployeeDebt.findMany({
-    where: { EmpCode: empCode, Status: "OPEN", RemainingAmount: { gt: 0 } },
-    include: { DeductionType: { select: { DeductionName: true } } },
-    orderBy: { RemainingAmount: "desc" },
-  });
-  const rows = debts.map((d) => ({
-    debtType: d.DeductionType?.DeductionName ?? d.DeductionCode ?? "-",
-    totalAmount: Number(d.TotalAmount),
-    paidAmount: Number(d.PaidAmount),
-    remainingAmount: Number(d.RemainingAmount),
-    description: d.Description ?? "-",
-  }));
+// "วิเคราะห์ค่าเสียหาย" drilldown (2026-10-09) — two levels:
+//  1) category (chart slice/bar click) -> the site/employee table for that
+//     category (same rows the main table view shows, filtered to one category)
+//  2) one row of that table (empCode, or warehouse code for STOCK_LOSS) -> the
+//     underlying lines (debts / welfare products / lost-stock products).
+export async function getDamageCategoryDrilldown(categoryLabel: string, year: number, month: number | undefined, filters: ReportFilters): Promise<DrilldownResult> {
+  const { rows } = await buildDamageRows(year, month, filters);
+  const filtered = rows.filter((r) => r.categoryLabel === categoryLabel);
+  const isStock = filtered[0]?.category === "STOCK_LOSS";
+  const columns: DrilldownColumn[] = [
+    { key: "siteName", label: isStock ? "คลัง" : "หน่วยงาน" },
+    ...(isStock ? [] : [...EMP_COLS, { key: "startDate", label: "วันเริ่มงาน" }, { key: "resignDate", label: "วันลาออก" }, { key: "tenure", label: "อายุงาน" }]),
+    { key: "amount", label: "ค่าเสียหาย (บาท)", align: "right" },
+  ];
   return {
-    columns: [
-      { key: "debtType", label: "ประเภทหนี้" },
-      { key: "totalAmount", label: "ยอดเต็ม (บาท)", align: "right" },
-      { key: "paidAmount", label: "ชำระแล้ว (บาท)", align: "right" },
-      { key: "remainingAmount", label: "คงเหลือ (บาท)", align: "right" },
-      { key: "description", label: "หมายเหตุ" },
-    ],
-    rows,
+    columns,
+    rows: filtered.map((r) => ({ siteName: r.siteName, empCode: r.empCode ?? "-", fullName: r.fullName ?? "-", startDate: r.startDate, resignDate: r.resignDate, tenure: r.tenure, amount: r.amount })),
   };
+}
+
+export async function getDamageDetailDrilldown(category: DamageCategory, key: string, year: number, month: number | undefined, filters: ReportFilters): Promise<DrilldownResult> {
+  const { start, end } = damagePeriodRange(year, month);
+  const products = await prisma.invProduct.findMany({ select: { ProductCode: true, ProductName: true, UnitCost: true } });
+  const pmap = new Map(products.map((p) => [p.ProductCode, p]));
+  const productCols: DrilldownColumn[] = [
+    { key: "product", label: "สินค้า" },
+    { key: "date", label: "วันที่" },
+    { key: "qty", label: "จำนวน", align: "right" },
+    { key: "unitCost", label: "ต้นทุน/หน่วย (บาท)", align: "right" },
+    { key: "amount", label: "มูลค่า (บาท)", align: "right" },
+  ];
+  const productRow = (code: string, date: Date, qty: number) => {
+    const p = pmap.get(code);
+    const cost = Number(p?.UnitCost ?? 0);
+    return { product: `${code} ${p?.ProductName ?? ""}`.trim(), date: fmtBE(date), qty, unitCost: cost, amount: Math.round(qty * cost * 100) / 100 };
+  };
+
+  if (category === "BAD_DEBT") {
+    const debts = await prisma.invEmployeeDebt.findMany({
+      where: { EmpCode: key, Status: "OPEN", RemainingAmount: { gt: 0 }, Employee: employeeWhere(filters) },
+      include: { DeductionType: { select: { DeductionName: true } } },
+      orderBy: { RemainingAmount: "desc" },
+    });
+    return {
+      columns: [
+        { key: "debtType", label: "ประเภทหนี้" },
+        { key: "totalAmount", label: "ยอดเต็ม (บาท)", align: "right" },
+        { key: "paidAmount", label: "ชำระแล้ว (บาท)", align: "right" },
+        { key: "remainingAmount", label: "คงเหลือ (บาท)", align: "right" },
+        { key: "description", label: "หมายเหตุ" },
+      ],
+      rows: debts.map((d) => ({
+        debtType: d.DeductionType?.DeductionName ?? d.DeductionCode ?? "-",
+        totalAmount: Number(d.TotalAmount),
+        paidAmount: Number(d.PaidAmount),
+        remainingAmount: Number(d.RemainingAmount),
+        description: d.Description ?? "-",
+      })),
+    };
+  }
+
+  if (category === "WELFARE") {
+    const lines = await prisma.invIssueDetail.findMany({
+      where: { IsWelfare: true, Header: { Status: "APPROVED", DeliveryDate: { gte: start, lt: end }, EmpCode: key, Employee: employeeWhere(filters) } },
+      select: { ProductCode: true, Qty: true, Header: { select: { DeliveryDate: true } } },
+      orderBy: { Header: { DeliveryDate: "asc" } },
+    });
+    return { columns: productCols, rows: lines.map((l) => productRow(l.ProductCode, l.Header.DeliveryDate, Number(l.Qty))) };
+  }
+
+  // STOCK_LOSS — key is the warehouse code
+  const lines = await prisma.invStockMovementDetail.findMany({
+    where: {
+      Qty: { lt: 0 },
+      Movement: {
+        MovementType: "ADJUST",
+        Status: "CONFIRMED",
+        WarehouseCode: key,
+        MovementDate: { gte: start, lt: end },
+        ...(filters.allowedCompanyCodes ? { Warehouse: { CompanyCode: { in: filters.allowedCompanyCodes } } } : {}),
+      },
+    },
+    select: { ProductCode: true, Qty: true, Movement: { select: { MovementDate: true } } },
+    orderBy: { Movement: { MovementDate: "asc" } },
+  });
+  return { columns: productCols, rows: lines.map((l) => productRow(l.ProductCode, l.Movement.MovementDate, Math.abs(Number(l.Qty)))) };
 }
 
 export async function getLeaveStatsDrilldown(leaveTypeName: string, year: number, filters: ReportFilters): Promise<DrilldownResult> {

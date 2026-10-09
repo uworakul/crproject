@@ -10,7 +10,8 @@ import {
   getGenderBySiteDrilldown,
   getAgeBySiteDrilldown,
   getLeaveStatsDrilldown,
-  getBadDebtDrilldown,
+  getDamageCategoryDrilldown,
+  getDamageDetailDrilldown,
 } from "@/lib/reports/dashboard-drilldown";
 
 // GET /api/employee-dashboard/drilldown?metric=...&bucket=...&group=...&series=...&...filters
@@ -70,10 +71,21 @@ export async function GET(request: NextRequest) {
     if (!bucket || !year) return apiError(400, "INVALID_PARAMS", "bucket and year are required");
     return apiSuccess(await getLeaveStatsDrilldown(bucket, Number(year), filters));
   }
-  if (metric === "bad-debt") {
-    const empCode = searchParams.get("empCode");
-    if (!empCode) return apiError(400, "INVALID_PARAMS", "empCode is required");
-    return apiSuccess(await getBadDebtDrilldown(empCode));
+  if (metric === "damage-analysis") {
+    const year = searchParams.get("year");
+    if (!year) return apiError(400, "INVALID_PARAMS", "year is required");
+    const monthParam = searchParams.get("month");
+    const month = monthParam ? Number(monthParam) : undefined;
+    // Level 2 (a table row's "ดูรายละเอียด"): category code + row key.
+    const category = searchParams.get("category");
+    const key = searchParams.get("key");
+    if (category && key) {
+      if (category !== "STOCK_LOSS" && category !== "BAD_DEBT" && category !== "WELFARE") return apiError(400, "INVALID_PARAMS", "unknown category");
+      return apiSuccess(await getDamageDetailDrilldown(category, key, Number(year), month, filters));
+    }
+    // Level 1 (chart slice/bar click): category label.
+    if (!bucket) return apiError(400, "INVALID_PARAMS", "bucket or category+key is required");
+    return apiSuccess(await getDamageCategoryDrilldown(bucket, Number(year), month, filters));
   }
   return apiError(404, "METRIC_NOT_FOUND", "Drilldown not supported for this metric", { metric });
 }

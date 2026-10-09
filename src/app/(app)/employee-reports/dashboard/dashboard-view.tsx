@@ -14,9 +14,9 @@ import {
   SitePerformanceTableView,
   UniformProfitTableView,
   ScatterChartView,
-  BadDebtTableView,
+  DamageTableView,
 } from "./charts";
-import type { ChartDatum, GroupedResult, SitePerformanceResult, UniformProfitResult, BadDebtResult } from "@/lib/reports/dashboard-data";
+import type { ChartDatum, GroupedResult, SitePerformanceResult, UniformProfitResult, DamageResult } from "@/lib/reports/dashboard-data";
 import type { DrilldownResult } from "@/lib/reports/dashboard-drilldown";
 
 interface Period {
@@ -162,23 +162,24 @@ const METRICS = [
     views: ["table", "bar", "pie"] as ViewMode[],
     drillable: false,
   },
-  // "หนี้สูญ" (2026-09-29) — outstanding debt of employees who have already
-  // resigned. drillable: true, but unlike every other drillable metric the
-  // click happens per-ROW (a "ดูรายละเอียด" button in BadDebtTableView), not
-  // on a bar/slice — see the isBadDebt render branch below, which skips the
-  // usual TableView/BarChartView onSelect wiring and passes its own
-  // per-row handler instead. table-only: a per-employee debt amount list
-  // has no natural bar/pie/line/scatter reading the way a categorical
-  // breakdown does.
+  // "วิเคราะห์ค่าเสียหาย" (2026-10-09, renamed from "หนี้สูญ") — stock-count
+  // loss + bad debt of resigned employees + welfare (free uniforms at cost).
+  // Filters are deliberately just year (required) / month (optional) / site
+  // (optional) — `siteOnly` swaps the usual company/dept/bank/employee row
+  // for the site dropdown alone; `monthOptional` adds a "- ทั้งปี -" month
+  // choice. Pie/bar slices drill to the site/employee table of that category;
+  // each table row's "ดูรายละเอียด" drills one level further to its lines.
   {
-    key: "bad-debt",
-    label: "หนี้สูญ (พนักงานลาออกแล้ว)",
+    key: "damage-analysis",
+    label: "วิเคราะห์ค่าเสียหาย",
     needsPeriod: false,
-    needsYear: false,
-    needsMonth: false,
-    filterable: true,
-    kind: "bad-debt" as const,
-    views: ["table"] as ViewMode[],
+    needsYear: true,
+    needsMonth: true,
+    monthOptional: true,
+    siteOnly: true,
+    filterable: false,
+    kind: "damage" as const,
+    views: ["table", "pie", "bar"] as ViewMode[],
     drillable: true,
   },
 ] as const;
@@ -212,7 +213,7 @@ export default function DashboardView({
   const [siteCode, setSiteCode] = useState("");
   const [bankCode, setBankCode] = useState("");
   const [empCode, setEmpCode] = useState("");
-  const [result, setResult] = useState<DashboardResult | GroupedResult | SitePerformanceResult | UniformProfitResult | BadDebtResult>(initialResult);
+  const [result, setResult] = useState<DashboardResult | GroupedResult | SitePerformanceResult | UniformProfitResult | DamageResult>(initialResult);
   // Tracks which metric `result` actually holds data for — `result`'s shape
   // ({data,unit} vs {groups,series,unit}) depends on the metric's `kind`, and
   // `result` only changes when load() runs (the "แสดงผล" button). Switching
@@ -259,6 +260,12 @@ export default function DashboardView({
       if (first) setPeriodId(first.PeriodID);
     }
     if (!next.views.includes(viewMode)) setViewMode(next.views[0]);
+    // Month: optional metrics start on "ทั้งปี"; required ones must not be left
+    // blank by a previous optional pick.
+    if (next.needsMonth) {
+      if ("monthOptional" in next && next.monthOptional) setMonth("");
+      else if (month === "") setMonth(String(new Date().getMonth() + 1));
+    }
   }
 
   async function load() {
@@ -270,7 +277,7 @@ export default function DashboardView({
       setMessage("กรุณาระบุปีก่อน");
       return;
     }
-    if (currentMetric.needsMonth && month.trim() === "") {
+    if (currentMetric.needsMonth && !("monthOptional" in currentMetric && currentMetric.monthOptional) && month.trim() === "") {
       setMessage("กรุณาเลือกเดือนก่อน");
       return;
     }
@@ -288,6 +295,7 @@ export default function DashboardView({
         if (bankCode) params.set("bankCode", bankCode);
         if (empCode) params.set("empCode", empCode);
       }
+      if ("siteOnly" in currentMetric && currentMetric.siteOnly && siteCode) params.set("siteCode", siteCode);
       if (currentMetric.needsPeriod && periodId !== "") params.set("periodId", String(periodId));
       if (currentMetric.needsYear && year.trim() !== "") params.set("year", String(toGregorianYear(Number(year))));
       if (currentMetric.needsMonth && month.trim() !== "") params.set("month", month);
@@ -339,7 +347,7 @@ export default function DashboardView({
   const isGrouped = loadedMetricDef.kind === "grouped";
   const isSitePerformance = loadedMetricDef.kind === "site-performance";
   const isUniformProfit = loadedMetricDef.kind === "uniform-profit";
-  const isBadDebt = loadedMetricDef.kind === "bad-debt";
+  const isDamage = loadedMetricDef.kind === "damage";
   const canDrill = loadedMetricDef.drillable;
 
   // Bar/Pie for the two new "kind"s reuse the existing single-series chart
@@ -431,9 +439,24 @@ export default function DashboardView({
           <div>
             <label className="mb-1 block text-xs text-gray-500">เดือน</label>
             <select value={month} onChange={(e) => setMonth(e.target.value)} className={selectCls}>
+              {"monthOptional" in currentMetric && currentMetric.monthOptional && <option value="">- ทั้งปี (ไม่ระบุ) -</option>}
               {Array.from({ length: 12 }, (_, i) => i + 1).map((m) => (
                 <option key={m} value={m}>
                   {m}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
+
+        {"siteOnly" in currentMetric && currentMetric.siteOnly && (
+          <div>
+            <label className="mb-1 block text-xs text-gray-500">หน่วยงาน</label>
+            <select value={siteCode} onChange={(e) => setSiteCode(e.target.value)} className={selectCls}>
+              <option value="">- ทั้งหมด (ไม่ระบุ) -</option>
+              {sites.map((s) => (
+                <option key={s.SiteCode} value={s.SiteCode}>
+                  {s.SiteName}
                 </option>
               ))}
             </select>
@@ -530,7 +553,7 @@ export default function DashboardView({
                     resultTab === "drilldown" ? "border-gray-900 font-medium text-gray-900" : "border-transparent text-gray-500 hover:text-gray-800"
                   }`}
                 >
-                  {isBadDebt ? "รายละเอียดหนี้" : "รายชื่อพนักงาน"}
+                  {isDamage ? "รายละเอียดค่าเสียหาย" : "รายชื่อพนักงาน"}
                   {drilldown ? ` (${drilldown.rows.length.toLocaleString("th-TH")})` : ""}
                 </button>
               </div>
@@ -576,10 +599,27 @@ export default function DashboardView({
                   {viewMode === "bar" && <BarChartView data={uniformProfitBarPieData} unit="บาท" colorFor={profitLossColorFor} />}
                   {viewMode === "pie" && <PieChartView data={uniformProfitBarPieData} unit="บาท" colorFor={profitLossColorFor} />}
                 </>
-              ) : isBadDebt ? (
+              ) : isDamage ? (
                 <>
-                  <p className="mb-2 text-xs text-gray-500">แสดงเฉพาะพนักงานสถานะ &quot;ลาออก&quot; ที่ยังมีหนี้ค้างเปิดอยู่ — คลิก &quot;ดูรายละเอียด&quot; เพื่อดูหนี้แต่ละรายการของคนนั้นในแท็บ &quot;รายละเอียดหนี้&quot;</p>
-                  <BadDebtTableView result={result as BadDebtResult} onViewDetail={(code, fullName) => openDrilldown({ empCode: code }, fullName)} />
+                  <p className="mb-2 text-xs text-gray-500">
+                    ค่าเสียหายจากการนับสต๊อก = ของที่นับได้น้อยกว่าในระบบ (ADJUST ติดลบที่อนุมัติแล้ว) · หนี้สูญ = หนี้ค้างของพนักงานที่ลาออกในช่วงที่เลือก · สวัสดิการ = ค่าชุดที่แจกฟรี คิดที่ต้นทุนปัจจุบัน (ประมาณการ) —{" "}
+                    {viewMode === "table" ? "คลิก \"ดูรายละเอียด\" ที่แถวเพื่อดูรายการย่อย" : "คลิกที่ชิ้นส่วน/แท่งเพื่อดูตารางหน่วยงาน-พนักงานของประเภทนั้น"}
+                  </p>
+                  {(result as DamageResult).stockLossExcluded && (
+                    <p className="mb-2 text-xs text-amber-700">เลือกหน่วยงานแล้ว: ค่าเสียหายจากการนับสต๊อกไม่ถูกรวม เพราะสต๊อกผูกกับคลัง ไม่ผูกกับหน่วยงาน</p>
+                  )}
+                  {viewMode === "table" && (
+                    <DamageTableView
+                      result={result as DamageResult}
+                      onViewDetail={(category, key, title) => openDrilldown({ category, key }, title)}
+                    />
+                  )}
+                  {viewMode === "bar" && (
+                    <BarChartView data={(result as DamageResult).categories} unit="บาท" onSelect={(label) => openDrilldown({ bucket: label }, label)} />
+                  )}
+                  {viewMode === "pie" && (
+                    <PieChartView data={(result as DamageResult).categories} unit="บาท" onSelect={(label) => openDrilldown({ bucket: label }, label)} />
+                  )}
                 </>
               ) : (
                 <>
@@ -614,8 +654,8 @@ export default function DashboardView({
                 />
               ) : (
                 <p className="text-sm text-gray-500">
-                  {isBadDebt
-                    ? 'ยังไม่ได้เลือกรายการ — สลับไปแท็บตาราง แล้วคลิก "ดูรายละเอียด" ที่แถวพนักงานเพื่อดูหนี้ที่นี่'
+                  {isDamage
+                    ? "ยังไม่ได้เลือกรายการ — คลิกที่แผนภูมิ หรือกด \"ดูรายละเอียด\" ในตาราง เพื่อดูรายการที่นี่"
                     : "ยังไม่ได้เลือกรายการ — สลับไปแท็บตาราง แล้วคลิกที่แถวข้อมูลเพื่อดูรายชื่อพนักงานที่นี่"}
                 </p>
               ))}

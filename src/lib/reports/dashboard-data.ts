@@ -421,48 +421,156 @@ export async function getAgeBySite(filters: ReportFilters): Promise<GroupedResul
   return { groups, series, unit: "คน" };
 }
 
-// "หนี้สูญ" (2026-09-29) — outstanding debt of employees who have already
-// RESIGNED, i.e. money that can no longer be recovered through the normal
-// payroll-deduction path since they're off payroll. Scoped to
-// EmployeeStatus="RESIGNED" specifically (not TERMINATED too) — matches
-// the user's own wording ("พนักงานที่ลาออกแล้ว"); TERMINATED employees'
-// debt would arguably qualify the same way but that's a scope call the
-// user didn't make, so it's left out rather than assumed in.
-export interface BadDebtRow {
-  empCode: string;
-  fullName: string;
+// "วิเคราะห์ค่าเสียหาย" (2026-10-09, replaces the old "หนี้สูญ" metric) —
+// three damage categories for one calendar year (+ optional month, + optional
+// site):
+//   STOCK_LOSS — CONFIRMED ADJUST movements with a NEGATIVE Qty (what an
+//                approved stock count writes when the count is below the
+//                ledger), valued at the product's CURRENT UnitCost. A
+//                warehouse has no site/employee, so these rows are grouped by
+//                warehouse and are left out entirely when a site filter is set.
+//   BAD_DEBT   — OPEN inv_employee_debt of employees whose EmployeeStatus is
+//                RESIGNED and whose ResignDate falls in the period.
+//   WELFARE    — IsWelfare lines of APPROVED Issue documents (price is forced
+//                to 0 on those lines, so the damage is Qty x current UnitCost),
+//                by DeliveryDate. Attributed to the employee's DefaultSiteCode.
+// Cost uses today's UnitCost (no per-sale cost snapshot exists) — an estimate,
+// same caveat as the stock/welfare trend metrics above.
+export type DamageCategory = "STOCK_LOSS" | "BAD_DEBT" | "WELFARE";
+export const DAMAGE_CATEGORY_LABELS: Record<DamageCategory, string> = {
+  STOCK_LOSS: "ค่าเสียหายจากการนับสต๊อก (ของหาย)",
+  BAD_DEBT: "หนี้สูญ (พนักงานลาออกแต่ยังมีหนี้ค้าง)",
+  WELFARE: "สวัสดิการ (ค่าชุดไม่มีราคา แต่มีต้นทุน)",
+};
+export const DAMAGE_UNIT = "บาท (ต้นทุนใช้ค่าปัจจุบัน ประมาณการ)";
+
+export interface DamageRow {
+  category: DamageCategory;
+  categoryLabel: string;
+  key: string; // empCode, or warehouse code for STOCK_LOSS — identifies the row for the detail drilldown
+  siteName: string; // employee's site, or "คลัง: <warehouse>" for STOCK_LOSS
+  empCode: string | null;
+  fullName: string | null;
+  startDate: string;
   resignDate: string;
-  deptName: string | null;
-  siteName: string | null;
-  totalRemaining: number;
-  debtCount: number;
+  tenure: string;
+  amount: number;
 }
-export interface BadDebtResult {
-  rows: BadDebtRow[];
+export interface DamageResult {
+  categories: ChartDatum[];
+  rows: DamageRow[];
+  unit: string;
+  stockLossExcluded: boolean; // true when a site filter hides STOCK_LOSS (warehouses have no site)
 }
 
-export async function getResignedEmployeeBadDebt(filters: ReportFilters): Promise<BadDebtResult> {
-  const employees = await prisma.mstEmployee.findMany({
-    where: { ...employeeWhere(filters), EmployeeStatus: "RESIGNED" },
-    include: {
-      Department: { select: { DeptName: true } },
-      Site: { select: { SiteName: true } },
-      Debts: { where: { Status: "OPEN", RemainingAmount: { gt: 0 } }, select: { RemainingAmount: true } },
-    },
+// Buddhist-era YYYY-MM-DD: keeps the app-wide พ.ศ. display convention while
+// still sorting correctly as a plain string.
+export function fmtDateBE(d: Date | null | undefined): string {
+  if (!d) return "-";
+  const iso = d.toISOString().slice(0, 10);
+  return `${Number(iso.slice(0, 4)) + 543}${iso.slice(4)}`;
+}
+
+export function formatTenure(start: Date | null | undefined, end: Date | null | undefined): string {
+  if (!start) return "-";
+  const to = end ?? new Date();
+  let months = (to.getUTCFullYear() - start.getUTCFullYear()) * 12 + (to.getUTCMonth() - start.getUTCMonth());
+  if (to.getUTCDate() < start.getUTCDate()) months -= 1;
+  if (months < 0) months = 0;
+  const y = Math.floor(months / 12);
+  const m = months % 12;
+  return y > 0 ? `${y} ปี ${m} เดือน` : `${m} เดือน`;
+}
+
+export function damagePeriodRange(year: number, month?: number): { start: Date; end: Date } {
+  return month
+    ? { start: new Date(Date.UTC(year, month - 1, 1)), end: new Date(Date.UTC(year, month, 1)) }
+    : { start: new Date(Date.UTC(year, 0, 1)), end: new Date(Date.UTC(year + 1, 0, 1)) };
+}
+
+export async function buildDamageRows(year: number, month: number | undefined, filters: ReportFilters): Promise<{ rows: DamageRow[]; stockLossExcluded: boolean }> {
+  const { start, end } = damagePeriodRange(year, month);
+  const empWhere = employeeWhere(filters);
+  const stockLossExcluded = !!filters.siteCode;
+  const empInfo = (e: { EmpCode: string; FullName: string; StartDate: Date | null; ResignDate: Date | null; Site: { SiteName: string } | null }) => ({
+    empCode: e.EmpCode,
+    fullName: e.FullName,
+    siteName: e.Site?.SiteName ?? "(ไม่ระบุหน่วยงาน)",
+    startDate: fmtDateBE(e.StartDate),
+    resignDate: fmtDateBE(e.ResignDate),
+    tenure: formatTenure(e.StartDate, e.ResignDate),
   });
+  const empSelect = { EmpCode: true, FullName: true, StartDate: true, ResignDate: true, Site: { select: { SiteName: true } } } as const;
 
-  const rows: BadDebtRow[] = employees
-    .map((e) => ({
-      empCode: e.EmpCode,
-      fullName: e.FullName,
-      resignDate: e.ResignDate ? e.ResignDate.toLocaleDateString("th-TH") : "-",
-      deptName: e.Department?.DeptName ?? null,
-      siteName: e.Site?.SiteName ?? null,
-      totalRemaining: Math.round(e.Debts.reduce((s, d) => s + Number(d.RemainingAmount), 0) * 100) / 100,
-      debtCount: e.Debts.length,
-    }))
-    .filter((r) => r.totalRemaining > 0)
-    .sort((a, b) => b.totalRemaining - a.totalRemaining);
+  const [stockLines, welfareLines, resigned, products] = await Promise.all([
+    stockLossExcluded
+      ? Promise.resolve([])
+      : prisma.invStockMovementDetail.findMany({
+          where: {
+            Qty: { lt: 0 },
+            Movement: {
+              MovementType: "ADJUST",
+              Status: "CONFIRMED",
+              MovementDate: { gte: start, lt: end },
+              ...(filters.allowedCompanyCodes ? { Warehouse: { CompanyCode: { in: filters.allowedCompanyCodes } } } : {}),
+            },
+          },
+          select: { ProductCode: true, Qty: true, Movement: { select: { WarehouseCode: true, Warehouse: { select: { WarehouseName: true } } } } },
+        }),
+    prisma.invIssueDetail.findMany({
+      where: { IsWelfare: true, Header: { Status: "APPROVED", DeliveryDate: { gte: start, lt: end }, Employee: empWhere } },
+      select: { ProductCode: true, Qty: true, Header: { select: { Employee: { select: empSelect } } } },
+    }),
+    prisma.mstEmployee.findMany({
+      where: { ...empWhere, EmployeeStatus: "RESIGNED", ResignDate: { gte: start, lt: end } },
+      select: { ...empSelect, Debts: { where: { Status: "OPEN", RemainingAmount: { gt: 0 } }, select: { RemainingAmount: true } } },
+    }),
+    prisma.invProduct.findMany({ select: { ProductCode: true, UnitCost: true } }),
+  ]);
+  const unitCost = new Map(products.map((p) => [p.ProductCode, Number(p.UnitCost)]));
+  const round2 = (n: number) => Math.round(n * 100) / 100;
+  const rows: DamageRow[] = [];
 
-  return { rows };
+  const stockByWh = new Map<string, { name: string; amount: number }>();
+  for (const l of stockLines) {
+    const wh = l.Movement.WarehouseCode;
+    const cur = stockByWh.get(wh) ?? { name: l.Movement.Warehouse.WarehouseName, amount: 0 };
+    cur.amount += Math.abs(Number(l.Qty)) * (unitCost.get(l.ProductCode) ?? 0);
+    stockByWh.set(wh, cur);
+  }
+  for (const [wh, v] of stockByWh) {
+    if (v.amount <= 0) continue;
+    rows.push({ category: "STOCK_LOSS", categoryLabel: DAMAGE_CATEGORY_LABELS.STOCK_LOSS, key: wh, siteName: `คลัง: ${v.name}`, empCode: null, fullName: null, startDate: "-", resignDate: "-", tenure: "-", amount: round2(v.amount) });
+  }
+
+  for (const e of resigned) {
+    const amount = round2(e.Debts.reduce((s, d) => s + Number(d.RemainingAmount), 0));
+    if (amount <= 0) continue;
+    rows.push({ category: "BAD_DEBT", categoryLabel: DAMAGE_CATEGORY_LABELS.BAD_DEBT, key: e.EmpCode, ...empInfo(e), amount });
+  }
+
+  const welfareByEmp = new Map<string, DamageRow>();
+  for (const l of welfareLines) {
+    const e = l.Header.Employee;
+    const amt = Number(l.Qty) * (unitCost.get(l.ProductCode) ?? 0);
+    const row: DamageRow = welfareByEmp.get(e.EmpCode) ?? { category: "WELFARE", categoryLabel: DAMAGE_CATEGORY_LABELS.WELFARE, key: e.EmpCode, ...empInfo(e), amount: 0 };
+    row.amount += amt;
+    welfareByEmp.set(e.EmpCode, row);
+  }
+  for (const row of welfareByEmp.values()) {
+    row.amount = round2(row.amount);
+    if (row.amount > 0) rows.push(row);
+  }
+
+  rows.sort((a, b) => b.amount - a.amount);
+  return { rows, stockLossExcluded };
+}
+
+export async function getDamageAnalysis(year: number, month: number | undefined, filters: ReportFilters): Promise<DamageResult> {
+  const { rows, stockLossExcluded } = await buildDamageRows(year, month, filters);
+  const categories = (Object.keys(DAMAGE_CATEGORY_LABELS) as DamageCategory[]).map((c) => ({
+    label: DAMAGE_CATEGORY_LABELS[c],
+    value: Math.round(rows.filter((r) => r.category === c).reduce((s, r) => s + r.amount, 0) * 100) / 100,
+  }));
+  return { categories, rows, unit: DAMAGE_UNIT, stockLossExcluded };
 }

@@ -10,7 +10,7 @@
 // and a native <title> tooltip on every mark. Light mode only — this app
 // has no dark theme.
 import { useState } from "react";
-import type { ChartDatum, GroupedResult, SitePerformanceResult, UniformProfitResult, BadDebtResult } from "@/lib/reports/dashboard-data";
+import type { ChartDatum, GroupedResult, SitePerformanceResult, UniformProfitResult, DamageResult } from "@/lib/reports/dashboard-data";
 import type { DrilldownResult } from "@/lib/reports/dashboard-drilldown";
 
 function formatBaht(v: number) {
@@ -430,52 +430,65 @@ export function UniformProfitTableView({ result }: { result: UniformProfitResult
   );
 }
 
-// "หนี้สูญ" (2026-09-29) — per-row "ดูรายละเอียด" opens that employee's own
-// debt breakdown via the generic drilldown mechanism (onViewDetail is
-// dashboard-view.tsx's openDrilldown({empCode}, fullName), same one every
-// other metric's bucket-click uses — this just triggers it from a button
-// instead of a bar/slice).
-export function BadDebtTableView({ result, onViewDetail }: { result: BadDebtResult; onViewDetail: (empCode: string, fullName: string) => void }) {
-  if (result.rows.length === 0) return <p className="text-sm text-gray-500">ไม่มีพนักงานลาออกที่มีหนี้ค้าง</p>;
-  const total = result.rows.reduce((s, r) => s + r.totalRemaining, 0);
+// "วิเคราะห์ค่าเสียหาย" (2026-10-09) — table by site + employee with start /
+// resign date / tenure, one row per (category, employee) — or per warehouse for
+// the stock-count loss category, which has no employee. "ดูรายละเอียด" opens
+// that row's underlying lines in the drilldown tab (onViewDetail is
+// dashboard-view.tsx's openDrilldown, same mechanism as the chart clicks).
+export function DamageTableView({ result, onViewDetail }: { result: DamageResult; onViewDetail: (category: string, key: string, title: string) => void }) {
+  if (result.rows.length === 0) return <p className="text-sm text-gray-500">ไม่พบค่าเสียหายในช่วงที่เลือก</p>;
+  const grandTotal = result.rows.reduce((s, r) => s + r.amount, 0);
+  const order = ["STOCK_LOSS", "BAD_DEBT", "WELFARE"];
+  const rows = [...result.rows].sort((a, b) => order.indexOf(a.category) - order.indexOf(b.category) || b.amount - a.amount);
   return (
     <div className="overflow-x-auto">
       <table className="w-full min-w-max border-collapse text-sm">
         <thead>
           <tr className="border-b border-gray-300 text-left text-gray-600">
+            <th className="py-2 pr-4">ประเภทค่าเสียหาย</th>
+            <th className="py-2 pr-4">หน่วยงาน</th>
             <th className="py-2 pr-4">รหัสพนักงาน</th>
             <th className="py-2 pr-4">ชื่อ-นามสกุล</th>
-            <th className="py-2 pr-4">แผนก</th>
-            <th className="py-2 pr-4">หน่วยงาน</th>
-            <th className="py-2 pr-4">วันที่ลาออก</th>
-            <th className="py-2 pr-4 text-right">จำนวนรายการหนี้</th>
-            <th className="py-2 pr-4 text-right">ยอดหนี้ค้าง (บาท)</th>
+            <th className="py-2 pr-4">วันเริ่มงาน</th>
+            <th className="py-2 pr-4">วันลาออก</th>
+            <th className="py-2 pr-4">อายุงาน</th>
+            <th className="py-2 pr-4 text-right">ค่าเสียหาย (บาท)</th>
             <th className="py-2 pr-4"></th>
           </tr>
         </thead>
         <tbody>
-          {result.rows.map((r) => (
-            <tr key={r.empCode} className="border-b border-gray-100 hover:bg-gray-50">
-              <td className="py-2 pr-4">{r.empCode}</td>
-              <td className="py-2 pr-4">{r.fullName}</td>
-              <td className="py-2 pr-4">{r.deptName ?? "-"}</td>
-              <td className="py-2 pr-4">{r.siteName ?? "-"}</td>
+          {rows.map((r) => (
+            <tr key={`${r.category}-${r.key}`} className="border-b border-gray-100 hover:bg-purple-50">
+              <td className="py-2 pr-4">{r.categoryLabel}</td>
+              <td className="py-2 pr-4">{r.siteName}</td>
+              <td className="py-2 pr-4">{r.empCode ?? "-"}</td>
+              <td className="py-2 pr-4">{r.fullName ?? "-"}</td>
+              <td className="py-2 pr-4">{r.startDate}</td>
               <td className="py-2 pr-4">{r.resignDate}</td>
-              <td className="py-2 pr-4 text-right tabular-nums">{r.debtCount.toLocaleString("th-TH")}</td>
-              <td className="py-2 pr-4 text-right tabular-nums text-red-600">{formatBaht(r.totalRemaining)}</td>
+              <td className="py-2 pr-4">{r.tenure}</td>
+              <td className="py-2 pr-4 text-right tabular-nums text-red-600">{formatBaht(r.amount)}</td>
               <td className="py-2 pr-4">
-                <button type="button" onClick={() => onViewDetail(r.empCode, r.fullName)} className="text-xs text-blue-600 hover:underline">
+                <button type="button" onClick={() => onViewDetail(r.category, r.key, `${r.categoryLabel} — ${r.fullName ?? r.siteName}`)} className="text-xs text-blue-600 hover:underline">
                   ดูรายละเอียด
                 </button>
               </td>
             </tr>
           ))}
-          <tr className="font-medium">
-            <td className="py-2 pr-4" colSpan={6}>
-              รวม
+          {result.categories.map((c) => (
+            <tr key={c.label} className="text-gray-700">
+              <td className="py-1 pr-4" colSpan={7}>
+                รวม {c.label}
+              </td>
+              <td className="py-1 pr-4 text-right tabular-nums">{formatBaht(c.value)}</td>
+              <td />
+            </tr>
+          ))}
+          <tr className="border-t border-gray-300 font-medium">
+            <td className="py-2 pr-4" colSpan={7}>
+              รวมค่าเสียหายทั้งหมด
             </td>
-            <td className="py-2 pr-4 text-right tabular-nums text-red-600">{formatBaht(total)}</td>
-            <td className="py-2 pr-4"></td>
+            <td className="py-2 pr-4 text-right tabular-nums text-red-600">{formatBaht(grandTotal)}</td>
+            <td />
           </tr>
         </tbody>
       </table>

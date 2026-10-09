@@ -14,7 +14,7 @@ import {
   getLeaveStatsByType,
   getSitePerformance,
   getUniformProfitBySite,
-  getResignedEmployeeBadDebt,
+  getDamageAnalysis,
 } from "@/lib/reports/dashboard-data";
 
 // GET /api/employee-dashboard?metric=...&...filters
@@ -71,6 +71,11 @@ export async function GET(request: NextRequest) {
     if (!year || !month) return apiError(400, "INVALID_PARAMS", "year and month are required for this metric");
     return apiSuccess(await getUniformProfitBySite(Number(year), Number(month), filters));
   }
-  if (metric === "bad-debt") return apiSuccess(await getResignedEmployeeBadDebt(filters));
+  if (metric === "damage-analysis") {
+    const year = searchParams.get("year");
+    if (!year) return apiError(400, "INVALID_PARAMS", "year is required for this metric");
+    const month = searchParams.get("month");
+    return apiSuccess(await getDamageAnalysis(Number(year), month ? Number(month) : undefined, filters));
+  }
   return apiError(404, "METRIC_NOT_FOUND", "Unknown metric", { metric });
 }
