@@ -26,10 +26,11 @@ export default async function StockIssueDetailPage({ params }: { params: Promise
   });
   if (!header) notFound();
 
-  const [canSave, canApprove, products] = await Promise.all([
+  const [canSave, canApprove, products, warehouses] = await Promise.all([
     hasPermission(user, "STOCK_ISSUE", "save"),
     hasPermission(user, "STOCK_ISSUE", "approve"),
     prisma.invProduct.findMany({ where: { IsActive: true }, orderBy: { ProductCode: "asc" } }),
+    prisma.invWarehouse.findMany({ where: { IsActive: true }, orderBy: { WarehouseCode: "asc" }, select: { WarehouseCode: true, WarehouseName: true } }),
   ]);
 
   return (
@@ -45,6 +46,7 @@ export default async function StockIssueDetailPage({ params }: { params: Promise
         canSave={canSave}
         canApprove={canApprove}
         products={JSON.parse(JSON.stringify(products))}
+        warehouses={warehouses}
       />
     </div>
   );

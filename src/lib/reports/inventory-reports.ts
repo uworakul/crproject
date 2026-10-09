@@ -196,7 +196,7 @@ export async function getWelfareReport(f: InvReportFilters): Promise<InvReportTa
       date: dateStr(d.Header.DeliveryDate),
       documentNo: d.Header.DocumentNo ?? "-",
       employee: `${d.Header.EmpCode} ${d.Header.Employee.FullName}`,
-      warehouse: `${d.Header.WarehouseCode} ${d.Header.Warehouse.WarehouseName}`,
+      warehouse: d.Header.Warehouse ? `${d.Header.WarehouseCode} ${d.Header.Warehouse.WarehouseName}` : "(รอเลือกคลัง)",
       product: `${d.ProductCode} ${d.Product.ProductName}${d.IsSecondHand ? " (มือสอง)" : ""}`,
       qty: fmt(d.Qty),
       value: fmt(value),

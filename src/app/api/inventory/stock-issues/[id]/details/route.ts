@@ -76,25 +76,30 @@ export async function POST(request: NextRequest, ctx: RouteContext<"/api/invento
 
   // Check against the issuing warehouse's live balance up front (not just
   // at approve time) so the person entering the sale finds out immediately.
-  if (isSecondHand) {
+  // A MOBILE request has no warehouse until the approver picks one — the
+  // stock check then happens at approve time instead.
+  const warehouseCode = header.WarehouseCode;
+  if (!warehouseCode) {
+    // skip live-balance check
+  } else if (isSecondHand) {
     const secondhand = await prisma.invSecondhandStock.findUnique({
-      where: { WarehouseCode_ProductCode: { WarehouseCode: header.WarehouseCode, ProductCode: productCode } },
+      where: { WarehouseCode_ProductCode: { WarehouseCode: warehouseCode, ProductCode: productCode } },
     });
     const available = secondhand?.Qty ?? 0;
     if (Number(available) < qty) {
       return apiError(422, "INSUFFICIENT_SECONDHAND_STOCK", `สินค้ามือสองคงเหลือไม่พอ (คงเหลือ ${available.toString()})`, {
         productCode,
-        warehouseCode: header.WarehouseCode,
+        warehouseCode,
         available: available.toString(),
         requested: qty,
       });
     }
   } else {
-    const balance = await getStockBalance(header.WarehouseCode, productCode);
+    const balance = await getStockBalance(warehouseCode, productCode);
     if (balance.lt(qty)) {
       return apiError(422, "INSUFFICIENT_STOCK", `สินค้าคงเหลือไม่พอ (คงเหลือ ${balance.toString()})`, {
         productCode,
-        warehouseCode: header.WarehouseCode,
+        warehouseCode,
         available: balance.toString(),
         requested: qty,
       });

@@ -88,7 +88,8 @@ export async function PUT(request: NextRequest, ctx: RouteContext<"/api/inventor
   // Same live-balance check as adding a line — a DRAFT issue hasn't posted
   // to the ledger yet, so this checks the requested new qty directly
   // against the current balance (not a delta off the old value).
-  if (body.qty !== undefined) {
+  // No warehouse yet (MOBILE request awaiting the approver) -> nothing to check against.
+  if (body.qty !== undefined && header.WarehouseCode) {
     if (existing.IsSecondHand) {
       const secondhand = await prisma.invSecondhandStock.findUnique({
         where: { WarehouseCode_ProductCode: { WarehouseCode: header.WarehouseCode, ProductCode: existing.ProductCode } },

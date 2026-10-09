@@ -61,8 +61,8 @@ interface DetailRow {
 interface IssueDoc {
   IssueHeaderID: number;
   DocumentNo: string | null;
-  WarehouseCode: string;
-  Warehouse: { WarehouseName: string };
+  WarehouseCode: string | null;
+  Warehouse: { WarehouseName: string } | null;
   EmpCode: string;
   Employee: { FullName: string; Site: { SiteName: string } | null };
   DeliveryNo: string | null;
@@ -86,13 +86,16 @@ export default function StockIssueDetailView({
   canSave,
   canApprove,
   products,
+  warehouses,
 }: {
   issue: IssueDoc;
   canSave: boolean;
   canApprove: boolean;
   products: { ProductCode: string; ProductName: string; UnitPrice: string }[];
+  warehouses: { WarehouseCode: string; WarehouseName: string }[];
 }) {
   const router = useRouter();
+  const [warehouseCode, setWarehouseCode] = useState(issue.WarehouseCode ?? "");
   const [deliveryNo, setDeliveryNo] = useState(issue.DeliveryNo ?? "");
   const [cashReceived, setCashReceived] = useState(issue.CashReceived);
   const [deductPerPeriod, setDeductPerPeriod] = useState(issue.DeductPerPeriod ?? "");
@@ -130,7 +133,7 @@ export default function StockIssueDetailView({
     await call("", {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ deliveryNo, cashReceived, deductPerPeriod: deductPerPeriod === "" ? null : deductPerPeriod, remark }),
+      body: JSON.stringify({ warehouseCode: warehouseCode || undefined, deliveryNo, cashReceived, deductPerPeriod: deductPerPeriod === "" ? null : deductPerPeriod, remark }),
     });
   }
 
@@ -186,9 +189,19 @@ export default function StockIssueDetailView({
         </div>
         <div>
           <div className="text-gray-500">คลังที่เบิกจำหน่าย</div>
-          <div>
-            {issue.WarehouseCode} — {issue.Warehouse.WarehouseName}
-          </div>
+          {canEditRows ? (
+            <select value={warehouseCode} onChange={(e) => setWarehouseCode(e.target.value)} className="rounded border border-gray-300 px-3 py-2">
+              <option value="">- เลือกคลัง (กดบันทึกด้านล่าง) -</option>
+              {warehouses.map((w) => (
+                <option key={w.WarehouseCode} value={w.WarehouseCode}>
+                  {w.WarehouseCode} — {w.WarehouseName}
+                </option>
+              ))}
+            </select>
+          ) : (
+            <div>{issue.Warehouse ? `${issue.WarehouseCode} — ${issue.Warehouse.WarehouseName}` : "-"}</div>
+          )}
+          {!issue.WarehouseCode && issue.Status !== "APPROVED" && <div className="mt-1 text-xs text-amber-700">ใบเบิกจากมือถือยังไม่ระบุคลัง — เลือกคลังแล้วกดบันทึกก่อนอนุมัติ</div>}
         </div>
         <div>
           <div className="text-gray-500">พนักงาน / หน่วยงานต้นสังกัด</div>

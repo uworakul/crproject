@@ -47,11 +47,20 @@ export async function PUT(request: NextRequest, ctx: RouteContext<"/api/inventor
     return apiError(409, "STOCK_ISSUE_LOCKED", "An APPROVED issue can no longer be edited", { status: existing.Status });
   }
 
-  let body: { deliveryNo?: unknown; deliveryDate?: unknown; cashReceived?: unknown; deductPerPeriod?: unknown; remark?: unknown };
+  let body: { warehouseCode?: unknown; deliveryNo?: unknown; deliveryDate?: unknown; cashReceived?: unknown; deductPerPeriod?: unknown; remark?: unknown };
   try {
     body = await request.json();
   } catch {
     return apiError(400, "INVALID_PARAMS", "Request body must be JSON");
+  }
+
+  // The approver/admin picks the warehouse here for a MOBILE request that
+  // arrived without one (or corrects it on a desktop-created document).
+  let warehouseCode: string | undefined;
+  if (typeof body.warehouseCode === "string" && body.warehouseCode.trim()) {
+    warehouseCode = body.warehouseCode.trim();
+    const warehouse = await prisma.invWarehouse.findUnique({ where: { WarehouseCode: warehouseCode } });
+    if (!warehouse) return apiError(404, "WAREHOUSE_NOT_FOUND");
   }
 
   let deliveryDate: Date | undefined;
@@ -77,6 +86,7 @@ export async function PUT(request: NextRequest, ctx: RouteContext<"/api/inventor
   const updated = await prisma.invIssueHeader.update({
     where: { IssueHeaderID: issueId },
     data: {
+      WarehouseCode: warehouseCode,
       DeliveryNo: body.deliveryNo === null ? null : typeof body.deliveryNo === "string" ? body.deliveryNo.trim() || null : undefined,
       DeliveryDate: deliveryDate,
       CashReceived: cashReceived,

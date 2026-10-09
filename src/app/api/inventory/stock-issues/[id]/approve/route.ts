@@ -40,6 +40,13 @@ export async function POST(_req: Request, ctx: RouteContext<"/api/inventory/stoc
     return apiError(422, "NO_DETAIL_ROWS", "This issue has no product lines to approve");
   }
 
+  // MOBILE requests arrive without a warehouse — the approver must pick one
+  // (PUT /api/inventory/stock-issues/[id]) before the stock can be posted.
+  const warehouseCode = existing.WarehouseCode;
+  if (!warehouseCode) {
+    return apiError(422, "WAREHOUSE_REQUIRED", "กรุณาเลือกคลังที่เบิกจำหน่ายก่อนอนุมัติ (ที่หน้ารายละเอียดเอกสาร)");
+  }
+
   const regularLines = existing.Details.filter((d) => !d.IsSecondHand);
   const secondHandLines = existing.Details.filter((d) => d.IsSecondHand);
 
@@ -51,20 +58,20 @@ export async function POST(_req: Request, ctx: RouteContext<"/api/inventory/stoc
     regularQtyByProduct.set(line.ProductCode, (regularQtyByProduct.get(line.ProductCode) ?? 0) + Number(line.Qty));
   }
   for (const [productCode, qty] of regularQtyByProduct) {
-    const balance = await getStockBalance(existing.WarehouseCode, productCode);
+    const balance = await getStockBalance(warehouseCode, productCode);
     if (balance.lt(qty)) {
-      return apiError(422, "INSUFFICIENT_STOCK", undefined, { productCode, warehouseCode: existing.WarehouseCode, available: balance.toString(), requested: qty });
+      return apiError(422, "INSUFFICIENT_STOCK", undefined, { productCode, warehouseCode: warehouseCode, available: balance.toString(), requested: qty });
     }
   }
   for (const line of secondHandLines) {
     const secondhand = await prisma.invSecondhandStock.findUnique({
-      where: { WarehouseCode_ProductCode: { WarehouseCode: existing.WarehouseCode, ProductCode: line.ProductCode } },
+      where: { WarehouseCode_ProductCode: { WarehouseCode: warehouseCode, ProductCode: line.ProductCode } },
     });
     const available = secondhand?.Qty ?? line.Qty.sub(line.Qty);
     if (available.lt(line.Qty)) {
       return apiError(422, "INSUFFICIENT_SECONDHAND_STOCK", undefined, {
         productCode: line.ProductCode,
-        warehouseCode: existing.WarehouseCode,
+        warehouseCode,
         available: available.toString(),
         requested: line.Qty.toString(),
       });
@@ -84,7 +91,7 @@ export async function POST(_req: Request, ctx: RouteContext<"/api/inventory/stoc
       await tx.invStockMovement.create({
         data: {
           MovementType: "ISSUE",
-          WarehouseCode: existing.WarehouseCode,
+          WarehouseCode: warehouseCode,
           EmpCode: existing.EmpCode,
           MovementDate: existing.DeliveryDate,
           Status: "CONFIRMED",
@@ -98,7 +105,7 @@ export async function POST(_req: Request, ctx: RouteContext<"/api/inventory/stoc
 
     for (const line of secondHandLines) {
       const row = await tx.invSecondhandStock.findUnique({
-        where: { WarehouseCode_ProductCode: { WarehouseCode: existing.WarehouseCode, ProductCode: line.ProductCode } },
+        where: { WarehouseCode_ProductCode: { WarehouseCode: warehouseCode, ProductCode: line.ProductCode } },
       });
       await tx.invSecondhandStock.update({
         where: { SecondhandStockID: row!.SecondhandStockID },

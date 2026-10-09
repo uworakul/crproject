@@ -1195,7 +1195,9 @@ model InvTransferDetail {
 model InvIssueHeader {
   IssueHeaderID   Int       @id(map: "PK_inv_issue_header") @default(autoincrement())
   DocumentNo      String?   @db.VarChar(20)
-  WarehouseCode   String    @db.VarChar(10)
+  // Nullable (2026-10-09): a MOBILE self-service uniform request has no
+  // warehouse yet — the approver/admin picks it before approving.
+  WarehouseCode   String?   @db.VarChar(10)
   DeliveryNo      String?   @db.VarChar(50)
   DeliveryDate    DateTime  @db.Date
   EmpCode         String    @db.VarChar(15)
@@ -1214,7 +1216,7 @@ model InvIssueHeader {
   UpdatedDate     DateTime? @db.DateTime
   UpdatedBy       String?   @db.VarChar(20)
 
-  Warehouse InvWarehouse     @relation(fields: [WarehouseCode], references: [WarehouseCode], map: "FK_inv_issue_header_warehouse", onUpdate: NoAction, onDelete: NoAction)
+  Warehouse InvWarehouse?    @relation(fields: [WarehouseCode], references: [WarehouseCode], map: "FK_inv_issue_header_warehouse", onUpdate: NoAction, onDelete: NoAction)
   Employee  MstEmployee      @relation(fields: [EmpCode], references: [EmpCode], map: "FK_inv_issue_header_employee", onUpdate: NoAction, onDelete: NoAction)
   Creator   SysUser          @relation("IssueHeaderCreatedBy", fields: [CreatedBy], references: [UserID], map: "FK_inv_issue_header_sys_user_created", onUpdate: NoAction, onDelete: NoAction)
   Approver  SysUser?         @relation("IssueHeaderApprovedBy", fields: [ApprovedBy], references: [UserID], map: "FK_inv_issue_header_sys_user_approved", onUpdate: NoAction, onDelete: NoAction)

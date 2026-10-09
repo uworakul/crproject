@@ -21,8 +21,8 @@ async function confirmDeleteStockIssue(label: string): Promise<boolean> {
 interface HeaderRow {
   IssueHeaderID: number;
   DocumentNo: string | null;
-  WarehouseCode: string;
-  Warehouse: { WarehouseName: string };
+  WarehouseCode: string | null;
+  Warehouse: { WarehouseName: string } | null;
   EmpCode: string;
   Employee: { FullName: string; Site: { SiteName: string } | null };
   DeliveryNo: string | null;
@@ -132,7 +132,7 @@ export default function StockIssueListView({
                     </Link>
                   </td>
                   <td className="px-3 py-2 text-gray-500">
-                    {r.WarehouseCode} — {r.Warehouse.WarehouseName}
+                    {r.Warehouse ? `${r.WarehouseCode} — ${r.Warehouse.WarehouseName}` : "(รอเลือกคลัง)"}
                   </td>
                   <td className="px-3 py-2 text-gray-500">
                     {r.EmpCode} — {r.Employee.FullName}

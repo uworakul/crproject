@@ -112,7 +112,7 @@ export default async function StockApprovalsPage() {
       docType: "ISSUE" as const,
       headerId: r.IssueHeaderID,
       documentNo: r.DocumentNo,
-      warehouseLabel: `${r.WarehouseCode} — ${r.Warehouse.WarehouseName}`,
+      warehouseLabel: r.Warehouse ? `${r.WarehouseCode} — ${r.Warehouse.WarehouseName}` : "(รอเลือกคลัง)",
       date: r.DeliveryDate,
       remark: r.Remark,
       itemCount: r.Details.length,
