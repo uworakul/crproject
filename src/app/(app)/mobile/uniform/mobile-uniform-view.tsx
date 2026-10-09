@@ -17,6 +17,12 @@ export default function MobileUniformView({ initial }: { initial: MobileUniformD
   const [data, setData] = useState(initial);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
+  // The inline message sits below the form, off-screen on a phone — a result
+  // also pops up so a failed request is never silent.
+  function notify(m: { ok: boolean; text: string }) {
+    setMessage(m);
+    Swal.fire({ icon: m.ok ? "success" : "error", title: m.ok ? "สำเร็จ" : "ทำรายการไม่สำเร็จ", text: m.text, confirmButtonText: "ปิด" });
+  }
   const [cart, setCart] = useState<CartLine[]>([]);
   const [productCode, setProductCode] = useState("");
   const [qty, setQty] = useState("1");
@@ -64,10 +70,10 @@ export default function MobileUniformView({ initial }: { initial: MobileUniformD
       });
       const body = await res.json();
       if (!res.ok) {
-        setMessage({ ok: false, text: body.message || body.error || "ส่งคำขอไม่สำเร็จ" });
+        notify({ ok: false, text: body.message || body.error || "ส่งคำขอไม่สำเร็จ" });
         return;
       }
-      setMessage({ ok: true, text: `ขอเบิกแล้ว (เลขที่ ${body.documentNo}) — รอผู้อนุมัติพิจารณา` });
+      notify({ ok: true, text: `ขอเบิกแล้ว (เลขที่ ${body.documentNo}) — รอผู้อนุมัติพิจารณา` });
       setCart([]);
       setRemark("");
       await reload();
@@ -93,10 +99,10 @@ export default function MobileUniformView({ initial }: { initial: MobileUniformD
       const res = await fetch(`/api/mobile/uniform/${id}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action }) });
       const body = await res.json();
       if (!res.ok) {
-        setMessage({ ok: false, text: body.message || body.error || "ทำรายการไม่สำเร็จ" });
+        notify({ ok: false, text: body.message || body.error || "ทำรายการไม่สำเร็จ" });
         return;
       }
-      setMessage({ ok: true, text: action === "SUBMIT" ? "ขอเบิกแล้ว" : "ยกเลิกคำขอแล้ว" });
+      notify({ ok: true, text: action === "SUBMIT" ? "ขอเบิกแล้ว" : "ยกเลิกคำขอแล้ว" });
       await reload();
     } finally {
       setBusy(false);
