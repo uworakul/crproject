@@ -36,4 +36,5 @@ export function geolocationIsAllowedHere(): boolean {
   return typeof window !== "undefined" && window.isSecureContext;
 }
 
-export const thaiDateTime = (d: string | Date) => new Date(d).toLocaleString("th-TH", { dateStyle: "medium", timeStyle: "medium", timeZone: "Asia/Bangkok" });
+export const thaiDateTime = (d: string | Date) =>
+  `${new Date(d).toLocaleDateString("th-TH", { dateStyle: "medium", timeZone: "Asia/Bangkok" })} ${new Date(d).toLocaleTimeString("th-TH", { hour12: false, hour: "2-digit", minute: "2-digit", timeZone: "Asia/Bangkok" }).replace(":", ".")}`;

@@ -6,7 +6,7 @@ import { bangkokDayRange } from "@/lib/attendance-report";
 
 const inputCls = "rounded border border-gray-300 px-3 py-2 text-sm";
 const fmtDate = (d: Date) => d.toLocaleDateString("th-TH", { dateStyle: "medium", timeZone: "Asia/Bangkok" });
-const fmtTime = (d: Date) => d.toLocaleTimeString("th-TH", { hour12: false, timeZone: "Asia/Bangkok" });
+const fmtTime = (d: Date) => d.toLocaleTimeString("th-TH", { hour12: false, hour: "2-digit", minute: "2-digit", timeZone: "Asia/Bangkok" }).replace(":", ".");
 const todayBkk = () => new Date(Date.now() + 7 * 3600 * 1000).toISOString().slice(0, 10);
 const isDay = (v: string | undefined): v is string => !!v && /^\d{4}-\d{2}-\d{2}$/.test(v);
 

@@ -5,6 +5,10 @@ import Swal from "sweetalert2";
 import { getCurrentPosition, geolocationIsAllowedHere, thaiDateTime } from "./gps";
 import type { AttendanceState } from "@/lib/mobile-attendance";
 
+// Within this distance of the site point the distance is not worth showing.
+const SHOW_DISTANCE_OVER = 30;
+const distText = (m: number) => (m > SHOW_DISTANCE_OVER ? ` (ห่าง ${m} เมตร)` : "");
+
 type Result = { ok: true; time: string; siteName: string; distanceMeters: number } | { ok: false; reason: string };
 
 // One component for both screens: mode "IN" (เข้างาน, pick a site, CHECK-IN)
@@ -12,7 +16,7 @@ type Result = { ok: true; time: string; siteName: string; distanceMeters: number
 export default function AttendanceView({ mode, initial }: { mode: "IN" | "OUT"; initial: AttendanceState }) {
   const [state, setState] = useState(initial);
   // Site is auto-detected from GPS (check-in only); the server re-detects on submit.
-  const [detected, setDetected] = useState<{ found: true; siteName: string; distanceMeters: number } | { found: false; message: string } | null>(null);
+  const [detected, setDetected] = useState<{ found: true; siteCode: string; siteName: string; distanceMeters: number } | { found: false; message: string } | null>(null);
   const [detecting, setDetecting] = useState(false);
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<Result | null>(null);
@@ -94,7 +98,7 @@ export default function AttendanceView({ mode, initial }: { mode: "IN" | "OUT"; 
       const res = await fetch(`/api/mobile/detect-site?lat=${fix.latitude}&lng=${fix.longitude}`);
       const body = await res.json();
       if (!res.ok) setDetected({ found: false, message: body.message || body.error || "ตรวจหาหน่วยงานไม่สำเร็จ" });
-      else setDetected(body.found ? { found: true, siteName: body.siteName, distanceMeters: body.distanceMeters } : { found: false, message: body.message });
+      else setDetected(body.found ? { found: true, siteCode: body.siteCode, siteName: body.siteName, distanceMeters: body.distanceMeters } : { found: false, message: body.message });
     } catch (err) {
       setDetected({ found: false, message: err instanceof Error ? err.message : "อ่าน GPS ไม่สำเร็จ" });
     } finally {
@@ -167,10 +171,13 @@ export default function AttendanceView({ mode, initial }: { mode: "IN" | "OUT"; 
       {isIn ? (
         <div className="space-y-2 rounded bg-gray-50 p-3 text-sm text-gray-700">
           <div className="font-medium">หน่วยงาน (ตรวจจากตำแหน่ง GPS อัตโนมัติ)</div>
+          {!detected && !detecting && state.lastSite && (
+            <div className="text-gray-600">หน่วยงานล่าสุดที่ Check-out: {state.lastSite.siteName}</div>
+          )}
           {detecting && <div>กำลังตรวจหาหน่วยงาน...</div>}
           {detected?.found && (
             <div className="text-green-800">
-              📍 {detected.siteName} (ห่าง {detected.distanceMeters} เมตร)
+              📍 {detected.siteName}{distText(detected.distanceMeters)}
             </div>
           )}
           {detected && !detected.found && <div className="text-red-700">{detected.message}</div>}
@@ -185,6 +192,17 @@ export default function AttendanceView({ mode, initial }: { mode: "IN" | "OUT"; 
               หน่วยงานที่ Check-in: <span className="font-medium">{state.open.siteName}</span>
             </div>
             <div>เวลาเข้างาน: {thaiDateTime(state.open.checkInTime)}</div>
+            {detecting && <div className="mt-2">กำลังตรวจหาหน่วยงาน...</div>}
+            {detected?.found && (
+              <div className={`mt-2 ${detected.siteCode === state.open.siteCode ? "text-green-800" : "text-amber-700"}`}>
+                📍 ตำแหน่งปัจจุบัน: {detected.siteName}{distText(detected.distanceMeters)}
+                {detected.siteCode !== state.open.siteCode && " — ไม่ใช่หน่วยงานที่ Check-in"}
+              </div>
+            )}
+            {detected && !detected.found && <div className="mt-2 text-red-700">{detected.message}</div>}
+            <button type="button" onClick={detectSite} disabled={detecting || busy} className="mt-2 rounded border border-blue-600 px-3 py-2 text-sm font-medium text-blue-700 disabled:opacity-50">
+              📍 ตรวจหาหน่วยงาน
+            </button>
           </div>
         )
       )}
@@ -230,7 +248,7 @@ export default function AttendanceView({ mode, initial }: { mode: "IN" | "OUT"; 
             <div className="text-lg font-semibold">✔ {label} สำเร็จ</div>
             <div className="mt-1 text-sm">เวลาที่บันทึก: {thaiDateTime(result.time)}</div>
             <div className="text-sm">หน่วยงาน: {result.siteName}</div>
-            <div className="text-sm">ห่างจากจุดที่กำหนด {result.distanceMeters} เมตร</div>
+            {result.distanceMeters > SHOW_DISTANCE_OVER && <div className="text-sm">ห่างจากจุดที่กำหนด {result.distanceMeters} เมตร</div>}
           </div>
         ) : (
           <div className="rounded border border-red-300 bg-red-50 p-4 text-red-800">

@@ -4,6 +4,7 @@ import { verifySession } from "@/lib/dal";
 import { apiError, apiSuccess } from "@/lib/api-response";
 import { requireSelfEmployee } from "@/lib/mobile-auth";
 import { findSiteByLocation, isValidLatLng } from "@/lib/geo";
+import { getLastCheckOutSite } from "@/lib/mobile-attendance";
 
 // GET ?lat=&lng= — which site (if any) the phone is currently inside.
 export async function GET(request: NextRequest) {
@@ -15,7 +16,7 @@ export async function GET(request: NextRequest) {
   const lng = Number(request.nextUrl.searchParams.get("lng"));
   if (!isValidLatLng(lat, lng)) return apiError(422, "GPS_UNAVAILABLE", "ไม่ได้รับพิกัด GPS");
   const sites = await prisma.mstSite.findMany({ where: { IsActive: true }, include: { Location: true } });
-  const found = findSiteByLocation(lat, lng, sites);
+  const found = findSiteByLocation(lat, lng, sites, (await getLastCheckOutSite(me.employee.EmpCode))?.siteCode);
   if (!found) return apiSuccess({ found: false, message: "ยังไม่ได้ตั้งพิกัดสถานที่นี้ในระบบ" });
   return apiSuccess({ found: true, siteCode: found.site.SiteCode, siteName: found.site.SiteName, distanceMeters: found.distance });
 }

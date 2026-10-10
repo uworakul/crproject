@@ -102,3 +102,27 @@ export async function syncAttendanceToWorksheet(userId: string, empCode: string,
     await logAction(userId, "AUTO_WORKSHEET_ERROR", { targetTable: "trn_attendance_log", targetId: empCode, detail: String(err).slice(0, 400) }).catch(() => {});
   }
 }
+
+// The check-in already auto-posted a cell at the check-in site; when the
+// employee checks out at a different site that site becomes primary, so the
+// cell at the old site is removed — but only if no other attendance record of
+// theirs remains at that site on that Bangkok date (never wipe other shifts).
+export async function clearAttendanceFromWorksheet(userId: string, empCode: string, oldSiteCode: string, anchor: Date) {
+  try {
+    const employee = await prisma.mstEmployee.findUnique({ where: { EmpCode: empCode }, select: { Company: { select: { AutoTimeToWorksheet: true } } } });
+    if (!employee?.Company?.AutoTimeToWorksheet) return;
+    const key = dateKey(anchor);
+    const start = new Date(new Date(`${key}T00:00:00Z`).getTime() - 7 * HOUR);
+    const remaining = await prisma.trnAttendanceLog.count({ where: { EmpCode: empCode, SiteCode: oldSiteCode, CheckInTime: { gte: start, lt: new Date(start.getTime() + 24 * HOUR) } } });
+    if (remaining > 0) return;
+    const [y, m, d] = key.split("-").map(Number);
+    const header = await prisma.trnWorksheetHeader.findUnique({ where: { SiteCode_WorkYear_WorkMonth: { SiteCode: oldSiteCode, WorkYear: y, WorkMonth: m } }, select: { WorksheetID: true, Status: true } });
+    if (!header || header.Status !== "DRAFT") return;
+    const detail = await prisma.trnWorksheetDetail.findFirst({ where: { WorksheetID: header.WorksheetID, EmpCode: empCode }, select: { WorksheetDetailID: true } });
+    if (!detail) return;
+    await saveWorksheetDays(header.WorksheetID, y, m, [{ worksheetDetailId: detail.WorksheetDetailID, day: d, attendCode: null }], userId);
+    await logAction(userId, "AUTO_WORKSHEET_CLEARED", { targetTable: "trn_worksheet_daily", targetId: `${empCode}@${oldSiteCode}:${key}`, detail: "check-out at a different site" });
+  } catch (err) {
+    await logAction(userId, "AUTO_WORKSHEET_ERROR", { targetTable: "trn_attendance_log", targetId: empCode, detail: String(err).slice(0, 400) }).catch(() => {});
+  }
+}

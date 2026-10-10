@@ -3,6 +3,7 @@ import Link from "next/link";
 import { verifySession } from "@/lib/dal";
 import { hasPermission } from "@/lib/authorize";
 import { prisma } from "@/lib/prisma";
+import ImportEmployees from "./import-employees";
 
 export default async function UsersPage() {
   const user = await verifySession();
@@ -23,9 +24,12 @@ export default async function UsersPage() {
       <div className="mb-6 flex items-center justify-between">
         <h1 className="text-lg font-semibold text-gray-900">ผู้ใช้งาน</h1>
         {canCreate && (
-          <Link href="/users/new" className="rounded-md bg-gray-900 px-3.5 py-2 text-sm text-white hover:bg-gray-700">
-            + สร้างผู้ใช้งาน
-          </Link>
+          <div className="flex gap-2">
+            <ImportEmployees />
+            <Link href="/users/new" className="rounded-md bg-gray-900 px-3.5 py-2 text-sm text-white hover:bg-gray-700">
+              + สร้างผู้ใช้งาน
+            </Link>
+          </div>
         )}
       </div>
 

@@ -4,9 +4,9 @@ import { verifySession } from "@/lib/dal";
 import { logAction } from "@/lib/audit-log";
 import { apiError, apiSuccess } from "@/lib/api-response";
 import { requireSelfEmployee } from "@/lib/mobile-auth";
-import { getAttendanceState } from "@/lib/mobile-attendance";
+import { getAttendanceState, getLastCheckOutSite } from "@/lib/mobile-attendance";
 import { distanceMeters, findSiteByLocation, isValidLatLng } from "@/lib/geo";
-import { syncAttendanceToWorksheet } from "@/lib/attendance-worksheet";
+import { syncAttendanceToWorksheet, clearAttendanceFromWorksheet } from "@/lib/attendance-worksheet";
 import { uploadFileToR2, deleteFileFromR2, R2NotConfiguredError } from "@/lib/r2";
 
 // Every check-in/out must carry a photo taken live with the device camera
@@ -81,13 +81,16 @@ export async function POST(request: NextRequest) {
     // Site is auto-detected from the phone's GPS (nearest geofence containing
     // the point) — the client never picks or sends a site.
     const allSites = await prisma.mstSite.findMany({ where: { IsActive: true }, include: { Location: true } });
-    const found = findSiteByLocation(lat, lng, allSites);
+    const found = findSiteByLocation(lat, lng, allSites, (await getLastCheckOutSite(empCode))?.siteCode);
     if (!found) return apiError(422, "SITE_NOT_DETECTED", "ยังไม่ได้ตั้งพิกัดสถานที่นี้ในระบบ (ไม่พบหน่วยงานในรัศมีตำแหน่งปัจจุบัน)");
     siteCode = found.site.SiteCode;
   } else {
     if (!open) return apiError(422, "NOT_CHECKED_IN", "ยังไม่ได้ Check-in จึงไม่สามารถ Check-out ได้");
-    // Check-out is always measured against the site the shift was opened at.
-    siteCode = open.SiteCode;
+    // Check-out site is detected from GPS (the shift's check-in site wins if
+    // the phone is inside it); if it is a different site, the check-out site
+    // becomes primary. No site detected -> measured against the check-in site.
+    const allSites = await prisma.mstSite.findMany({ where: { IsActive: true }, include: { Location: true } });
+    siteCode = findSiteByLocation(lat, lng, allSites, open.SiteCode)?.site.SiteCode ?? open.SiteCode;
   }
 
   const site = await prisma.mstSite.findUnique({ where: { SiteCode: siteCode }, include: { Location: true } });
@@ -140,13 +143,14 @@ export async function POST(request: NextRequest) {
   // simultaneous check-out taps cannot both succeed.
   const closed = await prisma.trnAttendanceLog.updateMany({
     where: { AttendanceID: open!.AttendanceID, CheckOutTime: null },
-    data: { CheckOutTime: now, CheckOutLat: lat, CheckOutLng: lng, CheckOutDistance: distance, CheckOutPhoto: photoKey, UpdatedBy: user.userId, UpdatedDate: now },
+    data: { ...(siteCode !== open!.SiteCode ? { SiteCode: siteCode, CheckInSiteCode: open!.SiteCode } : {}), CheckOutTime: now, CheckOutLat: lat, CheckOutLng: lng, CheckOutDistance: distance, CheckOutPhoto: photoKey, UpdatedBy: user.userId, UpdatedDate: now },
   });
   if (closed.count === 0) {
     await deleteFileFromR2(photoKey);
     return apiError(422, "NOT_CHECKED_IN", "ยังไม่ได้ Check-in จึงไม่สามารถ Check-out ได้");
   }
   await logAction(user.userId, "CHECK_OUT", { targetTable: "trn_attendance_log", targetId: String(open!.AttendanceID) });
+  if (siteCode !== open!.SiteCode) await clearAttendanceFromWorksheet(user.userId, empCode, open!.SiteCode, open!.CheckInTime);
   await syncAttendanceToWorksheet(user.userId, empCode, siteCode, open!.CheckInTime);
   return apiSuccess({ action, siteCode, siteName: site.SiteName, time: now, distanceMeters: distance });
 }

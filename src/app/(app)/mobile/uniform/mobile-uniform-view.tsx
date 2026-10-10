@@ -117,7 +117,7 @@ export default function MobileUniformView({ initial }: { initial: MobileUniformD
           <label className="block text-sm text-gray-700">
             สินค้า
             <select className={`${inputCls} mt-1`} value={productCode} onChange={(e) => setProductCode(e.target.value)}>
-              <option value="">- เลือกสินค้า -</option>
+              <option value="">{data.products.length ? "- เลือกสินค้า -" : "- ยังไม่มีชุดที่เคยซื้อ -"}</option>
               {data.products.map((p) => (
                 <option key={p.productCode} value={p.productCode}>
                   {p.productName} — {baht(p.unitPrice)} บาท{p.unit ? `/${p.unit}` : ""}
@@ -157,7 +157,7 @@ export default function MobileUniformView({ initial }: { initial: MobileUniformD
             </div>
             <label className="mt-3 block text-sm text-gray-700">
               หมายเหตุ (ถ้ามี)
-              <input className={`${inputCls} mt-1`} value={remark} maxLength={300} onChange={(e) => setRemark(e.target.value)} />
+              <input className={`${inputCls} mt-1`} value={remark} maxLength={300} placeholder="เปลี่ยนขนาดชุด หรืออื่นๆ" onChange={(e) => setRemark(e.target.value)} />
             </label>
             <button type="button" onClick={submit} disabled={busy} className="mt-3 w-full rounded bg-blue-600 px-4 py-3 text-base font-medium text-white disabled:opacity-50">
               ขอเบิก

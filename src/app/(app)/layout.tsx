@@ -4,6 +4,7 @@ import { hasPermission } from "@/lib/authorize";
 import { prisma } from "@/lib/prisma";
 import { REQUEST_PERMISSION_GROUPS } from "@/lib/request";
 import { canManageSiteLocation } from "@/lib/mobile-auth";
+import { canManageDatabase } from "@/lib/db-management";
 import Sidebar from "./sidebar";
 import LogoutButton from "./logout-button";
 
@@ -111,7 +112,11 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       // sub-item renamed to "Registration" (same href/page, label only).
       label: "Configuration",
       icon: "settings" as const,
-      items: canViewSystemConfig ? [{ href: "/system-config", label: "Registration" }] : [],
+      items: [
+        ...(canViewSystemConfig ? [{ href: "/system-config", label: "Registration" }] : []),
+        // Only the hard-coded accounts in canManageDatabase() (admin / wat).
+        ...(canManageDatabase(user) ? [{ href: "/db-management", label: "Database Management" }] : []),
+      ],
     },
     {
       label: "ผู้ใช้งานและสิทธิ์",
@@ -237,9 +242,9 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   return (
     <div className="flex min-h-screen">
       <Sidebar groups={groups} companyShortName={companyShortName} />
-      <div className="flex flex-1 flex-col">
-        <header className="flex items-center justify-end gap-4 border-b border-gray-200 bg-white px-6 py-3">
-          <span className="text-sm text-gray-600">
+      <div className="flex min-w-0 flex-1 flex-col">
+        <header className="flex items-center justify-end gap-4 border-b border-gray-200 bg-white py-3 pr-4 pl-14 md:px-6">
+          <span className="min-w-0 truncate text-sm text-gray-600">
             {user.displayName} <span className="text-gray-400">· {user.role}</span>
           </span>
           <LogoutButton />

@@ -158,6 +158,9 @@ export default function Sidebar({ groups, companyShortName }: { groups: NavGroup
     Object.fromEntries(groups.map((g) => [g.label, isGroupActive(g, pathname)])),
   );
   const [collapsed, setCollapsed] = useState(false);
+  // Phones: the sidebar is an off-canvas drawer opened by a floating hamburger
+  // and closed again as soon as a menu item is chosen.
+  const [mobileOpen, setMobileOpen] = useState(false);
 
   function toggle(label: string) {
     setOpen((prev) => ({ ...prev, [label]: !prev[label] }));
@@ -169,7 +172,21 @@ export default function Sidebar({ groups, companyShortName }: { groups: NavGroup
   }
 
   return (
-    <aside className={`flex shrink-0 flex-col border-r border-gray-200 bg-white transition-[width] ${collapsed ? "w-16" : "w-60"}`}>
+    <>
+    <button
+      type="button"
+      onClick={() => setMobileOpen(true)}
+      aria-label="เปิดเมนู"
+      className="fixed top-2.5 left-3 z-30 rounded-md border border-gray-200 bg-white p-1.5 text-gray-600 shadow-sm md:hidden"
+    >
+      <HamburgerIcon className="h-5 w-5" />
+    </button>
+    {mobileOpen && <div className="fixed inset-0 z-40 bg-black/40 md:hidden" onClick={() => setMobileOpen(false)} />}
+    <aside
+      className={`fixed inset-y-0 left-0 z-50 flex w-64 shrink-0 flex-col border-r border-gray-200 bg-white transition-transform md:static md:z-auto md:translate-x-0 md:transition-[width] ${
+        mobileOpen ? "translate-x-0" : "-translate-x-full"
+      } ${collapsed ? "md:w-16" : "md:w-60"}`}
+    >
       {collapsed ? (
         <div className="flex flex-col items-center gap-3 pt-6 pb-4">
           <div className="flex h-9 w-9 items-center justify-center rounded-full bg-gray-900 text-xs font-semibold text-white">CR</div>
@@ -190,7 +207,7 @@ export default function Sidebar({ groups, companyShortName }: { groups: NavGroup
           </div>
           <button
             type="button"
-            onClick={() => setCollapsed(true)}
+            onClick={() => (window.matchMedia("(min-width: 768px)").matches ? setCollapsed(true) : setMobileOpen(false))}
             aria-label="ซ่อนเมนู"
             className="rounded-md p-1.5 text-gray-400 hover:bg-gray-50 hover:text-gray-700"
           >
@@ -253,6 +270,7 @@ export default function Sidebar({ groups, companyShortName }: { groups: NavGroup
                         <Link
                           key={item.href}
                           href={item.href}
+                          onClick={() => setMobileOpen(false)}
                           className={`flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-sm ${
                             active ? "bg-gray-100 font-medium text-gray-900" : "text-gray-600 hover:bg-gray-50 hover:text-gray-900"
                           }`}
@@ -270,5 +288,6 @@ export default function Sidebar({ groups, companyShortName }: { groups: NavGroup
         </nav>
       )}
     </aside>
+    </>
   );
 }

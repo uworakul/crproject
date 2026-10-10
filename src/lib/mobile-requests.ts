@@ -38,7 +38,7 @@ export async function getMobileAdvances(empCode: string) {
 export type MobileAdvance = Awaited<ReturnType<typeof getMobileAdvances>>[number];
 
 export async function getMobileUniformData(empCode: string) {
-  const [headers, products] = await Promise.all([
+  const [headers, products, sold] = await Promise.all([
     prisma.invIssueHeader.findMany({
       where: { EmpCode: empCode },
       include: { Details: { include: { Product: { select: { ProductName: true } } }, orderBy: { IssueDetailID: "asc" } } },
@@ -50,9 +50,21 @@ export async function getMobileUniformData(empCode: string) {
       orderBy: { ProductCode: "asc" },
       select: { ProductCode: true, ProductName: true, UnitPrice: true, UnitOfMeasure: true },
     }),
+    // Products actually sold to this employee before (approved, not free
+    // welfare lines), newest sale first — the only ones offered for a new request.
+    prisma.invIssueDetail.findMany({
+      where: { IsWelfare: false, Header: { EmpCode: empCode, Status: "APPROVED" } },
+      select: { ProductCode: true, Header: { select: { ApprovedDate: true, DeliveryDate: true, IssueHeaderID: true } } },
+    }),
   ]);
+  const lastSold = new Map<string, number>();
+  for (const d of sold) {
+    const t = (d.Header.ApprovedDate ?? d.Header.DeliveryDate).getTime() * 1000 + (d.Header.IssueHeaderID % 1000);
+    if (t > (lastSold.get(d.ProductCode) ?? -1)) lastSold.set(d.ProductCode, t);
+  }
+  const eligible = products.filter((p) => lastSold.has(p.ProductCode)).sort((a, b) => lastSold.get(b.ProductCode)! - lastSold.get(a.ProductCode)!);
   return {
-    products: products.map((p) => ({ productCode: p.ProductCode, productName: p.ProductName, unitPrice: Number(p.UnitPrice), unit: p.UnitOfMeasure })),
+    products: eligible.map((p) => ({ productCode: p.ProductCode, productName: p.ProductName, unitPrice: Number(p.UnitPrice), unit: p.UnitOfMeasure })),
     requests: headers.map((h) => ({
       issueHeaderId: h.IssueHeaderID,
       documentNo: h.DocumentNo,

@@ -1847,7 +1847,11 @@ model MstSiteLocation {
 model TrnAttendanceLog {
   AttendanceID     Int       @id(map: "PK_trn_attendance_log") @default(autoincrement())
   EmpCode          String    @db.VarChar(15)
+  // Check-in site until check-out; if the employee checks out at a different
+  // site, SiteCode becomes the check-out site (primary for the Worksheet) and
+  // the original check-in site is kept in CheckInSiteCode.
   SiteCode         String    @db.VarChar(10)
+  CheckInSiteCode  String?   @db.VarChar(10)
   CheckInTime      DateTime  @db.DateTime
   CheckInLat       Decimal   @db.Decimal(9, 6)
   CheckInLng       Decimal   @db.Decimal(9, 6)

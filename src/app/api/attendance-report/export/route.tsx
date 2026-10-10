@@ -13,7 +13,7 @@ import { buildReportWorkbook, type ReportExcelColumn } from "@/lib/reports/excel
 // filters (same site scope + employee scope).
 const isDay = (v: string | null): v is string => !!v && /^\d{4}-\d{2}-\d{2}$/.test(v);
 const fmtDate = (d: Date) => d.toLocaleDateString("th-TH", { dateStyle: "medium", timeZone: "Asia/Bangkok" });
-const fmtTime = (d: Date) => d.toLocaleTimeString("th-TH", { hour12: false, timeZone: "Asia/Bangkok" });
+const fmtTime = (d: Date) => d.toLocaleTimeString("th-TH", { hour12: false, hour: "2-digit", minute: "2-digit", timeZone: "Asia/Bangkok" }).replace(":", ".");
 
 export async function GET(request: NextRequest) {
   const user = await verifySession();

@@ -22,14 +22,18 @@ export interface SiteWithLocation {
   Location: { Latitude: unknown; Longitude: unknown; RadiusMeters: number } | null;
 }
 
-// Nearest site whose geofence contains the point, or null.
-export function findSiteByLocation<T extends SiteWithLocation>(lat: number, lng: number, sites: T[]): { site: T; distance: number; radius: number } | null {
+// Site whose geofence contains the point, or null. If the point is inside the
+// preferred site's geofence (the last site the employee checked out of) that
+// site wins; otherwise the nearest containing site.
+export function findSiteByLocation<T extends SiteWithLocation>(lat: number, lng: number, sites: T[], preferredSiteCode?: string | null): { site: T; distance: number; radius: number } | null {
   let best: { site: T; distance: number; radius: number } | null = null;
   for (const site of sites) {
     if (!site.Location) continue;
     const distance = distanceMeters(lat, lng, Number(site.Location.Latitude), Number(site.Location.Longitude));
     if (distance > site.Location.RadiusMeters) continue;
-    if (!best || distance < best.distance) best = { site, distance, radius: site.Location.RadiusMeters };
+    const candidate = { site, distance, radius: site.Location.RadiusMeters };
+    if (preferredSiteCode && site.SiteCode === preferredSiteCode) return candidate;
+    if (!best || distance < best.distance) best = candidate;
   }
   return best;
 }
