@@ -87,8 +87,8 @@ export async function PUT(request: NextRequest, ctx: RouteContext<"/api/referenc
   return apiSuccess(updated);
 }
 
-// Hard delete — no IsActive column, and no other table has an FK to
-// ref_company (standalone reference data).
+// Hard delete — no IsActive column. Other tables FK to ref_company, so a
+// delete of an in-use company is rejected with 409.
 export async function DELETE(_req: Request, ctx: RouteContext<"/api/reference/company/[code]">) {
   const user = await verifySession();
   if (!user) return apiError(401, "UNAUTHORIZED");
@@ -99,7 +99,12 @@ export async function DELETE(_req: Request, ctx: RouteContext<"/api/reference/co
   const existing = await prisma.refCompany.findUnique({ where: { CompanyCode: code } });
   if (!existing) return apiError(404, "COMPANY_NOT_FOUND");
 
-  await prisma.refCompany.delete({ where: { CompanyCode: code } });
+  try {
+    await prisma.refCompany.delete({ where: { CompanyCode: code } });
+  } catch {
+    // FK from employees / user scopes / warehouses etc. (NO ACTION).
+    return apiError(409, "COMPANY_IN_USE", "ลบไม่ได้ เพราะมีข้อมูลอื่น (เช่น พนักงาน ผู้ใช้ คลังสินค้า) อ้างอิงบริษัทนี้อยู่");
+  }
   await logAction(user.userId, "DELETE_COMPANY", { targetTable: "ref_company", targetId: code });
   return apiSuccess({ ok: true });
 }

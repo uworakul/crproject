@@ -60,6 +60,7 @@ export async function PUT(request: NextRequest, ctx: RouteContext<"/api/employee
   let body: {
     fullName?: unknown;
     title?: unknown;
+    idCardNo?: unknown;
     firstName?: unknown;
     lastName?: unknown;
     address?: unknown;
@@ -221,6 +222,7 @@ export async function PUT(request: NextRequest, ctx: RouteContext<"/api/employee
     where: { EmpCode: empCode },
     data: {
       FullName: typeof body.fullName === "string" ? body.fullName.trim() : undefined,
+      IDCardNo: typeof body.idCardNo === "string" && body.idCardNo.trim() ? body.idCardNo.trim() : undefined,
       Title: optStr(body.title),
       FirstName: optStr(body.firstName),
       LastName: optStr(body.lastName),

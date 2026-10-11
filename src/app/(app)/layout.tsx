@@ -223,6 +223,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       items: user.systemLocked
         ? []
         : [
+            { href: "/mobile", label: "หน้าหลัก" },
             ...(canManageSiteLocation(user) ? [{ href: "/mobile/site-location", label: "พิกัดหน่วยงาน" }] : []),
             ...(user.role === "EMPLOYEE"
               ? [
@@ -243,7 +244,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     <div className="flex min-h-screen">
       <Sidebar groups={groups} companyShortName={companyShortName} />
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="flex items-center justify-end gap-4 border-b border-gray-200 bg-white py-3 pr-4 pl-14 md:px-6">
+        <header className="flex items-center justify-end gap-4 border-b border-blue-100 bg-white py-3 pr-4 pl-14 md:px-6">
           <span className="min-w-0 truncate text-sm text-gray-600">
             {user.displayName} <span className="text-gray-400">· {user.role}</span>
           </span>

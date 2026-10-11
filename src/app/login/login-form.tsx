@@ -44,13 +44,16 @@ export default function LoginForm({ companyShortName }: { companyShortName: stri
   }
 
   return (
-    <main className="flex min-h-screen items-center justify-center bg-gray-50 p-6">
-      <div className="w-full max-w-sm rounded-xl border border-gray-200 bg-white p-8 shadow-sm">
+    <main className="flex min-h-screen items-center justify-center bg-gradient-to-br from-[#0a3d91] via-[#1366d6] to-[#dbe8ff] p-6">
+      <div className="w-full max-w-sm rounded-2xl border border-white/60 bg-white p-8 shadow-xl shadow-blue-900/20">
         <div className="mb-6 flex flex-col items-center text-center">
-          <div className="mb-3 flex h-11 w-11 items-center justify-center rounded-full bg-gray-900 text-sm font-semibold text-white">
+          <div className="mb-3 flex h-11 w-11 items-center justify-center rounded-full bg-[#1366d6] text-sm font-semibold text-white">
             CR
           </div>
-          <div className="text-lg font-semibold tracking-tight text-gray-900">CRPAYROLL</div>
+          <div className="text-xl font-bold tracking-tight">
+            <span className="text-[#1366d6]">CR</span>
+            <span className="text-[#0b2a66]">PAYROLL</span>
+          </div>
         </div>
 
         <form onSubmit={handleSubmit} className="flex flex-col gap-4">
@@ -115,7 +118,7 @@ export default function LoginForm({ companyShortName }: { companyShortName: stri
           <button
             type="submit"
             disabled={pending}
-            className="mt-1 rounded-md bg-gray-900 px-4 py-2.5 text-sm font-medium text-white hover:bg-gray-700 disabled:opacity-50"
+            className="mt-1 rounded-md bg-[#1366d6] px-4 py-2.5 text-sm font-medium text-white hover:bg-[#0f52ae] disabled:opacity-50"
           >
             {pending ? "กำลังเข้าสู่ระบบ..." : "เข้าสู่ระบบ"}
           </button>

@@ -50,6 +50,7 @@ function toDateInputValue(value: string | null): string {
 export default function PersonalInfoTab({ employee, canSave }: { employee: Employee; canSave: boolean }) {
   const router = useRouter();
   const [form, setForm] = useState({
+    idCardNo: employee.IDCardNo,
     address: employee.Address ?? "",
     birthDate: toDateInputValue(employee.BirthDate),
     idCardIssuedBy: employee.IDCardIssuedBy ?? "",
@@ -106,7 +107,13 @@ export default function PersonalInfoTab({ employee, canSave }: { employee: Emplo
     <div className="flex flex-col gap-6">
       <div className="grid grid-cols-2 gap-3">
         <Field label="เลขบัตรประชาชน">
-          <input disabled value={employee.IDCardNo} className={inputCls} />
+          <input
+            disabled={!canSave}
+            value={form.idCardNo}
+            onChange={(e) => setForm({ ...form, idCardNo: e.target.value })}
+            maxLength={20}
+            className={inputCls}
+          />
         </Field>
         <Field label="ออกให้โดย">
           <input disabled={!canSave} value={form.idCardIssuedBy} onChange={(e) => setForm({ ...form, idCardIssuedBy: e.target.value })} className={inputCls} />

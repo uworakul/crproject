@@ -183,18 +183,18 @@ export default function Sidebar({ groups, companyShortName }: { groups: NavGroup
     </button>
     {mobileOpen && <div className="fixed inset-0 z-40 bg-black/40 md:hidden" onClick={() => setMobileOpen(false)} />}
     <aside
-      className={`fixed inset-y-0 left-0 z-50 flex w-64 shrink-0 flex-col border-r border-gray-200 bg-white transition-transform md:static md:z-auto md:translate-x-0 md:transition-[width] ${
+      className={`fixed inset-y-0 left-0 z-50 flex w-64 shrink-0 flex-col border-r border-blue-900/30 bg-gradient-to-b from-[#0a3d91] to-[#0b2a66] text-white transition-transform md:static md:z-auto md:translate-x-0 md:transition-[width] ${
         mobileOpen ? "translate-x-0" : "-translate-x-full"
       } ${collapsed ? "md:w-16" : "md:w-60"}`}
     >
       {collapsed ? (
         <div className="flex flex-col items-center gap-3 pt-6 pb-4">
-          <div className="flex h-9 w-9 items-center justify-center rounded-full bg-gray-900 text-xs font-semibold text-white">CR</div>
+          <div className="flex h-9 w-9 items-center justify-center rounded-full bg-white text-xs font-bold text-[#1366d6]">CR</div>
           <button
             type="button"
             onClick={() => setCollapsed(false)}
             aria-label="แสดงเมนู"
-            className="rounded-md p-1.5 text-gray-400 hover:bg-gray-50 hover:text-gray-700"
+            className="rounded-md p-1.5 text-blue-100 hover:bg-white/10 hover:text-white"
           >
             <HamburgerIcon className="h-5 w-5" />
           </button>
@@ -202,14 +202,14 @@ export default function Sidebar({ groups, companyShortName }: { groups: NavGroup
       ) : (
         <div className="flex items-center justify-between px-5 pt-6 pb-4">
           <div>
-            <div className="text-lg font-semibold tracking-tight text-gray-900">CRPAYROLL</div>
-            <div className="text-xs text-gray-400">{companyShortName}</div>
+            <div className="text-lg font-bold tracking-tight text-white">CRPAYROLL</div>
+            <div className="text-xs text-blue-200">{companyShortName}</div>
           </div>
           <button
             type="button"
             onClick={() => (window.matchMedia("(min-width: 768px)").matches ? setCollapsed(true) : setMobileOpen(false))}
             aria-label="ซ่อนเมนู"
-            className="rounded-md p-1.5 text-gray-400 hover:bg-gray-50 hover:text-gray-700"
+            className="rounded-md p-1.5 text-blue-100 hover:bg-white/10 hover:text-white"
           >
             <HamburgerIcon className="h-5 w-5" />
           </button>
@@ -227,7 +227,7 @@ export default function Sidebar({ groups, companyShortName }: { groups: NavGroup
                 onClick={() => expandToGroup(group.label)}
                 title={group.label}
                 className={`flex h-10 w-10 items-center justify-center rounded-md ${
-                  active ? "bg-gray-100 text-gray-900" : "text-gray-500 hover:bg-gray-50 hover:text-gray-900"
+                  active ? "bg-white/20 text-white" : "text-blue-100 hover:bg-white/10 hover:text-white"
                 }`}
               >
                 <GroupIcon icon={group.icon} className="h-5 w-5" />
@@ -244,7 +244,7 @@ export default function Sidebar({ groups, companyShortName }: { groups: NavGroup
                 <button
                   type="button"
                   onClick={() => toggle(group.label)}
-                  className="flex w-full items-center justify-between rounded-md px-2 py-1.5 text-sm font-bold text-gray-700 hover:bg-gray-50 hover:text-gray-900"
+                  className="flex w-full items-center justify-between rounded-md px-2 py-1.5 text-sm font-bold text-blue-50 hover:bg-white/10 hover:text-white"
                 >
                   <span className="flex items-center gap-2">
                     <GroupIcon icon={group.icon} className="h-4 w-4 shrink-0" />
@@ -265,14 +265,16 @@ export default function Sidebar({ groups, companyShortName }: { groups: NavGroup
                 {isOpen && (
                   <div className="mb-4 flex flex-col gap-0.5 pt-1 pl-5">
                     {group.items.map((item) => {
-                      const active = pathname === item.href || pathname.startsWith(item.href + "/");
+                      // "/mobile" is the MOBILE home tile menu — exact match only,
+                      // otherwise it would light up on every /mobile/* screen.
+                      const active = item.href === "/mobile" ? pathname === item.href : pathname === item.href || pathname.startsWith(item.href + "/");
                       return (
                         <Link
                           key={item.href}
                           href={item.href}
                           onClick={() => setMobileOpen(false)}
                           className={`flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-sm ${
-                            active ? "bg-gray-100 font-medium text-gray-900" : "text-gray-600 hover:bg-gray-50 hover:text-gray-900"
+                            active ? "bg-white font-medium text-[#0b2a66]" : "text-blue-100 hover:bg-white/10 hover:text-white"
                           }`}
                         >
                           {item.icon && <GroupIcon icon={item.icon} className="h-3.5 w-3.5 shrink-0" />}

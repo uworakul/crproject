@@ -1,6 +1,7 @@
 import "server-only";
 import { prisma } from "./prisma";
 import type { CurrentUser } from "./dal";
+import { ROLE_VALUES } from "./validation";
 
 // Database Management (2026-10-10): destructive bulk delete, only for the
 // accounts below. Hard-coded on purpose — not a sys_user_permission row — so
@@ -19,14 +20,15 @@ export interface CatalogGroup {
   entries: CatalogEntry[];
 }
 
-// Mirrors the sidebar groups. NOT deletable, deliberately: sys_user (cascade
-// would reach every CreatedBy/ApprovedBy FK = the whole database + logins),
+// Mirrors the sidebar groups. sys_user is deletable ONLY by Role (never ADMIN):
+// the cascade reaches that user's sessions/logs/documents, which the preview
+// counts exactly. Whole-table sys_user is NOT allowed,
 // sys_menu (menu seed), sys_config (Configuration).
 export const DB_CATALOG: CatalogGroup[] = [
   {
     label: "ผู้ใช้งานและสิทธิ์",
     entries: [
-      { label: "ผู้ใช้งาน (สิทธิ์/ขอบเขต)", tables: ["sys_user_permission", "sys_user_company", "sys_user_employee_type"] },
+      { label: "ผู้ใช้งาน (สิทธิ์/ขอบเขต)", tables: ["sys_user_permission", "sys_user_company", "sys_user_employee_type", "sys_user"] },
       { label: "Audit Log", tables: ["sys_process_log"] },
       { label: "Session", tables: ["sys_session"] },
     ],
@@ -92,21 +94,33 @@ const ident = (name: string) => `[${name.replace(/]/g, "]]")}]`;
 export interface ConditionField {
   column: string;
   label: string;
-  type: "date" | "code";
+  type: "date" | "code" | "role";
 }
 
 // Tables whose "conditional delete" offers a curated list instead of every
 // date column (code = from/to range on a text key, compared as text).
 const CONDITION_OVERRIDES: Record<string, ConditionField[]> = {
+  // sys_user: only by Role (never ADMIN, never "all"), see validateItems.
+  sys_user: [{ column: "Role", label: "Role", type: "role" }],
   mst_employee: [
     { column: "EmpCode", label: "รหัสพนักงาน", type: "code" },
     { column: "ResignDate", label: "วันลาออก", type: "date" },
   ],
 };
 
+// Tables keyed by UserID: "role" = delete only rows of users having that
+// sys_user.Role (value in `from`). Offered next to the date columns.
+const ROLE_TABLES = new Set(["sys_user_permission", "sys_user_company", "sys_user_employee_type", "sys_session"]);
+const ROLE_FIELD: ConditionField = { column: "UserID", label: "Role (ตามผู้ใช้)", type: "role" };
+
 export async function getConditionFields(tables: string[]): Promise<Record<string, ConditionField[]>> {
   const dates = await getDateColumns(tables);
-  return Object.fromEntries(tables.map((t) => [t, CONDITION_OVERRIDES[t] ?? dates[t].map((c) => ({ column: c, label: c, type: "date" as const }))]));
+  return Object.fromEntries(
+    tables.map((t) => {
+      const base = CONDITION_OVERRIDES[t] ?? dates[t].map((c) => ({ column: c, label: c, type: "date" as const }));
+      return [t, ROLE_TABLES.has(t) ? [ROLE_FIELD, ...base] : base];
+    }),
+  );
 }
 
 async function getDateColumns(tables: string[]): Promise<Record<string, string[]>> {
@@ -155,7 +169,7 @@ export interface DeleteItem {
   table: string;
   mode: "ALL" | "RANGE";
   column?: string;
-  type?: "date" | "code";
+  type?: "date" | "code" | "role";
   from?: string; // yyyy-MM-dd (date) or inclusive code (code)
   to?: string;
 }
@@ -171,6 +185,9 @@ export function validateItems(items: unknown, fields: Record<string, ConditionFi
     if (!ALL_TABLES.has(table)) return { ok: false, message: `ตาราง ${table} ไม่อยู่ในรายการที่ลบได้` };
     if (seen.has(table)) return { ok: false, message: `ตาราง ${table} ซ้ำ` };
     seen.add(table);
+    if (table === "sys_user" && (raw.mode !== "RANGE" || raw.from === "ADMIN")) {
+      return { ok: false, message: "sys_user ลบได้เฉพาะแบบใส่เงื่อนไข Role และห้ามลบ Role ADMIN" };
+    }
     if (raw.mode === "ALL") {
       out.push({ table, mode: "ALL" });
     } else if (raw.mode === "RANGE") {
@@ -179,6 +196,11 @@ export function validateItems(items: unknown, fields: Record<string, ConditionFi
       const to = typeof raw.to === "string" ? raw.to : "";
       const field = (fields[table] ?? []).find((f) => f.column === column);
       if (!field) return { ok: false, message: `${table}: field ${column} ใช้เป็นเงื่อนไขไม่ได้` };
+      if (field.type === "role") {
+        if (!(ROLE_VALUES as readonly string[]).includes(from)) return { ok: false, message: `${table}: Role ไม่ถูกต้อง` };
+        out.push({ table, mode: "RANGE", column, from, to: from, type: "role" });
+        continue;
+      }
       if (field.type === "date") {
         if (!DATE_RE.test(from) || !DATE_RE.test(to) || from > to) return { ok: false, message: `${table}: ช่วงวันที่ไม่ถูกต้อง` };
       } else if (!from.trim() || !to.trim() || from.length > 50 || to.length > 50 || from > to) {
@@ -230,10 +252,15 @@ export async function runDelete(items: DeleteItem[], dryRun: boolean): Promise<{
           if (item.mode === "ALL") {
             pred = () => "1 = 1";
           } else {
-            params.push(item.from!, item.to!);
+            params.push(item.from!);
+            if (item.type !== "role") params.push(item.to!);
             const col = ident(item.column!);
             pred =
-              item.type === "code"
+              item.type === "role"
+                ? item.table === "sys_user"
+                  ? (a) => `${a}.${col} = @P1`
+                  : (a) => `EXISTS (SELECT 1 FROM [sys_user] su WHERE su.[UserID] = ${a}.${col} AND su.[Role] = @P1)`
+                : item.type === "code"
                 ? (a) => `${a}.${col} >= @P1 AND ${a}.${col} <= @P2`
                 : (a) => `${a}.${col} >= CAST(@P1 AS date) AND ${a}.${col} < DATEADD(day, 1, CAST(@P2 AS date))`;
           }

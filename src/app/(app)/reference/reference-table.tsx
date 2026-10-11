@@ -304,7 +304,7 @@ export default function ReferenceTable({
     const res = await fetch(`${apiBase}/${encodeURIComponent(id)}`, { method: "DELETE" });
     const body = await res.json().catch(() => ({}));
     if (!res.ok) {
-      setMessage(body.message || body.error);
+      setMessage(body.message || body.error || `ลบไม่สำเร็จ (HTTP ${res.status})`);
       return;
     }
     await refresh();

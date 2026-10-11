@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Swal from "sweetalert2";
+import { ROLE_VALUES } from "@/lib/validation";
 
 interface Group {
   label: string;
@@ -17,7 +18,7 @@ interface Cond {
 }
 const emptyCond = (): Cond => ({ selected: false, mode: "ALL", column: "", from: "", to: "" });
 
-export default function DbManagementView({ groups, conditionFields }: { groups: Group[]; conditionFields: Record<string, { column: string; label: string; type: "date" | "code" }[]> }) {
+export default function DbManagementView({ groups, conditionFields }: { groups: Group[]; conditionFields: Record<string, { column: string; label: string; type: "date" | "code" | "role" }[]> }) {
   const router = useRouter();
   const [groupLabel, setGroupLabel] = useState("");
   // Selections are kept per table across group switches.
@@ -174,9 +175,22 @@ export default function DbManagementView({ groups, conditionFields }: { groups: 
                                     </option>
                                   ))}
                                 </select>
-                                <input type={colType} placeholder={colType === "code" ? "จากรหัส" : undefined} className="rounded border border-gray-300 px-2 py-1" value={c.from} onChange={(e) => patch(t, { from: e.target.value })} />
-                                <span>{colType === "code" ? "ถึง" : "-"}</span>
-                                <input type={colType} placeholder={colType === "code" ? "ถึงรหัส" : undefined} className="rounded border border-gray-300 px-2 py-1" value={c.to} onChange={(e) => patch(t, { to: e.target.value })} />
+                                {colType === "role" ? (
+                                  <select className="rounded border border-gray-300 px-2 py-1" value={c.from} onChange={(e) => patch(t, { from: e.target.value, to: e.target.value })}>
+                                    <option value="">- เลือก Role -</option>
+                                    {ROLE_VALUES.map((r) => (
+                                      <option key={r} value={r}>
+                                        {r}
+                                      </option>
+                                    ))}
+                                  </select>
+                                ) : (
+                                  <>
+                                    <input type={colType} placeholder={colType === "code" ? "จากรหัส" : undefined} className="rounded border border-gray-300 px-2 py-1" value={c.from} onChange={(e) => patch(t, { from: e.target.value })} />
+                                    <span>{colType === "code" ? "ถึง" : "-"}</span>
+                                    <input type={colType} placeholder={colType === "code" ? "ถึงรหัส" : undefined} className="rounded border border-gray-300 px-2 py-1" value={c.to} onChange={(e) => patch(t, { to: e.target.value })} />
+                                  </>
+                                )}
                               </div>
                             )}
                           </div>

@@ -1,15 +1,29 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
+/* Blue + white theme (matches the CRPAYROLL brand artwork). Rather than touch
+   ~60 files, the palette Tailwind utilities resolve to is remapped here:
+   - gray-50/100 become a faint blue tint (page + zebra/hover backgrounds)
+   - gray-700/800/900 become navy (primary buttons, headings, dark text)
+   - purple-* (table row hover etc.) becomes the brand blue ramp
+   gray-200..600 stay neutral so borders/secondary text remain readable. */
+@theme {
+  --color-gray-50: #f5f8fe;
+  --color-gray-100: #e9f0fc;
+  --color-gray-700: #1e3a6e;
+  --color-gray-800: #12327a;
+  --color-gray-900: #0b2a66;
+
+  --color-purple-50: #eef4ff;
+  --color-purple-100: #dbe8ff;
+  --color-purple-200: #bcd4ff;
+  --color-purple-500: #2f7be8;
+  --color-purple-600: #1366d6;
+  --color-purple-700: #0f52ae;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+:root {
+  --background: #ffffff;
+  --foreground: #0f1f3d;
 }
 
 body {
