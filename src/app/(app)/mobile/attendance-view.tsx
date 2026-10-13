@@ -29,6 +29,7 @@ export default function AttendanceView({ mode, initial }: { mode: "IN" | "OUT"; 
   const [cameraOn, setCameraOn] = useState(false);
   const [photo, setPhoto] = useState<{ blob: Blob; url: string } | null>(null);
   const [cameraError, setCameraError] = useState<string | null>(null);
+  const [showCheck, setShowCheck] = useState(false);
 
   function stopCamera() {
     streamRef.current?.getTracks().forEach((t) => t.stop());
@@ -37,8 +38,10 @@ export default function AttendanceView({ mode, initial }: { mode: "IN" | "OUT"; 
   }
   useEffect(() => () => streamRef.current?.getTracks().forEach((t) => t.stop()), []);
 
-  async function openCamera() {
-    if (isIn) void detectSite();
+  const [facing, setFacing] = useState<"user" | "environment">("user");
+
+  async function openCamera(useFacing: "user" | "environment" = facing, redetect = true) {
+    if (redetect) void detectSite();
     setCameraError(null);
     setResult(null);
     if (photo) URL.revokeObjectURL(photo.url);
@@ -48,8 +51,10 @@ export default function AttendanceView({ mode, initial }: { mode: "IN" | "OUT"; 
       return;
     }
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" }, audio: false });
+      streamRef.current?.getTracks().forEach((t) => t.stop());
+      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: useFacing }, audio: false });
       streamRef.current = stream;
+      setFacing(useFacing);
       setCameraOn(true);
       // The <video> mounts on the next render; attach the stream right after.
       requestAnimationFrame(() => {
@@ -80,6 +85,9 @@ export default function AttendanceView({ mode, initial }: { mode: "IN" | "OUT"; 
         }
         setPhoto({ blob, url: URL.createObjectURL(blob) });
         stopCamera();
+        // Success popup stays for 2 seconds, then only the photo remains.
+        setShowCheck(true);
+        window.setTimeout(() => setShowCheck(false), 2000);
       },
       "image/jpeg",
       0.8,
@@ -213,19 +221,91 @@ export default function AttendanceView({ mode, initial }: { mode: "IN" | "OUT"; 
         <div className="space-y-2 rounded border border-gray-200 p-3">
           <div className="text-sm font-medium text-gray-700">ถ่ายรูปยืนยัน{isIn ? "การเข้างาน" : "การเลิกงาน"}</div>
           {cameraOn && (
-            <>
-              <video ref={videoRef} playsInline muted className="w-full rounded bg-black" />
-              <button type="button" onClick={capture} className="w-full rounded bg-blue-600 px-4 py-3 text-base font-medium text-white">
-                📷 ถ่ายรูป
-              </button>
-            </>
+            <div className="fixed inset-0 z-50 flex flex-col bg-black text-white">
+              <div className="flex items-center justify-between px-4 py-3">
+                <button type="button" onClick={stopCamera} aria-label="ปิดกล้อง" className="h-10 w-10 rounded-full bg-white/15 text-xl">
+                  ✕
+                </button>
+                <span className="text-sm font-semibold tracking-wide">{label}</span>
+                <span className="h-10 w-10" />
+              </div>
+
+              <div className="relative flex-1 overflow-hidden">
+                <video ref={videoRef} playsInline muted className="h-full w-full object-cover" style={facing === "user" ? { transform: "scaleX(-1)" } : undefined} />
+                <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center gap-4">
+                  <div className="relative h-[68vw] max-h-72 w-[68vw] max-w-72">
+                    <svg viewBox="0 0 100 100" className="absolute inset-0 h-full w-full">
+                      <circle cx="50" cy="50" r="48" fill="none" stroke="rgba(255,255,255,0.85)" strokeWidth="0.6" />
+                      <circle cx="50" cy="50" r="45" fill="none" stroke="rgba(255,255,255,0.6)" strokeWidth="3" strokeDasharray="0.5 2.2" />
+                    </svg>
+                  </div>
+                  <div className="flex max-w-[85vw] flex-col items-center gap-1 rounded-2xl bg-black/50 px-4 py-2 text-center backdrop-blur-sm">
+                    <span className="text-2xl">📍</span>
+                    {detecting && <span className="text-sm">กำลังตรวจหาตำแหน่ง...</span>}
+                    {detected?.found && (
+                      <span className="text-sm font-medium text-green-300">
+                        {detected.siteName}
+                        {distText(detected.distanceMeters)}
+                      </span>
+                    )}
+                    {detected && !detected.found && <span className="text-sm text-red-300">{detected.message}</span>}
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex items-center justify-between px-8 pb-8 pt-5">
+                <span className="h-12 w-12" />
+                <button type="button" onClick={capture} aria-label="ถ่ายรูป" className="flex h-20 w-20 items-center justify-center rounded-full border-4 border-white active:scale-95">
+                  <span className="h-14 w-14 rounded-full bg-white" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void openCamera(facing === "user" ? "environment" : "user", false)}
+                  aria-label="สลับกล้อง"
+                  className="flex h-12 w-12 items-center justify-center rounded-full bg-white/15 text-xl"
+                >
+                  🔄
+                </button>
+              </div>
+            </div>
           )}
           {photo && (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img src={photo.url} alt="รูปที่ถ่าย" className="w-full rounded" />
+            <div className="relative">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={photo.url} alt="รูปที่ถ่าย" className="w-full rounded" />
+              {showCheck && (
+              <>
+              <style>{`
+                @keyframes chk-pop { 0% { transform: scale(0); opacity: 0 } 60% { transform: scale(1.15); opacity: 1 } 100% { transform: scale(1); opacity: 1 } }
+                @keyframes chk-draw { to { stroke-dashoffset: 0 } }
+                @keyframes chk-ring { 0% { transform: scale(1); opacity: .5 } 100% { transform: scale(1.8); opacity: 0 } }
+              `}</style>
+              <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
+                <div className="relative flex h-28 w-28 items-center justify-center">
+                  <span className="absolute inset-0 rounded-full bg-green-500" style={{ animation: "chk-ring 0.9s ease-out 0.3s both" }} />
+                  <div className="flex h-full w-full items-center justify-center rounded-full bg-green-500 shadow-xl" style={{ animation: "chk-pop 0.45s cubic-bezier(.2,.8,.3,1) both" }}>
+                    <svg viewBox="0 0 24 24" className="h-16 w-16">
+                      <path
+                        d="M5 12.5l4.5 4.5L19 7.5"
+                        fill="none"
+                        stroke="white"
+                        strokeWidth="3"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeDasharray="24"
+                        strokeDashoffset="24"
+                        style={{ animation: "chk-draw 0.4s ease-out 0.3s forwards" }}
+                      />
+                    </svg>
+                  </div>
+                </div>
+              </div>
+              </>
+              )}
+            </div>
           )}
           {!cameraOn && (
-            <button type="button" onClick={openCamera} disabled={busy} className="w-full rounded border border-blue-600 px-4 py-3 text-base font-medium text-blue-700 disabled:opacity-50">
+            <button type="button" onClick={() => void openCamera()} disabled={busy} className="w-full rounded border border-blue-600 px-4 py-3 text-base font-medium text-blue-700 disabled:opacity-50">
               {photo ? "ถ่ายใหม่" : "เปิดกล้อง"}
             </button>
           )}
